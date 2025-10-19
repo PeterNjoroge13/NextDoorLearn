@@ -18,6 +18,8 @@ const Profile = () => {
     grade_level: '',
     subjects_needed: []
   });
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -37,6 +39,7 @@ const Profile = () => {
             grade_level: response.profile?.grade_level || '',
             subjects_needed: response.profile?.subjects_needed || []
           });
+          setAvatarUrl(response.avatar_url || '');
         }
       } catch (error) {
         console.error('Error fetching profile:', error);
@@ -61,6 +64,38 @@ const Profile = () => {
       ...prev,
       [field]: value.split(',').map(item => item.trim()).filter(item => item)
     }));
+  };
+
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingAvatar(true);
+    try {
+      const formData = new FormData();
+      formData.append('avatar', file);
+
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:3001/api/upload/avatar', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      const result = await response.json();
+      if (response.ok) {
+        setAvatarUrl(result.avatarUrl);
+        setMessage('Avatar updated successfully!');
+      } else {
+        setMessage('Error uploading avatar: ' + result.message);
+      }
+    } catch (error) {
+      setMessage('Error uploading avatar');
+    } finally {
+      setUploadingAvatar(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -133,6 +168,45 @@ const Profile = () => {
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="bg-white shadow rounded-lg">
           <form onSubmit={handleSubmit} className="p-6 space-y-6">
+            {/* Avatar Section */}
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Profile Picture</h3>
+              <div className="flex items-center space-x-4">
+                <div className="relative">
+                  {avatarUrl ? (
+                    <img
+                      src={`http://localhost:3001${avatarUrl}`}
+                      alt="Profile"
+                      className="w-20 h-20 rounded-full object-cover border-2 border-gray-300"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-full bg-gray-300 flex items-center justify-center">
+                      <span className="text-2xl text-gray-600">👤</span>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarUpload}
+                    disabled={uploadingAvatar}
+                    className="hidden"
+                    id="avatar-upload"
+                  />
+                  <label
+                    htmlFor="avatar-upload"
+                    className="btn btn-secondary cursor-pointer"
+                  >
+                    {uploadingAvatar ? 'Uploading...' : 'Change Avatar'}
+                  </label>
+                  <p className="text-sm text-gray-500 mt-1">
+                    JPG, PNG, GIF up to 5MB
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Basic Info */}
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>

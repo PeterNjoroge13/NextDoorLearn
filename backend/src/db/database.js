@@ -12,6 +12,8 @@ db.exec(`
     role TEXT NOT NULL CHECK (role IN ('student', 'tutor')),
     name TEXT NOT NULL,
     bio TEXT,
+    avatar_url TEXT,
+    last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 

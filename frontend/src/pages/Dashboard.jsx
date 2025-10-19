@@ -44,9 +44,22 @@ const Dashboard = () => {
       <header className="navbar">
         <div className="container">
           <div className="flex justify-between items-center">
-            <div>
-              <h1 className="navbar-brand">NextDoorLearn</h1>
-              <p className="text-gray-600">Welcome back, {user?.name}! 👋</p>
+            <div className="flex items-center space-x-4">
+              {profile?.avatar_url ? (
+                <img
+                  src={`http://localhost:3001${profile.avatar_url}`}
+                  alt="Profile"
+                  className="w-12 h-12 rounded-full object-cover border-2 border-white"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center">
+                  <span className="text-xl text-primary-600">👤</span>
+                </div>
+              )}
+              <div>
+                <h1 className="navbar-brand">NextDoorLearn</h1>
+                <p className="text-gray-600">Welcome back, {user?.name}! 👋</p>
+              </div>
             </div>
             <div className="flex items-center space-x-4">
               <span className={`badge ${user?.role === 'tutor' ? 'badge-primary' : 'badge-secondary'}`}>

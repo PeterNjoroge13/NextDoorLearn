@@ -116,7 +116,20 @@ const TutorBrowse = () => {
             <div key={tutor.id} className="card hover-lift hover-glow">
               <div className="card-header">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-semibold text-gray-900">{tutor.name}</h3>
+                  <div className="flex items-center space-x-3">
+                    {tutor.avatar_url ? (
+                      <img
+                        src={`http://localhost:3001${tutor.avatar_url}`}
+                        alt={tutor.name}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-primary-200"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center">
+                        <span className="text-lg text-primary-600">👤</span>
+                      </div>
+                    )}
+                    <h3 className="text-xl font-semibold text-gray-900">{tutor.name}</h3>
+                  </div>
                   {tutor.hourly_rate > 0 && (
                     <span className="text-lg font-bold text-primary-600">
                       ${tutor.hourly_rate}/hr
