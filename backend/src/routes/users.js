@@ -9,7 +9,7 @@ router.get('/profile', authenticateToken, (req, res) => {
   try {
     const userId = req.user.userId;
     
-    const user = db.prepare('SELECT id, email, role, name, bio, created_at FROM users WHERE id = ?').get(userId);
+    const user = db.prepare('SELECT id, email, role, name, bio, avatar_url, created_at FROM users WHERE id = ?').get(userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }

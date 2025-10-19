@@ -1,6 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import ErrorBoundary from './components/ErrorBoundary';
+import DebugInfo from './components/DebugInfo';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import TutorBrowse from './pages/TutorBrowse';
@@ -46,6 +48,7 @@ const PublicRoute = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
+      <DebugInfo />
       <Router>
         <div className="App">
           <Routes>
@@ -77,7 +80,9 @@ function App() {
               path="/profile" 
               element={
                 <ProtectedRoute>
-                  <Profile />
+                  <ErrorBoundary>
+                    <Profile />
+                  </ErrorBoundary>
                 </ProtectedRoute>
               } 
             />

@@ -11,25 +11,52 @@ const Messages = () => {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [profile, setProfile] = useState(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    const fetchConversations = async () => {
+    const fetchData = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await api.getConversations(token);
-        if (response.error) {
-          console.error('Error fetching conversations:', response.error);
+        if (!token) {
+          setError('No authentication token found. Please log in again.');
+          setLoading(false);
+          return;
+        }
+        
+        // Fetch conversations
+        const conversationsResponse = await api.getConversations(token);
+            if (conversationsResponse.error) {
+              console.error('Error fetching conversations:', conversationsResponse.error);
+              // If user not found, unauthorized, or invalid token, clear localStorage and redirect to login
+              if (conversationsResponse.error.includes('User not found') || conversationsResponse.error.includes('Unauthorized') || conversationsResponse.error.includes('Invalid or expired token')) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                window.location.href = '/login';
+                return;
+              }
+              setError('Failed to load conversations: ' + conversationsResponse.error);
+            } else {
+          setConversations(conversationsResponse);
+        }
+
+        // Fetch profile for avatar
+        const profileResponse = await api.getProfile(token);
+        if (profileResponse.error) {
+          console.error('Error fetching profile:', profileResponse.error);
+          // Don't set error for profile fetch failure, just log it
         } else {
-          setConversations(response);
+          setProfile(profileResponse);
         }
       } catch (error) {
-        console.error('Error fetching conversations:', error);
+        console.error('Error fetching data:', error);
+        setError('Failed to load messages. Please try again.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchConversations();
+    fetchData();
   }, []);
 
   // Auto-refresh messages every 5 seconds when a conversation is selected
@@ -117,15 +144,73 @@ const Messages = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Error Loading Messages</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <div className="space-y-3">
+            <button
+              onClick={() => window.location.reload()}
+              className="btn btn-primary w-full"
+            >
+              Try Again
+            </button>
+            <a
+              href="/dashboard"
+              className="btn btn-ghost w-full"
+            >
+              Back to Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto">
+          <div className="text-6xl mb-4">🔒</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Authentication Required</h2>
+          <p className="text-gray-600 mb-6">Please log in to access messages.</p>
+          <a
+            href="/login"
+            className="btn btn-primary w-full"
+          >
+            Go to Login
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow">
         <div className="container">
           <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-gradient">Messages</h1>
-              <p className="text-gray-600">Chat with your {user?.role === 'tutor' ? 'students' : 'tutors'}</p>
+            <div className="flex items-center space-x-4">
+              {/* Profile Picture in Header */}
+              {profile?.avatar_url ? (
+                <img
+                  src={`http://localhost:3001${profile.avatar_url}`}
+                  alt="Profile"
+                  className="w-12 h-12 rounded-full object-cover border-2 border-primary-200 shadow-md"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-100 to-secondary-100 flex items-center justify-center border-2 border-primary-200 shadow-md">
+                  <span className="text-xl text-primary-600">👤</span>
+                </div>
+              )}
+              <div>
+                <h1 className="text-gradient">Messages</h1>
+                <p className="text-gray-600">Chat with your {user?.role === 'tutor' ? 'students' : 'tutors'}</p>
+              </div>
             </div>
             <a
               href="/dashboard"
@@ -139,9 +224,9 @@ const Messages = () => {
 
       <div className="container py-6">
         <div className="card overflow-hidden">
-          <div className="flex h-96">
+          <div className="flex flex-col md:flex-row h-96">
             {/* Conversations List */}
-            <div className="w-1/3 border-r border-gray-200">
+            <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200">
               <div className="p-4 border-b border-gray-200">
                 <h3 className="text-lg font-medium text-gray-900">Conversations</h3>
               </div>
@@ -176,7 +261,7 @@ const Messages = () => {
             </div>
 
             {/* Messages Area */}
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col min-h-0">
               {selectedConversation ? (
                 <>
                   {/* Chat Header */}

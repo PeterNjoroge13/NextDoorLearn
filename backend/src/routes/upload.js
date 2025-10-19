@@ -25,7 +25,7 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: 10 * 1024 * 1024 // 10MB limit - will be compressed on frontend
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
@@ -60,6 +60,31 @@ router.post('/avatar', authenticateToken, upload.single('avatar'), async (req, r
   } catch (error) {
     console.error('Avatar upload error:', error);
     res.status(500).json({ message: 'Error uploading avatar' });
+  }
+});
+
+// Delete avatar endpoint
+router.delete('/avatar', authenticateToken, async (req, res) => {
+  try {
+    // Get current avatar URL from database
+    const user = db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.id);
+    
+    if (user && user.avatar_url) {
+      // Remove the file from filesystem
+      const filePath = path.join(__dirname, '../../', user.avatar_url);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+      
+      // Update database to remove avatar URL
+      const updateUser = db.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?');
+      updateUser.run(req.user.id);
+    }
+
+    res.json({ message: 'Avatar removed successfully' });
+  } catch (error) {
+    console.error('Avatar removal error:', error);
+    res.status(500).json({ message: 'Error removing avatar' });
   }
 });
 

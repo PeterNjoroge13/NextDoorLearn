@@ -57,4 +57,6 @@ db.exec(`
   );
 `);
 
+// Migration is no longer needed since columns are in table creation
+
 module.exports = db;

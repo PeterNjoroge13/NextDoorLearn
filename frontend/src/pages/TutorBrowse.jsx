@@ -11,6 +11,7 @@ const TutorBrowse = () => {
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
   const [tutorStatuses, setTutorStatuses] = useState({});
+  const [profile, setProfile] = useState(null);
   const [filters, setFilters] = useState({
     subject: '',
     priceRange: [0, 100],
@@ -19,31 +20,49 @@ const TutorBrowse = () => {
   });
 
   useEffect(() => {
-    const fetchTutors = async () => {
+    const fetchData = async () => {
       try {
-        const response = await api.getTutors();
-        if (response.error) {
-          setError(response.error);
-        } else {
-          setTutors(response);
-          // Fetch status for each tutor
-          const token = localStorage.getItem('token');
-          const statusPromises = response.map(async (tutor) => {
-            try {
-              const statusResponse = await api.getUserStatus(tutor.id, token);
-              return { tutorId: tutor.id, status: statusResponse };
-            } catch (error) {
-              return { tutorId: tutor.id, status: { isOnline: false, lastSeenFormatted: 'Unknown' } };
-            }
-          });
-          
-          const statuses = await Promise.all(statusPromises);
-          const statusMap = {};
-          statuses.forEach(({ tutorId, status }) => {
-            statusMap[tutorId] = status;
-          });
-          setTutorStatuses(statusMap);
+        const token = localStorage.getItem('token');
+        
+        // Fetch tutors
+        const tutorsResponse = await api.getTutors();
+            if (tutorsResponse.error) {
+              // If user not found, unauthorized, or invalid token, clear localStorage and redirect to login
+              if (tutorsResponse.error.includes('User not found') || tutorsResponse.error.includes('Unauthorized') || tutorsResponse.error.includes('Invalid or expired token')) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                window.location.href = '/login';
+                return;
+              }
+              setError(tutorsResponse.error);
+            } else {
+          setTutors(tutorsResponse);
         }
+
+        // Fetch profile for avatar
+        const profileResponse = await api.getProfile(token);
+        if (profileResponse.error) {
+          console.error('Error fetching profile:', profileResponse.error);
+        } else {
+          setProfile(profileResponse);
+        }
+
+        // Fetch status for each tutor
+        const statusPromises = tutorsResponse.map(async (tutor) => {
+          try {
+            const statusResponse = await api.getUserStatus(tutor.id, token);
+            return { tutorId: tutor.id, status: statusResponse };
+          } catch (error) {
+            return { tutorId: tutor.id, status: { isOnline: false, lastSeenFormatted: 'Unknown' } };
+          }
+        });
+        
+        const statuses = await Promise.all(statusPromises);
+        const statusMap = {};
+        statuses.forEach(({ tutorId, status }) => {
+          statusMap[tutorId] = status;
+        });
+        setTutorStatuses(statusMap);
       } catch (err) {
         setError('Failed to load tutors');
       } finally {
@@ -51,7 +70,7 @@ const TutorBrowse = () => {
       }
     };
 
-    fetchTutors();
+    fetchData();
   }, []);
 
   const handleRequestConnection = async (tutorId) => {
@@ -120,9 +139,23 @@ const TutorBrowse = () => {
       <header className="navbar">
         <div className="container">
           <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-gradient">Find Tutors</h1>
-              <p className="text-gray-600">Connect with experienced tutors in your area</p>
+            <div className="flex items-center space-x-4">
+              {/* Profile Picture in Header */}
+              {profile?.avatar_url ? (
+                <img
+                  src={`http://localhost:3001${profile.avatar_url}`}
+                  alt="Profile"
+                  className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-md"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-100 to-secondary-100 flex items-center justify-center border-2 border-white shadow-md">
+                  <span className="text-xl text-primary-600">👤</span>
+                </div>
+              )}
+              <div>
+                <h1 className="text-gradient">Find Tutors</h1>
+                <p className="text-gray-600">Connect with experienced tutors in your area</p>
+              </div>
             </div>
             <div className="flex items-center space-x-4">
               <ThemeToggle />
@@ -174,7 +207,7 @@ const TutorBrowse = () => {
             </div>
 
             {/* Advanced Filters */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               {/* Subject Filter */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -255,7 +288,7 @@ const TutorBrowse = () => {
           </div>
         )}
 
-        <div className="grid">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredTutors.map((tutor) => (
             <div key={tutor.id} className="card hover-lift hover-glow">
               <div className="card-header">
@@ -265,10 +298,10 @@ const TutorBrowse = () => {
                       <img
                         src={`http://localhost:3001${tutor.avatar_url}`}
                         alt={tutor.name}
-                        className="w-12 h-12 rounded-full object-cover border-2 border-primary-200"
+                        className="w-12 h-12 rounded-full object-cover border-2 border-primary-200 shadow-md"
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-100 to-secondary-100 flex items-center justify-center border-2 border-primary-200 shadow-md">
                         <span className="text-lg text-primary-600">👤</span>
                       </div>
                     )}
