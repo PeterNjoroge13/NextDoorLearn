@@ -10,6 +10,12 @@ const TutorBrowse = () => {
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
   const [tutorStatuses, setTutorStatuses] = useState({});
+  const [filters, setFilters] = useState({
+    subject: '',
+    priceRange: [0, 100],
+    onlineOnly: false,
+    sortBy: 'name' // name, price, rating
+  });
 
   useEffect(() => {
     const fetchTutors = async () => {
@@ -62,12 +68,39 @@ const TutorBrowse = () => {
     }
   };
 
-  const filteredTutors = tutors.filter(tutor =>
-    tutor.name.toLowerCase().includes(filter.toLowerCase()) ||
-    tutor.subjects.some(subject => 
-      subject.toLowerCase().includes(filter.toLowerCase())
-    )
-  );
+  const filteredTutors = tutors.filter(tutor => {
+    const searchTerm = filter.toLowerCase();
+    const matchesSearch = tutor.name.toLowerCase().includes(searchTerm) ||
+           (tutor.subjects && tutor.subjects.some(subject => 
+             subject.toLowerCase().includes(searchTerm)
+           ));
+    
+    const matchesSubject = !filters.subject || 
+           (tutor.subjects && tutor.subjects.some(subject => 
+             subject.toLowerCase().includes(filters.subject.toLowerCase())
+           ));
+    
+    const matchesPrice = tutor.hourly_rate >= filters.priceRange[0] && 
+           tutor.hourly_rate <= filters.priceRange[1];
+    
+    const matchesOnline = !filters.onlineOnly || 
+           (tutorStatuses[tutor.id]?.isOnline === true);
+    
+    return matchesSearch && matchesSubject && matchesPrice && matchesOnline;
+  }).sort((a, b) => {
+    switch (filters.sortBy) {
+      case 'price':
+        return a.hourly_rate - b.hourly_rate;
+      case 'name':
+        return a.name.localeCompare(b.name);
+      case 'online':
+        const aOnline = tutorStatuses[a.id]?.isOnline || false;
+        const bOnline = tutorStatuses[b.id]?.isOnline || false;
+        return bOnline - aOnline;
+      default:
+        return 0;
+    }
+  });
 
   if (loading) {
     return (
@@ -103,20 +136,108 @@ const TutorBrowse = () => {
       {/* Search and Filter */}
       <div className="container py-6">
         <div className="card">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <input
-                type="text"
-                placeholder="🔍 Search by name or subject..."
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                className="focus-ring"
-              />
+          <div className="space-y-4">
+            {/* Search Bar */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  placeholder="🔍 Search by name or subject..."
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="focus-ring"
+                />
+              </div>
+              <div className="text-sm text-gray-600 flex items-center space-x-2">
+                <span className="badge badge-primary">
+                  {filteredTutors.length} tutor{filteredTutors.length !== 1 ? 's' : ''} found
+                </span>
+                <button
+                  onClick={() => {
+                    setFilter('');
+                    setFilters({
+                      subject: '',
+                      priceRange: [0, 100],
+                      onlineOnly: false,
+                      sortBy: 'name'
+                    });
+                  }}
+                  className="btn btn-ghost btn-sm"
+                >
+                  Clear Filters
+                </button>
+              </div>
             </div>
-            <div className="text-sm text-gray-600 flex items-center">
-              <span className="badge badge-primary">
-                {filteredTutors.length} tutor{filteredTutors.length !== 1 ? 's' : ''} found
-              </span>
+
+            {/* Advanced Filters */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Subject Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Subject
+                </label>
+                <select
+                  value={filters.subject}
+                  onChange={(e) => setFilters(prev => ({ ...prev, subject: e.target.value }))}
+                  className="focus-ring"
+                >
+                  <option value="">All Subjects</option>
+                  <option value="math">Math</option>
+                  <option value="science">Science</option>
+                  <option value="english">English</option>
+                  <option value="history">History</option>
+                  <option value="computer">Computer Science</option>
+                  <option value="physics">Physics</option>
+                  <option value="chemistry">Chemistry</option>
+                </select>
+              </div>
+
+              {/* Price Range */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Max Price: ${filters.priceRange[1]}
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="200"
+                  value={filters.priceRange[1]}
+                  onChange={(e) => setFilters(prev => ({ 
+                    ...prev, 
+                    priceRange: [prev.priceRange[0], parseInt(e.target.value)]
+                  }))}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Online Only */}
+              <div className="flex items-center">
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={filters.onlineOnly}
+                    onChange={(e) => setFilters(prev => ({ ...prev, onlineOnly: e.target.checked }))}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Online Only</span>
+                </label>
+              </div>
+
+              {/* Sort By */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Sort By
+                </label>
+                <select
+                  value={filters.sortBy}
+                  onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value }))}
+                  className="focus-ring"
+                >
+                  <option value="name">Name</option>
+                  <option value="price">Price (Low to High)</option>
+                  <option value="online">Online First</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
