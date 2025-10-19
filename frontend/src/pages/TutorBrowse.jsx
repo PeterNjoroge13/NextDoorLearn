@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import StatusIndicator from '../components/StatusIndicator';
 
 const TutorBrowse = () => {
   const { user } = useAuth();
@@ -8,6 +9,7 @@ const TutorBrowse = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
+  const [tutorStatuses, setTutorStatuses] = useState({});
 
   useEffect(() => {
     const fetchTutors = async () => {
@@ -17,6 +19,23 @@ const TutorBrowse = () => {
           setError(response.error);
         } else {
           setTutors(response);
+          // Fetch status for each tutor
+          const token = localStorage.getItem('token');
+          const statusPromises = response.map(async (tutor) => {
+            try {
+              const statusResponse = await api.getUserStatus(tutor.id, token);
+              return { tutorId: tutor.id, status: statusResponse };
+            } catch (error) {
+              return { tutorId: tutor.id, status: { isOnline: false, lastSeenFormatted: 'Unknown' } };
+            }
+          });
+          
+          const statuses = await Promise.all(statusPromises);
+          const statusMap = {};
+          statuses.forEach(({ tutorId, status }) => {
+            statusMap[tutorId] = status;
+          });
+          setTutorStatuses(statusMap);
         }
       } catch (err) {
         setError('Failed to load tutors');
@@ -128,7 +147,14 @@ const TutorBrowse = () => {
                         <span className="text-lg text-primary-600">👤</span>
                       </div>
                     )}
-                    <h3 className="text-xl font-semibold text-gray-900">{tutor.name}</h3>
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900">{tutor.name}</h3>
+                      <StatusIndicator 
+                        isOnline={tutorStatuses[tutor.id]?.isOnline || false}
+                        lastSeenFormatted={tutorStatuses[tutor.id]?.lastSeenFormatted}
+                        showText={true}
+                      />
+                    </div>
                   </div>
                   {tutor.hourly_rate > 0 && (
                     <span className="text-lg font-bold text-primary-600">

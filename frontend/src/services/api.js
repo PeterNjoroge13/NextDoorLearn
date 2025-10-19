@@ -124,6 +124,35 @@ const api = {
     });
     return response.json();
   },
+
+  // Status endpoints
+  updateOnlineStatus: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/status/online`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  getOnlineUsers: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/status/online`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  getUserStatus: async (userId, token) => {
+    const response = await fetch(`${API_BASE_URL}/status/user/${userId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
 };
 
 export default api;

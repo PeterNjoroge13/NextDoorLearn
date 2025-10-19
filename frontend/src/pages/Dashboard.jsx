@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import StatusIndicator from '../components/StatusIndicator';
 
 const Dashboard = () => {
   const { user } = useAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -24,7 +26,22 @@ const Dashboard = () => {
       }
     };
 
+    const updateOnlineStatus = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        await api.updateOnlineStatus(token);
+      } catch (error) {
+        console.error('Error updating online status:', error);
+      }
+    };
+
     fetchProfile();
+    updateOnlineStatus();
+
+    // Update online status every 2 minutes
+    const statusInterval = setInterval(updateOnlineStatus, 2 * 60 * 1000);
+
+    return () => clearInterval(statusInterval);
   }, []);
 
   if (loading) {
@@ -58,7 +75,10 @@ const Dashboard = () => {
               )}
               <div>
                 <h1 className="navbar-brand">NextDoorLearn</h1>
-                <p className="text-gray-600">Welcome back, {user?.name}! 👋</p>
+                <div className="flex items-center space-x-2">
+                  <p className="text-gray-600">Welcome back, {user?.name}! 👋</p>
+                  <StatusIndicator isOnline={isOnline} showText={true} />
+                </div>
               </div>
             </div>
             <div className="flex items-center space-x-4">
