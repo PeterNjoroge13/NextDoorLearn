@@ -110,7 +110,7 @@ const Messages = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600 mx-auto"></div>
+          <div className="spinner"></div>
           <p className="mt-4 text-gray-600">Loading messages...</p>
         </div>
       </div>
@@ -121,15 +121,15 @@ const Messages = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container">
           <div className="flex justify-between items-center py-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Messages</h1>
+              <h1 className="text-gradient">Messages</h1>
               <p className="text-gray-600">Chat with your {user?.role === 'tutor' ? 'students' : 'tutors'}</p>
             </div>
             <a
               href="/dashboard"
-              className="text-indigo-600 hover:text-indigo-500"
+              className="text-primary-600 hover:text-primary-500"
             >
               ← Back to Dashboard
             </a>
@@ -137,8 +137,8 @@ const Messages = () => {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="bg-white shadow rounded-lg overflow-hidden">
+      <div className="container py-6">
+        <div className="card overflow-hidden">
           <div className="flex h-96">
             {/* Conversations List */}
             <div className="w-1/3 border-r border-gray-200">

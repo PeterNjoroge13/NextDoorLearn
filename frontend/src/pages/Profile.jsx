@@ -137,7 +137,7 @@ const Profile = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600 mx-auto"></div>
+          <div className="spinner"></div>
           <p className="mt-4 text-gray-600">Loading profile...</p>
         </div>
       </div>
@@ -148,15 +148,15 @@ const Profile = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container">
           <div className="flex justify-between items-center py-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Edit Profile</h1>
+              <h1 className="text-gradient">Edit Profile</h1>
               <p className="text-gray-600">Update your profile information</p>
             </div>
             <a
               href="/dashboard"
-              className="text-indigo-600 hover:text-indigo-500"
+              className="text-primary-600 hover:text-primary-500"
             >
               ← Back to Dashboard
             </a>
@@ -165,8 +165,8 @@ const Profile = () => {
       </header>
 
       {/* Profile Form */}
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="bg-white shadow rounded-lg">
+      <div className="container py-6">
+        <div className="card">
           <form onSubmit={handleSubmit} className="p-6 space-y-6">
             {/* Avatar Section */}
             <div>
