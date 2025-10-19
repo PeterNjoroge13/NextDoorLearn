@@ -58,14 +58,22 @@ router.get('/:connectionId', authenticateToken, (req, res) => {
       return res.status(403).json({ error: 'You are not authorized to view messages in this connection' });
     }
 
-    // Get messages
+    // Get messages with read status
     const messages = db.prepare(`
-      SELECT m.id, m.content, m.timestamp, m.sender_id, u.name as sender_name
+      SELECT m.id, m.content, m.timestamp, m.read_at, m.sender_id, u.name as sender_name
       FROM messages m
       JOIN users u ON m.sender_id = u.id
       WHERE m.connection_id = ?
       ORDER BY m.timestamp ASC
     `).all(connectionId);
+
+    // Mark messages as read for the current user (except their own messages)
+    const markAsRead = db.prepare(`
+      UPDATE messages 
+      SET read_at = CURRENT_TIMESTAMP 
+      WHERE connection_id = ? AND sender_id != ? AND read_at IS NULL
+    `);
+    markAsRead.run(connectionId, userId);
 
     res.json(messages);
   } catch (error) {

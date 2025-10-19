@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import { formatMessageTime } from '../utils/timeUtils';
 
 const Messages = () => {
   const { user } = useAuth();
@@ -30,6 +31,30 @@ const Messages = () => {
 
     fetchConversations();
   }, []);
+
+  // Auto-refresh messages every 5 seconds when a conversation is selected
+  useEffect(() => {
+    if (!selectedConversation) return;
+
+    const interval = setInterval(() => {
+      const fetchMessages = async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await api.getMessages(selectedConversation.connection_id, token);
+          if (response.error) {
+            console.error('Error fetching messages:', response.error);
+          } else {
+            setMessages(response);
+          }
+        } catch (error) {
+          console.error('Error fetching messages:', error);
+        }
+      };
+      fetchMessages();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [selectedConversation]);
 
   useEffect(() => {
     if (selectedConversation) {
@@ -178,10 +203,15 @@ const Messages = () => {
                           }`}
                         >
                           <div className="text-sm">{message.content}</div>
-                          <div className={`text-xs mt-1 ${
+                          <div className={`text-xs mt-1 flex items-center justify-between ${
                             message.sender_id === user?.id ? 'text-indigo-100' : 'text-gray-500'
                           }`}>
-                            {new Date(message.timestamp).toLocaleTimeString()}
+                            <span>{formatMessageTime(message.timestamp)}</span>
+                            {message.sender_id === user?.id && (
+                              <span className="ml-2">
+                                {message.read_at ? '✓✓' : '✓'}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>

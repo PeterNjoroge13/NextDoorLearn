@@ -51,6 +51,7 @@ db.exec(`
     sender_id INTEGER NOT NULL,
     content TEXT NOT NULL,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    read_at DATETIME,
     FOREIGN KEY (connection_id) REFERENCES connections (id) ON DELETE CASCADE,
     FOREIGN KEY (sender_id) REFERENCES users (id) ON DELETE CASCADE
   );
