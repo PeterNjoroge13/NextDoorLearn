@@ -221,7 +221,7 @@ const Profile = () => {
                     id="name"
                     value={formData.name}
                     onChange={handleChange}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    className="mt-1 block w-full focus-ring"
                     required
                   />
                 </div>
@@ -235,7 +235,7 @@ const Profile = () => {
                     rows={3}
                     value={formData.bio}
                     onChange={handleChange}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    className="mt-1 block w-full focus-ring"
                     placeholder="Tell us about yourself..."
                   />
                 </div>
@@ -256,7 +256,7 @@ const Profile = () => {
                       id="subjects"
                       value={formData.subjects.join(', ')}
                       onChange={(e) => handleArrayChange('subjects', e.target.value)}
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      className="mt-1 block w-full focus-ring"
                       placeholder="Math, Science, English..."
                     />
                   </div>
@@ -272,7 +272,7 @@ const Profile = () => {
                       onChange={handleChange}
                       min="0"
                       step="0.01"
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      className="mt-1 block w-full focus-ring"
                     />
                   </div>
                 </div>
@@ -291,7 +291,7 @@ const Profile = () => {
                       id="grade_level"
                       value={formData.grade_level}
                       onChange={handleChange}
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      className="mt-1 block w-full focus-ring"
                       placeholder="9th Grade, High School, etc."
                     />
                   </div>
@@ -304,7 +304,7 @@ const Profile = () => {
                       id="subjects_needed"
                       value={formData.subjects_needed.join(', ')}
                       onChange={(e) => handleArrayChange('subjects_needed', e.target.value)}
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      className="mt-1 block w-full focus-ring"
                       placeholder="Math, Science, English..."
                     />
                   </div>
@@ -326,7 +326,7 @@ const Profile = () => {
               <button
                 type="submit"
                 disabled={saving}
-                className="bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                className="btn btn-primary"
               >
                 {saving ? 'Saving...' : 'Save Profile'}
               </button>
