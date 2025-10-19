@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import StatusIndicator from '../components/StatusIndicator';
+import ThemeToggle from '../components/ThemeToggle';
 
 const TutorBrowse = () => {
   const { user } = useAuth();
@@ -123,12 +124,15 @@ const TutorBrowse = () => {
               <h1 className="text-3xl font-bold text-gradient">Find Tutors</h1>
               <p className="text-gray-600">Connect with experienced tutors in your area</p>
             </div>
-            <a
-              href="/dashboard"
-              className="btn btn-ghost"
-            >
-              ← Back to Dashboard
-            </a>
+            <div className="flex items-center space-x-4">
+              <ThemeToggle />
+              <a
+                href="/dashboard"
+                className="btn btn-ghost"
+              >
+                ← Back to Dashboard
+              </a>
+            </div>
           </div>
         </div>
       </header>

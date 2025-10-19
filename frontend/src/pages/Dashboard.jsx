@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import StatusIndicator from '../components/StatusIndicator';
+import ThemeToggle from '../components/ThemeToggle';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -82,6 +83,7 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="flex items-center space-x-4">
+              <ThemeToggle />
               <span className={`badge ${user?.role === 'tutor' ? 'badge-primary' : 'badge-secondary'}`}>
                 {user?.role === 'tutor' ? '👨‍🏫 Tutor' : '🎓 Student'}
               </span>
