@@ -9,6 +9,8 @@ const connectionRoutes = require('./routes/connections');
 const messageRoutes = require('./routes/messages');
 const uploadRoutes = require('./routes/upload');
 const statusRoutes = require('./routes/status');
+const requestRoutes = require('./routes/requests');
+const sessionRoutes = require('./routes/sessions');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -24,6 +26,8 @@ app.use('/api/connections', connectionRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/status', statusRoutes);
+app.use('/api/requests', requestRoutes);
+app.use('/api/sessions', sessionRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

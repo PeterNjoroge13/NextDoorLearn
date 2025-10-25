@@ -8,6 +8,8 @@ import Dashboard from './pages/Dashboard';
 import TutorBrowse from './pages/TutorBrowse';
 import Profile from './pages/Profile';
 import Messages from './pages/Messages';
+import Requests from './pages/Requests';
+import Sessions from './pages/Sessions';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -91,6 +93,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Messages />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/requests" 
+              element={
+                <ProtectedRoute>
+                  <Requests />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/sessions" 
+              element={
+                <ProtectedRoute>
+                  <Sessions />
                 </ProtectedRoute>
               } 
             />

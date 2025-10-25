@@ -55,6 +55,28 @@ db.exec(`
     FOREIGN KEY (connection_id) REFERENCES connections (id) ON DELETE CASCADE,
     FOREIGN KEY (sender_id) REFERENCES users (id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    connection_id INTEGER NOT NULL,
+    tutor_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    subject TEXT,
+    scheduled_date DATE NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'completed', 'cancelled', 'no_show')),
+    meeting_link TEXT,
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (connection_id) REFERENCES connections (id) ON DELETE CASCADE,
+    FOREIGN KEY (tutor_id) REFERENCES users (id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES users (id) ON DELETE CASCADE
+  );
 `);
 
 // Migration is no longer needed since columns are in table creation

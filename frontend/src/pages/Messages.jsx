@@ -125,6 +125,10 @@ const Messages = () => {
         if (!updatedMessages.error) {
           setMessages(updatedMessages);
         }
+        // Refresh dashboard stats
+        if (window.refreshDashboardStats) {
+          window.refreshDashboardStats();
+        }
       }
     } catch (error) {
       alert('Error sending message');

@@ -10,6 +10,17 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(true);
   const [error, setError] = useState('');
+  const [stats, setStats] = useState({
+    messagesSent: 0,
+    activeConnections: 0,
+    peopleHelped: 0
+  });
+  const [sessionStats, setSessionStats] = useState({
+    totalSessions: 0,
+    scheduledSessions: 0,
+    completedSessions: 0,
+    totalMinutesTaught: 0
+  });
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -53,13 +64,75 @@ const Dashboard = () => {
       }
     };
 
+    const fetchStats = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const statsResponse = await api.getMessageStats(token);
+        if (statsResponse.error) {
+          console.error('Error fetching stats:', statsResponse.error);
+        } else {
+          setStats(statsResponse);
+        }
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+      }
+    };
+
+    const fetchSessionStats = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const sessionStatsResponse = await api.getSessionStats(token);
+        if (sessionStatsResponse.error) {
+          console.error('Error fetching session stats:', sessionStatsResponse.error);
+        } else {
+          setSessionStats(sessionStatsResponse);
+        }
+      } catch (error) {
+        console.error('Error fetching session stats:', error);
+      }
+    };
+
     fetchProfile();
     updateOnlineStatus();
+    fetchStats();
+    fetchSessionStats();
 
     // Update online status every 2 minutes
     const statusInterval = setInterval(updateOnlineStatus, 2 * 60 * 1000);
+    
+    // Refresh stats every 30 seconds to keep them updated
+    const statsInterval = setInterval(fetchStats, 30 * 1000);
 
-    return () => clearInterval(statusInterval);
+    return () => {
+      clearInterval(statusInterval);
+      clearInterval(statsInterval);
+    };
+  }, []);
+
+  // Function to refresh stats (can be called from other components)
+  const refreshStats = () => {
+    const fetchStats = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const statsResponse = await api.getMessageStats(token);
+        if (statsResponse.error) {
+          console.error('Error fetching stats:', statsResponse.error);
+        } else {
+          setStats(statsResponse);
+        }
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+      }
+    };
+    fetchStats();
+  };
+
+  // Expose refreshStats to window for other components to use
+  useEffect(() => {
+    window.refreshDashboardStats = refreshStats;
+    return () => {
+      delete window.refreshDashboardStats;
+    };
   }, []);
 
   if (loading) {
@@ -189,6 +262,12 @@ const Dashboard = () => {
                     >
                       💬 My Messages
                     </a>
+                    <a
+                      href="/sessions"
+                      className="btn btn-warning w-full hover-glow"
+                    >
+                      📅 My Sessions
+                    </a>
                   </>
                 ) : (
                   <>
@@ -203,6 +282,12 @@ const Dashboard = () => {
                       className="btn btn-secondary w-full hover-glow"
                     >
                       💬 My Messages
+                    </a>
+                    <a
+                      href="/sessions"
+                      className="btn btn-warning w-full hover-glow"
+                    >
+                      📅 Schedule Sessions
                     </a>
                   </>
                 )}
@@ -275,19 +360,50 @@ const Dashboard = () => {
             <div className="card-body">
               <div className="stats-grid">
                 <div className="stat-card">
-                  <div className="stat-number">0</div>
+                  <div className="stat-number">{stats.peopleHelped}</div>
                   <div className="stat-label">
                     {user?.role === 'tutor' ? 'Students Helped' : 'Tutors Connected'}
                   </div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-number">0</div>
+                  <div className="stat-number">{stats.messagesSent}</div>
                   <div className="stat-label">Messages Sent</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-number">0</div>
+                  <div className="stat-number">{stats.activeConnections}</div>
                   <div className="stat-label">Active Connections</div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Session Stats */}
+          <div className="card hover-lift">
+            <div className="card-header">
+              <h3 className="text-xl font-semibold text-gray-900 flex items-center">
+                📅 Session Stats
+              </h3>
+            </div>
+            <div className="card-body">
+              <div className="stats-grid">
+                <div className="stat-card">
+                  <div className="stat-number">{sessionStats.totalSessions}</div>
+                  <div className="stat-label">Total Sessions</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-number">{sessionStats.scheduledSessions}</div>
+                  <div className="stat-label">Scheduled</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-number">{sessionStats.completedSessions}</div>
+                  <div className="stat-label">Completed</div>
+                </div>
+                {user?.role === 'tutor' && (
+                  <div className="stat-card">
+                    <div className="stat-number">{Math.round(sessionStats.totalMinutesTaught / 60)}</div>
+                    <div className="stat-label">Hours Taught</div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

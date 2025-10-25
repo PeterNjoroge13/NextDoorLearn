@@ -145,8 +145,85 @@ const api = {
     return response.json();
   },
 
+  // Message statistics
+  getMessageStats: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/messages/stats`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
   getUserStatus: async (userId, token) => {
     const response = await fetch(`${API_BASE_URL}/status/user/${userId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  // Session endpoints
+  getSessions: async (token, filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.status) params.append('status', filters.status);
+    if (filters.month) params.append('month', filters.month);
+    if (filters.year) params.append('year', filters.year);
+    
+    const response = await fetch(`${API_BASE_URL}/sessions?${params}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  getUpcomingSessions: async (token, limit = 5) => {
+    const response = await fetch(`${API_BASE_URL}/sessions/upcoming?limit=${limit}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  createSession: async (sessionData, token) => {
+    const response = await fetch(`${API_BASE_URL}/sessions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(sessionData),
+    });
+    return response.json();
+  },
+
+  updateSessionStatus: async (sessionId, status, notes, token) => {
+    const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ status, notes }),
+    });
+    return response.json();
+  },
+
+  deleteSession: async (sessionId, token) => {
+    const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  getSessionStats: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/sessions/stats`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },

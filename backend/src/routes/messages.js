@@ -117,4 +117,47 @@ router.get('/', authenticateToken, (req, res) => {
   }
 });
 
+// Get message statistics for a user
+router.get('/stats', authenticateToken, (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    // Get total messages sent by this user
+    const messagesSent = db.prepare(`
+      SELECT COUNT(*) as count FROM messages WHERE sender_id = ?
+    `).get(userId);
+    
+    // Get total connections for this user
+    const connections = db.prepare(`
+      SELECT COUNT(*) as count FROM connections 
+      WHERE (student_id = ? OR tutor_id = ?) AND status = 'accepted'
+    `).get(userId, userId);
+    
+    // Get total students helped (for tutors) or tutors connected (for students)
+    const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId);
+    let peopleHelped = 0;
+    
+    if (user.role === 'tutor') {
+      peopleHelped = db.prepare(`
+        SELECT COUNT(DISTINCT student_id) as count FROM connections 
+        WHERE tutor_id = ? AND status = 'accepted'
+      `).get(userId);
+    } else {
+      peopleHelped = db.prepare(`
+        SELECT COUNT(DISTINCT tutor_id) as count FROM connections 
+        WHERE student_id = ? AND status = 'accepted'
+      `).get(userId);
+    }
+    
+    res.json({
+      messagesSent: messagesSent.count,
+      activeConnections: connections.count,
+      peopleHelped: peopleHelped.count
+    });
+  } catch (error) {
+    console.error('Get message stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
