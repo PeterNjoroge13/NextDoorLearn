@@ -1,63 +1,111 @@
 # NextDoorLearn Deployment Guide
 
-## Frontend Deployment (Vercel)
+This branch is set up for a low-cost beta deployment:
 
-1. **Install Vercel CLI** (if not already installed):
-   ```bash
-   npm i -g vercel
-   ```
+- Frontend: Vercel
+- Backend API: Railway
+- Current database: SQLite for beta/local use
+- Recommended production database next: Railway PostgreSQL
 
-2. **Deploy to Vercel**:
-   ```bash
-   cd frontend
-   vercel
-   ```
+## 1. Deploy The Backend On Railway
 
-3. **Set Environment Variables** in Vercel dashboard:
-   - `VITE_API_URL`: Your backend API URL (e.g., `https://your-backend.railway.app/api`)
+1. Push this branch to GitHub.
+2. In Railway, create a new project from the GitHub repo.
+3. Use the root repo with the included `railway.json`, or set the service root to `backend`.
+4. Confirm Railway uses:
+   - Build command: `cd backend && npm install`
+   - Start command: `cd backend && npm start`
+5. Set these backend environment variables:
 
-## Backend Deployment (Railway/Render)
-
-### Option 1: Railway
-1. Go to [railway.app](https://railway.app)
-2. Connect your GitHub repository
-3. Select the `backend` folder
-4. Railway will automatically detect Node.js and deploy
-
-### Option 2: Render
-1. Go to [render.com](https://render.com)
-2. Create a new Web Service
-3. Connect your GitHub repository
-4. Set build command: `cd backend && npm install`
-5. Set start command: `cd backend && npm start`
-
-## Environment Variables for Backend
-
-Create a `.env` file in the backend directory:
 ```env
-JWT_SECRET=your-super-secret-jwt-key-change-in-production
+NODE_ENV=production
 PORT=3001
+JWT_SECRET=use-a-long-random-secret
+FRONTEND_URL=https://your-vercel-app.vercel.app
+CORS_ORIGINS=https://your-custom-domain.com
+RATE_LIMIT_MAX=300
+AUTH_RATE_LIMIT_MAX=30
 ```
 
-## Database
+Optional Google Calendar variables:
 
-The app uses SQLite which will be created automatically. For production, consider:
-- PostgreSQL with Railway/Render
-- Update database connection in `backend/src/db/database.js`
+```env
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=https://your-railway-api.up.railway.app/api/google/callback
+```
 
-## Testing the Deployment
+After deploy, verify:
 
-1. **Frontend**: Visit your Vercel URL
-2. **Backend**: Test API endpoints at `https://your-backend-url.com/api/health`
-3. **Full Flow**: Register users, create profiles, send connection requests, and test messaging
+```bash
+curl https://your-railway-api.up.railway.app/api/health
+```
 
-## Production Considerations
+Expected response includes `"status":"ok"` and `"database":"ok"`.
 
-- Change JWT secret to a strong, random value
-- Set up proper CORS origins
-- Add rate limiting
-- Implement proper error logging
-- Set up monitoring and alerts
-- Consider using a production database (PostgreSQL)
-- Add input validation and sanitization
-- Implement proper security headers
+## 2. Deploy The Frontend On Vercel
+
+1. Import the GitHub repo in Vercel.
+2. Set the project root directory to `frontend`.
+3. Use:
+   - Build command: `npm run build`
+   - Output directory: `dist`
+4. Set this frontend environment variable:
+
+```env
+VITE_API_URL=https://your-railway-api.up.railway.app/api
+```
+
+5. Deploy.
+6. Add the final Vercel URL to Railway as `FRONTEND_URL`.
+7. Redeploy the Railway backend after changing CORS variables.
+
+## 3. Local Development
+
+Backend:
+
+```bash
+cd backend
+cp .env.example .env
+npm install
+npm start
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Local URLs:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:3001`
+- Health check: `http://localhost:3001/api/health`
+
+## 4. Production Notes
+
+- `backend/node_modules`, `backend/uploads`, and local SQLite database files are intentionally ignored by Git.
+- Local avatar uploads work for development, but Railway filesystem storage is not the right long-term upload solution.
+- Before a public launch, move uploads to Cloudinary, Supabase Storage, or another persistent object store.
+- SQLite can work for a tiny beta, but Railway PostgreSQL is the recommended next database step.
+- Keep `JWT_SECRET` private and long.
+- Keep `FRONTEND_URL` and `CORS_ORIGINS` aligned with the deployed frontend domains.
+
+## 5. Smoke Test Checklist
+
+After both services deploy:
+
+1. Visit the Vercel frontend.
+2. Register a student.
+3. Register a tutor.
+4. Complete tutor subjects/profile.
+5. Student browses tutors.
+6. Student sends a connection request.
+7. Tutor accepts the request.
+8. Student and tutor exchange messages.
+9. A session is scheduled.
+10. Refresh nested routes like `/dashboard`, `/tutors`, and `/profile`.
+
