@@ -1,88 +1,81 @@
 # NextDoorLearn
 
-A tutoring and mentorship platform aimed to uplift low income and underprivileged students.
-
-## Features
-
-- **User Authentication**: Register as student or tutor with email/password
-- **Profile Management**: Create detailed profiles with subjects and availability
-- **Tutor Discovery**: Browse and search for tutors by subject
-- **Connection System**: Students can request connections with tutors
-- **Messaging**: Simple chat system between connected users
-- **Role-based Dashboard**: Different views for students and tutors
+NextDoorLearn is a tutoring and mentorship platform for connecting students with tutors in their community. The current beta supports student/tutor accounts, tutor discovery, connection requests, messaging, sessions, reviews, notifications, availability, and profile management.
 
 ## Tech Stack
 
-- **Frontend**: React + Vite + TailwindCSS
-- **Backend**: Node.js + Express + SQLite
-- **Authentication**: JWT with bcrypt
-- **Deployment**: Vercel (frontend), local backend
+- Frontend: React 19 + Vite
+- Backend: Node.js + Express
+- Database: SQLite for local/beta use
+- Authentication: JWT + bcrypt
+- Hosting target: Vercel frontend + Railway backend
 
-## Quick Start
+## Requirements
 
-### Backend Setup
+- Node `>=20.19.0`
+- npm
+
+The repo includes `.nvmrc` for compatible local and hosted Node versions.
+
+## Local Setup
+
+Backend:
+
 ```bash
 cd backend
+cp .env.example .env
 npm install
 npm start
 ```
-Backend runs on http://localhost:3001
 
-### Frontend Setup
+Frontend:
+
 ```bash
 cd frontend
+cp .env.example .env
 npm install
 npm run dev
 ```
-Frontend runs on http://localhost:5173
 
-## API Endpoints
+Local URLs:
 
-### Authentication
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login user
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:3001`
+- Health check: `http://localhost:3001/api/health`
 
-### Users
-- `GET /api/users/profile` - Get user profile
-- `PUT /api/users/profile` - Update user profile
-- `GET /api/users/tutors` - Get all tutors
+## Core Features
 
-### Connections
-- `POST /api/connections/request` - Send connection request
-- `GET /api/connections/requests` - Get connection requests (tutors)
-- `PUT /api/connections/:id/respond` - Accept/reject connection
-- `GET /api/connections/my-connections` - Get user's connections
+- Student and tutor registration/login
+- Role-specific dashboard
+- Profile editing and profile completion
+- Tutor browse/search/filter
+- Student-to-tutor connection requests
+- Direct messaging for connections
+- Session scheduling and status tracking
+- Tutor reviews and ratings
+- In-app notifications
+- Tutor availability windows
+- Optional Google Calendar integration scaffolding
 
-### Messages
-- `POST /api/messages/send` - Send message
-- `GET /api/messages/:connectionId` - Get messages for connection
-- `GET /api/messages` - Get all conversations
+## Deployment
 
-## Database Schema
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for Vercel and Railway setup.
 
-- **users**: Basic user information and authentication
-- **tutor_profiles**: Tutor-specific information (subjects, rates)
-- **student_profiles**: Student-specific information (grade level, needs)
-- **connections**: Tutor-student connection requests and status
-- **messages**: Chat messages between connected users
+Useful production env vars:
 
-## Development Notes
+```env
+JWT_SECRET=use-a-long-random-secret
+FRONTEND_URL=https://your-vercel-app.vercel.app
+VITE_API_URL=https://your-railway-api.up.railway.app/api
+DATABASE_PATH=/data/nextdoorlearn.db
+UPLOAD_DIR=/data/uploads
+```
 
-This is an MVP built in 3 hours with the following simplifications:
-- No real-time messaging (polling-based)
-- No video calls (text messaging only)
-- No email verification
-- No payment processing
-- Basic UI with TailwindCSS
-- SQLite database (no external setup needed)
+See [PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md) before beta launch.
 
-## Future Enhancements
+## Notes
 
-- Email verification system
-- Document upload for tutor verification
-- Real-time messaging with WebSockets
-- Video call integration (Zoom API)
-- Payment processing (Stripe)
-- Advanced search and filtering
-- Mobile responsiveness improvements
-- Notification system
+- `node_modules`, local SQLite files, and uploaded avatars are intentionally ignored.
+- SQLite is acceptable for a small beta with a Railway volume, but PostgreSQL is the recommended next database step.
+- Local filesystem uploads should move to object storage before a larger public launch.
+
