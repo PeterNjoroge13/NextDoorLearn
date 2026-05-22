@@ -21,6 +21,7 @@ This branch is set up for a low-cost beta deployment:
 NODE_ENV=production
 PORT=3001
 JWT_SECRET=use-a-long-random-secret
+DATABASE_PATH=/data/nextdoorlearn.db
 FRONTEND_URL=https://your-vercel-app.vercel.app
 CORS_ORIGINS=https://your-custom-domain.com
 RATE_LIMIT_MAX=300
@@ -88,6 +89,7 @@ Local URLs:
 ## 4. Production Notes
 
 - `backend/node_modules`, `backend/uploads`, and local SQLite database files are intentionally ignored by Git.
+- For a Railway SQLite beta, attach a persistent volume and set `DATABASE_PATH=/data/nextdoorlearn.db`.
 - Local avatar uploads work for development, but Railway filesystem storage is not the right long-term upload solution.
 - Before a public launch, move uploads to Cloudinary, Supabase Storage, or another persistent object store.
 - SQLite can work for a tiny beta, but Railway PostgreSQL is the recommended next database step.
@@ -108,4 +110,3 @@ After both services deploy:
 8. Student and tutor exchange messages.
 9. A session is scheduled.
 10. Refresh nested routes like `/dashboard`, `/tutors`, and `/profile`.
-
