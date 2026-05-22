@@ -143,6 +143,10 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    if (user.status === 'suspended') {
+      return res.status(403).json({ error: 'Account is suspended' });
+    }
+
     // Update last_seen timestamp
     const updateLastSeen = db.prepare('UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?');
     updateLastSeen.run(user.id);

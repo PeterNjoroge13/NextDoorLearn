@@ -7,6 +7,7 @@
 - Set `VITE_API_URL` in Vercel.
 - Set `JWT_SECRET`, `FRONTEND_URL`, `DATABASE_PATH`, and `UPLOAD_DIR` in Railway.
 - Set `RESEND_API_KEY` and `EMAIL_FROM` in Railway for password reset and email verification.
+- Set `ADMIN_EMAILS` in Railway for moderation endpoints.
 - Attach a Railway volume if using SQLite for beta.
 - Verify `https://your-api/api/health`.
 - Run `SMOKE_API_URL=https://your-api/api npm run smoke` from `backend`.

@@ -27,6 +27,19 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS user_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reporter_id INTEGER NOT NULL,
+    reported_user_id INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    details TEXT,
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'reviewing', 'resolved', 'dismissed')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reporter_id) REFERENCES users (id) ON DELETE CASCADE,
+    FOREIGN KEY (reported_user_id) REFERENCES users (id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS email_verification_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -207,6 +220,8 @@ const migrations = [
   { table: 'users', column: 'website', type: 'TEXT' },
   { table: 'users', column: 'linkedin', type: 'TEXT' },
   { table: 'users', column: 'email_verified_at', type: 'DATETIME' },
+  { table: 'users', column: 'status', type: "TEXT DEFAULT 'active'" },
+  { table: 'users', column: 'verified_at', type: 'DATETIME' },
   // Tutor profile new columns
   { table: 'tutor_profiles', column: 'experience_years', type: 'INTEGER DEFAULT 0' },
   { table: 'tutor_profiles', column: 'education', type: 'TEXT' },

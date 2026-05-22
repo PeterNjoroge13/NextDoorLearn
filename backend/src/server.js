@@ -19,6 +19,8 @@ const reviewRoutes = require('./routes/reviews');
 const notificationRoutes = require('./routes/notifications');
 const availabilityRoutes = require('./routes/availability');
 const googleRoutes = require('./routes/google');
+const reportRoutes = require('./routes/reports');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -94,6 +96,8 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/availability', availabilityRoutes);
 app.use('/api/google', googleRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
