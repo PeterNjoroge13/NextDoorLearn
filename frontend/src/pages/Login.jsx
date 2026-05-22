@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { BookOpen, GraduationCap, HeartHandshake, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
@@ -9,188 +10,179 @@ const Login = () => {
     password: '',
     name: '',
     role: 'student',
-    bio: ''
+    bio: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   const { login } = useAuth();
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+  const handleChange = (event) => {
+    setFormData((current) => ({
+      ...current,
+      [event.target.name]: event.target.value,
+    }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      if (isLogin) {
-        const response = await api.login({
-          email: formData.email,
-          password: formData.password
-        });
-        
-        if (response.error) {
-          setError(response.error);
-        } else {
-          login(response.user, response.token);
-        }
+      const response = isLogin
+        ? await api.login({ email: formData.email, password: formData.password })
+        : await api.register(formData);
+
+      if (response.error) {
+        setError(response.error);
       } else {
-        const response = await api.register(formData);
-        
-        if (response.error) {
-          setError(response.error);
-        } else {
-          login(response.user, response.token);
-        }
+        login(response.user, response.token);
       }
-    } catch (err) {
-      setError('An error occurred. Please try again.');
+    } catch {
+      setError('We could not reach NextDoorLearn. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4">
-      <div className="max-w-md w-full">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gradient mb-2">NextDoorLearn</h1>
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-            {isLogin ? 'Welcome Back' : 'Join Our Community'}
-          </h2>
-          <p className="text-gray-600">
-            {isLogin ? "Sign in to continue your learning journey" : "Connect with amazing tutors and students"}
+    <main className="auth-page">
+      <section className="auth-story">
+        <div className="auth-brand">
+          <span className="brand-mark">
+            <BookOpen size={22} />
+          </span>
+          NextDoorLearn
+        </div>
+
+        <div>
+          <span className="eyebrow">
+            <HeartHandshake size={15} />
+            Community tutoring
+          </span>
+          <h1>Find the right help, right nearby.</h1>
+          <p>
+            NextDoorLearn connects students with tutors and mentors who can make homework, tests,
+            and big learning goals feel less overwhelming.
           </p>
         </div>
 
-        <div className="card hover-lift">
-          <div className="text-center mb-6">
-            <p className="text-gray-600">
-              {isLogin ? "Don't have an account? " : "Already have an account? "}
-              <button
-                onClick={() => setIsLogin(!isLogin)}
-                className="text-primary-600 hover:text-primary-700 font-semibold transition"
-              >
-                {isLogin ? 'Sign up' : 'Sign in'}
-              </button>
-            </p>
+        <div className="auth-metrics">
+          <div className="auth-metric">
+            <strong>1:1</strong>
+            <span>student and tutor connections</span>
           </div>
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            {!isLogin && (
+          <div className="auth-metric">
+            <strong>Fast</strong>
+            <span>requests, messages, and sessions</span>
+          </div>
+          <div className="auth-metric">
+            <strong>Local</strong>
+            <span>support built around community</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="auth-panel-wrap">
+        <div className="auth-panel">
+          <span className="eyebrow">
+            <Sparkles size={15} />
+            {isLogin ? 'Welcome back' : 'Start learning'}
+          </span>
+          <h2 className="page-title">{isLogin ? 'Sign in to continue.' : 'Create your account.'}</h2>
+          <p className="page-copy">
+            {isLogin
+              ? 'Pick up conversations, sessions, and tutor requests where you left off.'
+              : 'Tell us who you are, then build a profile students and tutors can trust.'}
+          </p>
+
+          <div className="segmented" role="tablist" aria-label="Authentication mode">
+            <button type="button" className={isLogin ? 'active' : ''} onClick={() => setIsLogin(true)}>
+              Sign in
+            </button>
+            <button type="button" className={!isLogin ? 'active' : ''} onClick={() => setIsLogin(false)}>
+              Sign up
+            </button>
+          </div>
+
+          {error ? <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div> : null}
+
+          <form className="form-grid" onSubmit={handleSubmit}>
+            {!isLogin ? (
               <>
-                <div>
-                  <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-2">
-                    Full Name
-                  </label>
-                  <input
-                    id="name"
-                    name="name"
-                    type="text"
-                    required={!isLogin}
-                    value={formData.name}
-                    onChange={handleChange}
-                    placeholder="Enter your full name"
-                    className="focus-ring"
-                  />
+                <div className="field">
+                  <label htmlFor="name">Full name</label>
+                  <input id="name" name="name" type="text" value={formData.name} onChange={handleChange} required />
                 </div>
 
-                <div>
-                  <label htmlFor="role" className="block text-sm font-semibold text-gray-700 mb-2">
-                    I am a
-                  </label>
-                  <select
-                    id="role"
-                    name="role"
-                    value={formData.role}
-                    onChange={handleChange}
-                    className="focus-ring"
-                  >
-                    <option value="student">🎓 Student</option>
-                    <option value="tutor">👨‍🏫 Tutor</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="bio" className="block text-sm font-semibold text-gray-700 mb-2">
-                    Bio (Optional)
-                  </label>
-                  <textarea
-                    id="bio"
-                    name="bio"
-                    rows={3}
-                    value={formData.bio}
-                    onChange={handleChange}
-                    placeholder="Tell us about yourself..."
-                    className="focus-ring resize-none"
-                  />
+                <div className="field">
+                  <label>I am joining as</label>
+                  <div className="role-grid">
+                    <button
+                      type="button"
+                      className={`role-choice${formData.role === 'student' ? ' active' : ''}`}
+                      onClick={() => setFormData((current) => ({ ...current, role: 'student' }))}
+                    >
+                      <GraduationCap size={24} />
+                      <span>
+                        <strong>Student</strong>
+                        <span className="muted" style={{ display: 'block', fontSize: '0.82rem' }}>Find support</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`role-choice${formData.role === 'tutor' ? ' active' : ''}`}
+                      onClick={() => setFormData((current) => ({ ...current, role: 'tutor' }))}
+                    >
+                      <Users size={24} />
+                      <span>
+                        <strong>Tutor</strong>
+                        <span className="muted" style={{ display: 'block', fontSize: '0.82rem' }}>Offer help</span>
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </>
-            )}
+            ) : null}
 
-            <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
-                Email address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="Enter your email"
-                className="focus-ring"
-              />
+            <div className="field">
+              <label htmlFor="email">Email address</label>
+              <input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required />
             </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
-                Password
-              </label>
+            <div className="field">
+              <label htmlFor="password">Password</label>
               <input
                 id="password"
                 name="password"
                 type="password"
-                autoComplete="current-password"
-                required
                 value={formData.password}
                 onChange={handleChange}
-                placeholder="Enter your password"
-                className="focus-ring"
+                required
               />
             </div>
 
-            {error && (
-              <div className="alert alert-error text-center">{error}</div>
-            )}
+            {!isLogin ? (
+              <div className="field">
+                <label htmlFor="bio">Short bio</label>
+                <textarea
+                  id="bio"
+                  name="bio"
+                  value={formData.bio}
+                  onChange={handleChange}
+                  placeholder="A sentence or two about what you need or how you help."
+                />
+              </div>
+            ) : null}
 
-            <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn btn-primary w-full btn-lg"
-              >
-                {loading ? (
-                  <div className="flex items-center justify-center">
-                    <div className="spinner mr-2"></div>
-                    Loading...
-                  </div>
-                ) : (
-                  isLogin ? 'Sign In' : 'Create Account'
-                )}
-              </button>
-            </div>
+            <button className="btn btn-primary w-full" type="submit" disabled={loading}>
+              <ShieldCheck size={18} />
+              {loading ? 'Working...' : isLogin ? 'Sign in' : 'Create account'}
+            </button>
           </form>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 };
 

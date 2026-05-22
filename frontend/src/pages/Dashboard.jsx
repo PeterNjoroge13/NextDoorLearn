@@ -1,415 +1,262 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  ArrowRight,
+  CalendarDays,
+  CheckCircle2,
+  Clock,
+  GraduationCap,
+  MessageCircle,
+  Search,
+  Sparkles,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
-import StatusIndicator from '../components/StatusIndicator';
-import ThemeToggle from '../components/ThemeToggle';
+import AppShell, { Avatar, EmptyState, ErrorState, LoadingState } from '../components/AppShell';
+import { parseList } from '../utils/format';
 
 const Dashboard = () => {
   const { user } = useAuth();
   const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isOnline, setIsOnline] = useState(true);
-  const [error, setError] = useState('');
-  const [stats, setStats] = useState({
-    messagesSent: 0,
-    activeConnections: 0,
-    peopleHelped: 0
-  });
+  const [connections, setConnections] = useState([]);
+  const [upcomingSessions, setUpcomingSessions] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [stats, setStats] = useState({ messagesSent: 0, activeConnections: 0, peopleHelped: 0 });
   const [sessionStats, setSessionStats] = useState({
     totalSessions: 0,
     scheduledSessions: 0,
     completedSessions: 0,
-    totalMinutesTaught: 0
+    totalMinutesTaught: 0,
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          setError('No authentication token found. Please log in again.');
-          setLoading(false);
-          return;
-        }
-
-        const response = await api.getProfile(token);
-        if (response.error) {
-          console.error('Error fetching profile:', response.error);
-          // If user not found, unauthorized, or invalid token, clear localStorage and redirect to login
-          if (response.error.includes('User not found') || response.error.includes('Unauthorized') || response.error.includes('Invalid or expired token')) {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            window.location.href = '/login';
-            return;
-          }
-          setError('Failed to load profile: ' + response.error);
-        } else {
-          setProfile(response);
-          setError(''); // Clear any previous errors
-        }
-      } catch (error) {
-        console.error('Error fetching profile:', error);
-        setError('Failed to load profile. Please try again.');
-      } finally {
-        setLoading(false);
+  const fetchDashboard = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Please sign in again to load your dashboard.');
+        return;
       }
-    };
 
-    const updateOnlineStatus = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        await api.updateOnlineStatus(token);
-      } catch (error) {
-        console.error('Error updating online status:', error);
+      const [profileResponse, connectionsResponse, upcomingResponse, messageStats, sessionStatsResponse] =
+        await Promise.all([
+          api.getProfile(token),
+          api.getMyConnections(token),
+          api.getUpcomingSessions(token, 4),
+          api.getMessageStats(token),
+          api.getSessionStats(token),
+        ]);
+
+      if (profileResponse.error) {
+        setError(profileResponse.error);
+        return;
       }
-    };
 
-    const fetchStats = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const statsResponse = await api.getMessageStats(token);
-        if (statsResponse.error) {
-          console.error('Error fetching stats:', statsResponse.error);
-        } else {
-          setStats(statsResponse);
-        }
-      } catch (error) {
-        console.error('Error fetching stats:', error);
+      setProfile(profileResponse);
+      setConnections(Array.isArray(connectionsResponse) ? connectionsResponse : []);
+      setUpcomingSessions(Array.isArray(upcomingResponse) ? upcomingResponse : []);
+      if (!messageStats.error) setStats(messageStats);
+      if (!sessionStatsResponse.error) {
+        setSessionStats({
+          totalSessions: sessionStatsResponse.total_sessions || 0,
+          scheduledSessions: sessionStatsResponse.scheduled_sessions || 0,
+          completedSessions: sessionStatsResponse.completed_sessions || 0,
+          totalMinutesTaught: sessionStatsResponse.total_minutes_taught || 0,
+        });
       }
-    };
 
-    const fetchSessionStats = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const sessionStatsResponse = await api.getSessionStats(token);
-        if (sessionStatsResponse.error) {
-          console.error('Error fetching session stats:', sessionStatsResponse.error);
-        } else {
-          setSessionStats(sessionStatsResponse);
-        }
-      } catch (error) {
-        console.error('Error fetching session stats:', error);
+      if (user?.role === 'tutor') {
+        const requestResponse = await api.getRequests(token);
+        setRequests(Array.isArray(requestResponse) ? requestResponse : []);
       }
-    };
-
-    fetchProfile();
-    updateOnlineStatus();
-    fetchStats();
-    fetchSessionStats();
-
-    // Update online status every 2 minutes
-    const statusInterval = setInterval(updateOnlineStatus, 2 * 60 * 1000);
-    
-    // Refresh stats every 30 seconds to keep them updated
-    const statsInterval = setInterval(fetchStats, 30 * 1000);
-
-    return () => {
-      clearInterval(statusInterval);
-      clearInterval(statsInterval);
-    };
-  }, []);
-
-  // Function to refresh stats (can be called from other components)
-  const refreshStats = () => {
-    const fetchStats = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const statsResponse = await api.getMessageStats(token);
-        if (statsResponse.error) {
-          console.error('Error fetching stats:', statsResponse.error);
-        } else {
-          setStats(statsResponse);
-        }
-      } catch (error) {
-        console.error('Error fetching stats:', error);
-      }
-    };
-    fetchStats();
+      setError('');
+    } catch {
+      setError('Dashboard data could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Expose refreshStats to window for other components to use
   useEffect(() => {
-    window.refreshDashboardStats = refreshStats;
+    fetchDashboard();
+    window.refreshDashboardStats = fetchDashboard;
     return () => {
       delete window.refreshDashboardStats;
     };
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="spinner"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingState label="Preparing your dashboard..." />;
+  if (error) return <ErrorState message={error} action={<Link className="btn btn-primary" to="/login">Go to login</Link>} />;
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto">
-          <div className="text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Error Loading Dashboard</h2>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <div className="space-y-3">
-            <button
-              onClick={() => window.location.reload()}
-              className="btn btn-primary w-full"
-            >
-              Try Again
-            </button>
-            <a
-              href="/login"
-              className="btn btn-ghost w-full"
-            >
-              Go to Login
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto">
-          <div className="text-6xl mb-4">🔒</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Authentication Required</h2>
-          <p className="text-gray-600 mb-6">Please log in to access the dashboard.</p>
-          <a
-            href="/login"
-            className="btn btn-primary w-full"
-          >
-            Go to Login
-          </a>
-        </div>
-      </div>
-    );
-  }
+  const firstName = user?.name?.split(' ')[0] || 'there';
+  const profileSubjects = parseList(profile?.profile?.subjects || profile?.profile?.subjects_needed);
+  const pendingRequests = requests.filter((request) => request.status === 'pending');
 
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <header className="navbar">
-        <div className="container">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              {profile?.avatar_url ? (
-                <img
-                  src={`http://localhost:3001${profile.avatar_url}`}
-                  alt="Profile"
-                  className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-md"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-100 to-secondary-100 flex items-center justify-center border-2 border-white shadow-md">
-                  <span className="text-xl text-primary-600">👤</span>
-                </div>
-              )}
+    <AppShell>
+      <main className="page">
+        <section className="hero-panel">
+          <div className="hero-card">
+            <span className="eyebrow">
+              <Sparkles size={15} />
+              {user?.role === 'tutor' ? 'Tutor workspace' : 'Student workspace'}
+            </span>
+            <h1>Good to see you, {firstName}.</h1>
+            <p>
+              {user?.role === 'tutor'
+                ? 'Review new requests, keep sessions on track, and make your profile easy for students to trust.'
+                : 'Find the right tutor, keep conversations moving, and stay ready for your next session.'}
+            </p>
+            <div className="button-row" style={{ marginTop: 24 }}>
+              <Link className="btn btn-primary" to={user?.role === 'tutor' ? '/requests' : '/tutors'}>
+                {user?.role === 'tutor' ? <Users size={18} /> : <Search size={18} />}
+                {user?.role === 'tutor' ? 'Review requests' : 'Find tutors'}
+              </Link>
+              <Link className="btn btn-ghost" to="/sessions">
+                <CalendarDays size={18} />
+                View sessions
+              </Link>
+            </div>
+          </div>
+
+          <aside className="card card-pad">
+            <div className="item-main">
+              <Avatar name={profile?.name || user?.name} src={profile?.avatar_url} size={54} />
               <div>
-                <h1 className="navbar-brand">NextDoorLearn</h1>
-                <div className="flex items-center space-x-2">
-                  <p className="text-gray-600">Welcome back, {user?.name}! 👋</p>
-                  <StatusIndicator isOnline={isOnline} showText={true} />
-                </div>
+                <h2 style={{ fontSize: '1.2rem' }}>{profile?.name || user?.name}</h2>
+                <p className="muted" style={{ textTransform: 'capitalize' }}>{user?.role}</p>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <ThemeToggle />
-              <span className={`badge ${user?.role === 'tutor' ? 'badge-primary' : 'badge-secondary'}`}>
-                {user?.role === 'tutor' ? '👨‍🏫 Tutor' : '🎓 Student'}
-              </span>
-              <button
-                onClick={() => {
-                  localStorage.removeItem('token');
-                  localStorage.removeItem('user');
-                  window.location.reload();
-                }}
-                className="btn btn-ghost"
-              >
-                Logout
-              </button>
+            <div className="chip-row" style={{ marginTop: 18 }}>
+              {profileSubjects.slice(0, 5).map((subject) => (
+                <span className="badge badge-primary" key={subject}>{subject}</span>
+              ))}
+              {profileSubjects.length === 0 ? <span className="badge">Profile needs subjects</span> : null}
             </div>
-          </div>
-        </div>
-      </header>
+            <p className="page-copy">{profile?.bio || 'Add a short bio so people understand how to connect with you.'}</p>
+            <Link className="btn btn-secondary w-full" style={{ marginTop: 18 }} to="/profile">
+              Complete profile
+              <ArrowRight size={17} />
+            </Link>
+          </aside>
+        </section>
 
-      {/* Main Content */}
-      <main className="container py-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-          {/* Quick Actions */}
-          <div className="card hover-lift">
-            <div className="card-header">
-              <h3 className="text-xl font-semibold text-gray-900 flex items-center">
-                ⚡ Quick Actions
-              </h3>
-            </div>
-            <div className="card-body">
-              <div className="space-y-3">
-                {user?.role === 'student' ? (
-                  <>
-                    <a
-                      href="/tutors"
-                      className="btn btn-primary w-full hover-glow"
-                    >
-                      🔍 Find Tutors
-                    </a>
-                    <a
-                      href="/messages"
-                      className="btn btn-secondary w-full hover-glow"
-                    >
-                      💬 My Messages
-                    </a>
-                    <a
-                      href="/sessions"
-                      className="btn btn-warning w-full hover-glow"
-                    >
-                      📅 My Sessions
-                    </a>
-                  </>
-                ) : (
-                  <>
-                    <a
-                      href="/requests"
-                      className="btn btn-primary w-full hover-glow"
-                    >
-                      📋 View Requests
-                    </a>
-                    <a
-                      href="/messages"
-                      className="btn btn-secondary w-full hover-glow"
-                    >
-                      💬 My Messages
-                    </a>
-                    <a
-                      href="/sessions"
-                      className="btn btn-warning w-full hover-glow"
-                    >
-                      📅 Schedule Sessions
-                    </a>
-                  </>
-                )}
-                <a
-                  href="/profile"
-                  className="btn btn-success w-full hover-glow"
-                >
-                  ✏️ Edit Profile
-                </a>
+        <section className="grid grid-4">
+          <div className="card stat">
+            <span className="stat-icon"><MessageCircle size={21} /></span>
+            <strong>{stats.messagesSent || 0}</strong>
+            <span>Messages sent</span>
+          </div>
+          <div className="card stat">
+            <span className="stat-icon"><Users size={21} /></span>
+            <strong>{stats.activeConnections || connections.length || 0}</strong>
+            <span>Active connections</span>
+          </div>
+          <div className="card stat">
+            <span className="stat-icon"><CalendarDays size={21} /></span>
+            <strong>{sessionStats.scheduledSessions || 0}</strong>
+            <span>Upcoming sessions</span>
+          </div>
+          <div className="card stat">
+            <span className="stat-icon"><CheckCircle2 size={21} /></span>
+            <strong>{sessionStats.completedSessions || 0}</strong>
+            <span>Completed sessions</span>
+          </div>
+        </section>
+
+        <section className="section grid grid-2">
+          <div>
+            <div className="section-head">
+              <div>
+                <h2>Upcoming sessions</h2>
+                <p>What is next on your learning calendar.</p>
               </div>
+              <Link className="btn btn-ghost btn-sm" to="/sessions">All sessions</Link>
             </div>
-          </div>
-
-          {/* Profile Summary */}
-          <div className="card hover-lift">
-            <div className="card-header">
-              <h3 className="text-xl font-semibold text-gray-900 flex items-center">
-                👤 Profile Summary
-              </h3>
-            </div>
-            <div className="card-body">
-              <div className="space-y-4">
-                {/* Profile Picture */}
-                <div className="flex justify-center mb-4">
-                  {profile?.avatar_url ? (
-                    <img
-                      src={`http://localhost:3001${profile.avatar_url}`}
-                      alt="Profile"
-                      className="w-20 h-20 rounded-full object-cover border-4 border-primary-200 shadow-lg"
-                    />
-                  ) : (
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-100 to-secondary-100 flex items-center justify-center border-4 border-primary-200 shadow-lg">
-                      <span className="text-3xl text-primary-600">👤</span>
+            {upcomingSessions.length ? (
+              <div className="list">
+                {upcomingSessions.map((session) => (
+                  <article className="list-item" key={session.id}>
+                    <div className="item-main">
+                      <span className="stat-icon"><Clock size={20} /></span>
+                      <div>
+                        <h3>{session.title || session.subject || 'Tutoring session'}</h3>
+                        <p>
+                          {session.scheduled_date} at {session.start_time}
+                        </p>
+                      </div>
                     </div>
-                  )}
-                </div>
-                
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 font-medium">Name:</span>
-                    <span className="text-gray-900">{profile?.name || user?.name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 font-medium">Email:</span>
-                    <span className="text-gray-900 text-sm">{user?.email}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 font-medium">Role:</span>
-                    <span className={`badge ${user?.role === 'tutor' ? 'badge-primary' : 'badge-secondary'}`}>
-                      {user?.role === 'tutor' ? 'Tutor' : 'Student'}
-                    </span>
-                  </div>
-                  {profile?.bio && (
-                    <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-700 italic">"{profile.bio}"</p>
-                    </div>
-                  )}
-                </div>
+                    <span className="badge badge-blue">{session.status}</span>
+                  </article>
+                ))}
               </div>
-            </div>
+            ) : (
+              <EmptyState icon={CalendarDays} title="No sessions scheduled">
+                Schedule a session once a connection is accepted.
+              </EmptyState>
+            )}
           </div>
 
-          {/* Stats */}
-          <div className="card hover-lift">
-            <div className="card-header">
-              <h3 className="text-xl font-semibold text-gray-900 flex items-center">
-                📊 Quick Stats
-              </h3>
-            </div>
-            <div className="card-body">
-              <div className="stats-grid">
-                <div className="stat-card">
-                  <div className="stat-number">{stats.peopleHelped}</div>
-                  <div className="stat-label">
-                    {user?.role === 'tutor' ? 'Students Helped' : 'Tutors Connected'}
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-number">{stats.messagesSent}</div>
-                  <div className="stat-label">Messages Sent</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-number">{stats.activeConnections}</div>
-                  <div className="stat-label">Active Connections</div>
-                </div>
+          <div>
+            <div className="section-head">
+              <div>
+                <h2>{user?.role === 'tutor' ? 'Student requests' : 'Connections'}</h2>
+                <p>{user?.role === 'tutor' ? 'Students waiting for your response.' : 'Tutors you are connected with.'}</p>
               </div>
+              <Link className="btn btn-ghost btn-sm" to={user?.role === 'tutor' ? '/requests' : '/messages'}>
+                Open
+              </Link>
             </div>
-          </div>
-
-          {/* Session Stats */}
-          <div className="card hover-lift">
-            <div className="card-header">
-              <h3 className="text-xl font-semibold text-gray-900 flex items-center">
-                📅 Session Stats
-              </h3>
-            </div>
-            <div className="card-body">
-              <div className="stats-grid">
-                <div className="stat-card">
-                  <div className="stat-number">{sessionStats.totalSessions}</div>
-                  <div className="stat-label">Total Sessions</div>
+            {user?.role === 'tutor' ? (
+              pendingRequests.length ? (
+                <div className="list">
+                  {pendingRequests.slice(0, 4).map((request) => (
+                    <article className="list-item" key={request.id}>
+                      <div className="item-main">
+                        <Avatar name={request.student_name} />
+                        <div>
+                          <h3>{request.student_name}</h3>
+                          <p>{request.student_email}</p>
+                        </div>
+                      </div>
+                      <span className="badge badge-warning">Pending</span>
+                    </article>
+                  ))}
                 </div>
-                <div className="stat-card">
-                  <div className="stat-number">{sessionStats.scheduledSessions}</div>
-                  <div className="stat-label">Scheduled</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-number">{sessionStats.completedSessions}</div>
-                  <div className="stat-label">Completed</div>
-                </div>
-                {user?.role === 'tutor' && (
-                  <div className="stat-card">
-                    <div className="stat-number">{Math.round(sessionStats.totalMinutesTaught / 60)}</div>
-                    <div className="stat-label">Hours Taught</div>
-                  </div>
-                )}
+              ) : (
+                <EmptyState icon={GraduationCap} title="No pending requests">
+                  Your request queue is clear. Keep your profile updated so students know when you can help.
+                </EmptyState>
+              )
+            ) : connections.length ? (
+              <div className="list">
+                {connections.slice(0, 4).map((connection) => {
+                  const name = connection.tutor_name || connection.student_name || connection.name || 'Connection';
+                  return (
+                    <article className="list-item" key={connection.id || connection.connection_id}>
+                      <div className="item-main">
+                        <Avatar name={name} />
+                        <div>
+                          <h3>{name}</h3>
+                          <p>{connection.status || 'Connected'}</p>
+                        </div>
+                      </div>
+                      <Link className="btn btn-ghost btn-sm" to="/messages">Message</Link>
+                    </article>
+                  );
+                })}
               </div>
-            </div>
+            ) : (
+              <EmptyState icon={Search} title="No connections yet" action={<Link className="btn btn-primary" to="/tutors">Browse tutors</Link>}>
+                Send a request to a tutor to start messaging and scheduling.
+              </EmptyState>
+            )}
           </div>
-        </div>
+        </section>
       </main>
-    </div>
+    </AppShell>
   );
 };
 

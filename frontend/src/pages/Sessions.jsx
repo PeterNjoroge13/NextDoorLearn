@@ -1,22 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import React, { useEffect, useState } from 'react';
+import { CalendarDays, CheckCircle2, Clock, Plus, Trash2, X } from 'lucide-react';
 import api from '../services/api';
+import AppShell, { EmptyState, ErrorState, LoadingState } from '../components/AppShell';
+
+const statusClass = {
+  scheduled: 'badge-primary',
+  completed: 'badge-success',
+  cancelled: 'badge-error',
+  no_show: 'badge-warning',
+};
 
 const Sessions = () => {
-  const { user } = useAuth();
   const [sessions, setSessions] = useState([]);
-  const [upcomingSessions, setUpcomingSessions] = useState([]);
+  const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedSession, setSelectedSession] = useState(null);
-  const [filters, setFilters] = useState({
-    status: '',
-    month: new Date().getMonth() + 1,
-    year: new Date().getFullYear()
-  });
-
-  // Form state for creating sessions
+  const [filters, setFilters] = useState({ status: '', month: new Date().getMonth() + 1, year: new Date().getFullYear() });
   const [formData, setFormData] = useState({
     connectionId: '',
     title: '',
@@ -25,622 +25,246 @@ const Sessions = () => {
     scheduledDate: '',
     startTime: '',
     endTime: '',
-    meetingLink: ''
+    meetingLink: '',
   });
 
-  // Get connections for the dropdown
-  const [connections, setConnections] = useState([]);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          setError('No authentication token found. Please log in again.');
-          setLoading(false);
-          return;
-        }
-
-        // Fetch sessions
-        const sessionsResponse = await api.getSessions(token, filters);
-        if (sessionsResponse.error) {
-          if (sessionsResponse.error.includes('User not found') || sessionsResponse.error.includes('Unauthorized') || sessionsResponse.error.includes('Invalid or expired token')) {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            window.location.href = '/login';
-            return;
-          }
-          setError('Failed to load sessions: ' + sessionsResponse.error);
-        } else {
-          setSessions(sessionsResponse);
-        }
-
-        // Fetch upcoming sessions
-        const upcomingResponse = await api.getUpcomingSessions(token, 5);
-        if (!upcomingResponse.error) {
-          setUpcomingSessions(upcomingResponse);
-        }
-
-        // Fetch connections for creating sessions
-        const connectionsResponse = await api.getConnections(token);
-        if (!connectionsResponse.error) {
-          setConnections(connectionsResponse);
-        }
-
-        setError('');
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        setError('Failed to load sessions. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [filters]);
-
-  const handleCreateSession = async (e) => {
-    e.preventDefault();
+  const fetchSessions = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await api.createSession(formData, token);
-      
-      if (response.error) {
-        alert('Error creating session: ' + response.error);
+      const [sessionsResponse, connectionsResponse] = await Promise.all([
+        api.getSessions(token, filters),
+        api.getMyConnections(token),
+      ]);
+      if (sessionsResponse.error) {
+        setError(sessionsResponse.error);
       } else {
-        setSessions(prev => [response, ...prev]);
-        setUpcomingSessions(prev => [response, ...prev].slice(0, 5));
-        setShowCreateModal(false);
-        setFormData({
-          connectionId: '',
-          title: '',
-          description: '',
-          subject: '',
-          scheduledDate: '',
-          startTime: '',
-          endTime: '',
-          meetingLink: ''
-        });
-        alert('Session created successfully!');
+        setSessions(Array.isArray(sessionsResponse) ? sessionsResponse : []);
+        setConnections(Array.isArray(connectionsResponse) ? connectionsResponse : []);
+        setError('');
       }
-    } catch (error) {
-      console.error('Error creating session:', error);
-      alert('Error creating session. Please try again.');
+    } catch {
+      setError('Sessions could not be loaded.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleUpdateStatus = async (sessionId, status, notes = '') => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await api.updateSessionStatus(sessionId, status, notes, token);
-      
-      if (response.error) {
-        alert('Error updating session: ' + response.error);
-      } else {
-        setSessions(prev => prev.map(s => s.id === sessionId ? response : s));
-        setUpcomingSessions(prev => prev.map(s => s.id === sessionId ? response : s));
-        setSelectedSession(null);
-        alert('Session updated successfully!');
-      }
-    } catch (error) {
-      console.error('Error updating session:', error);
-      alert('Error updating session. Please try again.');
+  useEffect(() => {
+    fetchSessions();
+  }, [filters.status, filters.month, filters.year]);
+
+  const handleCreateSession = async (event) => {
+    event.preventDefault();
+    const token = localStorage.getItem('token');
+    const response = await api.createSession(formData, token);
+    if (response.error) {
+      setError(response.error);
+    } else {
+      setSessions((current) => [response, ...current]);
+      setShowCreateModal(false);
+      setFormData({
+        connectionId: '',
+        title: '',
+        description: '',
+        subject: '',
+        scheduledDate: '',
+        startTime: '',
+        endTime: '',
+        meetingLink: '',
+      });
+    }
+  };
+
+  const handleUpdateStatus = async (sessionId, status) => {
+    const token = localStorage.getItem('token');
+    const response = await api.updateSessionStatus(sessionId, status, '', token);
+    if (!response.error) {
+      setSessions((current) => current.map((session) => (session.id === sessionId ? response : session)));
     }
   };
 
   const handleDeleteSession = async (sessionId) => {
-    if (!window.confirm('Are you sure you want to delete this session?')) return;
-    
-    try {
-      const token = localStorage.getItem('token');
-      const response = await api.deleteSession(sessionId, token);
-      
-      if (response.error) {
-        alert('Error deleting session: ' + response.error);
-      } else {
-        setSessions(prev => prev.filter(s => s.id !== sessionId));
-        setUpcomingSessions(prev => prev.filter(s => s.id !== sessionId));
-        alert('Session deleted successfully!');
-      }
-    } catch (error) {
-      console.error('Error deleting session:', error);
-      alert('Error deleting session. Please try again.');
+    const token = localStorage.getItem('token');
+    const response = await api.deleteSession(sessionId, token);
+    if (!response.error) {
+      setSessions((current) => current.filter((session) => session.id !== sessionId));
     }
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
-  const formatTime = (timeString) => {
-    return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'scheduled': return 'badge-primary';
-      case 'completed': return 'badge-success';
-      case 'cancelled': return 'badge-error';
-      case 'no_show': return 'badge-warning';
-      default: return 'badge-secondary';
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="spinner"></div>
-          <p className="mt-4 text-gray-600">Loading sessions...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto">
-          <div className="text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Error Loading Sessions</h2>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <div className="space-y-3">
-            <button
-              onClick={() => window.location.reload()}
-              className="btn btn-primary w-full"
-            >
-              Try Again
-            </button>
-            <a
-              href="/dashboard"
-              className="btn btn-ghost w-full"
-            >
-              Back to Dashboard
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto">
-          <div className="text-6xl mb-4">🔒</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Authentication Required</h2>
-          <p className="text-gray-600 mb-6">Please log in to view sessions.</p>
-          <a
-            href="/login"
-            className="btn btn-primary w-full"
-          >
-            Go to Login
-          </a>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingState label="Loading sessions..." />;
+  if (error) return <ErrorState message={error} action={<button className="btn btn-primary" onClick={fetchSessions}>Try again</button>} />;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="container">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-gradient">Sessions</h1>
-              <p className="text-gray-600">Schedule and manage your tutoring sessions</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="btn btn-primary"
-              >
-                📅 Schedule Session
-              </button>
-              <a
-                href="/dashboard"
-                className="text-primary-600 hover:text-primary-500"
-              >
-                ← Back to Dashboard
-              </a>
-            </div>
+    <AppShell>
+      <main className="page">
+        <section className="section-head">
+          <div>
+            <span className="eyebrow">
+              <CalendarDays size={15} />
+              Session planning
+            </span>
+            <h1 className="page-title">A calm calendar for tutoring work.</h1>
+            <p className="page-copy">Schedule sessions, track outcomes, and keep meeting details in one place.</p>
           </div>
-        </div>
-      </header>
+          <button className="btn btn-primary" type="button" onClick={() => setShowCreateModal(true)}>
+            <Plus size={18} />
+            New session
+          </button>
+        </section>
 
-      <div className="container py-6">
-        {/* Filters */}
-        <div className="card mb-6">
-          <div className="p-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Filters</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label htmlFor="status" className="block text-sm font-medium text-gray-700">Status</label>
-                <select
-                  id="status"
-                  value={filters.status}
-                  onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
-                  className="mt-1 block w-full focus-ring"
-                >
-                  <option value="">All Statuses</option>
-                  <option value="scheduled">Scheduled</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                  <option value="no_show">No Show</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="month" className="block text-sm font-medium text-gray-700">Month</label>
-                <select
-                  id="month"
-                  value={filters.month}
-                  onChange={(e) => setFilters(prev => ({ ...prev, month: parseInt(e.target.value) }))}
-                  className="mt-1 block w-full focus-ring"
-                >
-                  {Array.from({ length: 12 }, (_, i) => (
-                    <option key={i + 1} value={i + 1}>
-                      {new Date(0, i).toLocaleString('default', { month: 'long' })}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="year" className="block text-sm font-medium text-gray-700">Year</label>
-                <select
-                  id="year"
-                  value={filters.year}
-                  onChange={(e) => setFilters(prev => ({ ...prev, year: parseInt(e.target.value) }))}
-                  className="mt-1 block w-full focus-ring"
-                >
-                  {Array.from({ length: 5 }, (_, i) => {
-                    const year = new Date().getFullYear() - 2 + i;
-                    return (
-                      <option key={year} value={year}>{year}</option>
-                    );
-                  })}
-                </select>
-              </div>
-            </div>
+        <section className="card toolbar" style={{ gridTemplateColumns: 'repeat(3, minmax(150px, 1fr))' }}>
+          <div className="field">
+            <label>Status</label>
+            <select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+              <option value="">All statuses</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="no_show">No-show</option>
+            </select>
           </div>
-        </div>
+          <div className="field">
+            <label>Month</label>
+            <input
+              type="number"
+              min="1"
+              max="12"
+              value={filters.month}
+              onChange={(event) => setFilters((current) => ({ ...current, month: event.target.value }))}
+            />
+          </div>
+          <div className="field">
+            <label>Year</label>
+            <input
+              type="number"
+              value={filters.year}
+              onChange={(event) => setFilters((current) => ({ ...current, year: event.target.value }))}
+            />
+          </div>
+        </section>
 
-        {/* Upcoming Sessions */}
-        {upcomingSessions.length > 0 && (
-          <div className="card mb-6">
-            <div className="card-header">
-              <h3 className="text-xl font-semibold text-gray-900">⏰ Upcoming Sessions</h3>
-            </div>
-            <div className="card-body">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {upcomingSessions.map((session) => (
-                  <div key={session.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-start mb-2">
-                      <h4 className="font-medium text-gray-900">{session.title}</h4>
-                      <span className={`badge ${getStatusColor(session.status)}`}>
-                        {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-2">
-                      {user.role === 'tutor' ? session.student_name : session.tutor_name}
-                    </p>
-                    <p className="text-sm text-gray-500 mb-3">
-                      {formatDate(session.scheduled_date)} at {formatTime(session.start_time)}
-                    </p>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => setSelectedSession(session)}
-                        className="btn btn-sm btn-primary"
-                      >
-                        View Details
-                      </button>
-                      {session.status === 'scheduled' && (
-                        <button
-                          onClick={() => handleUpdateStatus(session.id, 'completed')}
-                          className="btn btn-sm btn-success"
-                        >
-                          Mark Complete
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* All Sessions */}
-        <div className="card">
-          <div className="card-header">
-            <h3 className="text-xl font-semibold text-gray-900">📚 All Sessions</h3>
-          </div>
-          <div className="card-body">
-            {sessions.length === 0 ? (
-              <div className="text-center text-gray-500 p-8">
-                No sessions found. Schedule your first session!
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {sessions.map((session) => (
-                  <div key={session.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-start mb-2">
+        <section className="section">
+          {sessions.length ? (
+            <div className="grid">
+              {sessions.map((session) => (
+                <article className="card card-pad" key={session.id}>
+                  <div className="list-item" style={{ border: 0, padding: 0 }}>
+                    <div className="item-main">
+                      <span className="stat-icon"><Clock size={21} /></span>
                       <div>
-                        <h4 className="font-medium text-gray-900">{session.title}</h4>
-                        <p className="text-sm text-gray-600">
-                          {user.role === 'tutor' ? session.student_name : session.tutor_name}
-                          {session.subject && ` • ${session.subject}`}
+                        <h2 style={{ fontSize: '1.18rem' }}>{session.title || session.subject || 'Tutoring session'}</h2>
+                        <p className="muted">
+                          {session.scheduled_date} from {session.start_time} to {session.end_time}
                         </p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`badge ${getStatusColor(session.status)}`}>
-                          {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
-                        </span>
-                        <div className="flex space-x-1">
-                          <button
-                            onClick={() => setSelectedSession(session)}
-                            className="btn btn-sm btn-ghost"
-                          >
-                            👁️
-                          </button>
-                          {session.status === 'scheduled' && (
-                            <button
-                              onClick={() => handleDeleteSession(session.id)}
-                              className="btn btn-sm btn-ghost text-error-600"
-                            >
-                              🗑️
-                            </button>
-                          )}
-                        </div>
+                        {session.description ? <p className="page-copy">{session.description}</p> : null}
                       </div>
                     </div>
-                    <p className="text-sm text-gray-500">
-                      {formatDate(session.scheduled_date)} • {formatTime(session.start_time)} - {formatTime(session.end_time)}
-                      {session.duration_minutes && ` (${session.duration_minutes} min)`}
-                    </p>
-                    {session.description && (
-                      <p className="text-sm text-gray-600 mt-2">{session.description}</p>
-                    )}
+                    <span className={`badge ${statusClass[session.status] || 'badge'}`}>{session.status}</span>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+                  <div className="button-row" style={{ marginTop: 18 }}>
+                    {session.status !== 'completed' ? (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUpdateStatus(session.id, 'completed')}>
+                        <CheckCircle2 size={16} />
+                        Mark complete
+                      </button>
+                    ) : null}
+                    {session.status !== 'cancelled' ? (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUpdateStatus(session.id, 'cancelled')}>
+                        <X size={16} />
+                        Cancel
+                      </button>
+                    ) : null}
+                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleDeleteSession(session.id)}>
+                      <Trash2 size={16} />
+                      Delete
+                    </button>
+                    {session.meeting_link ? (
+                      <a className="btn btn-primary btn-sm" href={session.meeting_link} target="_blank" rel="noreferrer">
+                        Join meeting
+                      </a>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon={CalendarDays} title="No sessions in this view" action={<button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>Schedule one</button>}>
+              Sessions you create with accepted connections will appear here.
+            </EmptyState>
+          )}
+        </section>
+      </main>
 
-      {/* Create Session Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Schedule New Session</h3>
-            <form onSubmit={handleCreateSession} className="space-y-4">
+      {showCreateModal ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal">
+            <div className="modal-head">
               <div>
-                <label htmlFor="connectionId" className="block text-sm font-medium text-gray-700">Connection</label>
+                <h2>Schedule a session</h2>
+                <p className="muted">Choose a connection and add the key details.</p>
+              </div>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={() => setShowCreateModal(false)}>
+                <X size={17} />
+              </button>
+            </div>
+            <form className="modal-body form-grid" onSubmit={handleCreateSession}>
+              <div className="field">
+                <label>Connection</label>
                 <select
-                  id="connectionId"
                   value={formData.connectionId}
-                  onChange={(e) => setFormData(prev => ({ ...prev, connectionId: e.target.value }))}
-                  className="mt-1 block w-full focus-ring"
+                  onChange={(event) => setFormData((current) => ({ ...current, connectionId: event.target.value }))}
                   required
                 >
                   <option value="">Select a connection</option>
-                  {connections.map((conn) => (
-                    <option key={conn.id} value={conn.id}>
-                      {user.role === 'tutor' ? conn.student_name : conn.tutor_name}
+                  {connections.map((connection) => (
+                    <option key={connection.id} value={connection.id}>
+                      {connection.tutor_name || connection.student_name || connection.name || `Connection ${connection.id}`}
                     </option>
                   ))}
                 </select>
               </div>
-              
-              <div>
-                <label htmlFor="title" className="block text-sm font-medium text-gray-700">Title</label>
-                <input
-                  type="text"
-                  id="title"
-                  value={formData.title}
-                  onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                  className="mt-1 block w-full focus-ring"
-                  placeholder="e.g., Math Tutoring Session"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label htmlFor="subject" className="block text-sm font-medium text-gray-700">Subject</label>
-                <input
-                  type="text"
-                  id="subject"
-                  value={formData.subject}
-                  onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
-                  className="mt-1 block w-full focus-ring"
-                  placeholder="e.g., Algebra, Calculus"
-                />
-              </div>
-              
-              <div>
-                <label htmlFor="description" className="block text-sm font-medium text-gray-700">Description</label>
-                <textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  className="mt-1 block w-full focus-ring"
-                  rows="3"
-                  placeholder="What will you cover in this session?"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="scheduledDate" className="block text-sm font-medium text-gray-700">Date</label>
-                  <input
-                    type="date"
-                    id="scheduledDate"
-                    value={formData.scheduledDate}
-                    onChange={(e) => setFormData(prev => ({ ...prev, scheduledDate: e.target.value }))}
-                    className="mt-1 block w-full focus-ring"
-                    required
-                  />
+              <div className="grid grid-2">
+                <div className="field">
+                  <label>Title</label>
+                  <input value={formData.title} onChange={(event) => setFormData((current) => ({ ...current, title: event.target.value }))} required />
                 </div>
-                <div>
-                  <label htmlFor="startTime" className="block text-sm font-medium text-gray-700">Start Time</label>
-                  <input
-                    type="time"
-                    id="startTime"
-                    value={formData.startTime}
-                    onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
-                    className="mt-1 block w-full focus-ring"
-                    required
-                  />
+                <div className="field">
+                  <label>Subject</label>
+                  <input value={formData.subject} onChange={(event) => setFormData((current) => ({ ...current, subject: event.target.value }))} />
                 </div>
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="endTime" className="block text-sm font-medium text-gray-700">End Time</label>
-                  <input
-                    type="time"
-                    id="endTime"
-                    value={formData.endTime}
-                    onChange={(e) => setFormData(prev => ({ ...prev, endTime: e.target.value }))}
-                    className="mt-1 block w-full focus-ring"
-                    required
-                  />
+              <div className="grid grid-3">
+                <div className="field">
+                  <label>Date</label>
+                  <input type="date" value={formData.scheduledDate} onChange={(event) => setFormData((current) => ({ ...current, scheduledDate: event.target.value }))} required />
                 </div>
-                <div>
-                  <label htmlFor="meetingLink" className="block text-sm font-medium text-gray-700">Meeting Link</label>
-                  <input
-                    type="url"
-                    id="meetingLink"
-                    value={formData.meetingLink}
-                    onChange={(e) => setFormData(prev => ({ ...prev, meetingLink: e.target.value }))}
-                    className="mt-1 block w-full focus-ring"
-                    placeholder="https://zoom.us/j/..."
-                  />
+                <div className="field">
+                  <label>Start</label>
+                  <input type="time" value={formData.startTime} onChange={(event) => setFormData((current) => ({ ...current, startTime: event.target.value }))} required />
+                </div>
+                <div className="field">
+                  <label>End</label>
+                  <input type="time" value={formData.endTime} onChange={(event) => setFormData((current) => ({ ...current, endTime: event.target.value }))} required />
                 </div>
               </div>
-              
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="btn btn-ghost"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                >
-                  Schedule Session
-                </button>
+              <div className="field">
+                <label>Meeting link</label>
+                <input value={formData.meetingLink} onChange={(event) => setFormData((current) => ({ ...current, meetingLink: event.target.value }))} placeholder="https://..." />
+              </div>
+              <div className="field">
+                <label>Description</label>
+                <textarea value={formData.description} onChange={(event) => setFormData((current) => ({ ...current, description: event.target.value }))} />
+              </div>
+              <div className="button-row">
+                <button className="btn btn-primary" type="submit">Create session</button>
+                <button className="btn btn-ghost" type="button" onClick={() => setShowCreateModal(false)}>Cancel</button>
               </div>
             </form>
           </div>
         </div>
-      )}
-
-      {/* Session Details Modal */}
-      {selectedSession && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-lg mx-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Session Details</h3>
-            <div className="space-y-4">
-              <div>
-                <h4 className="font-medium text-gray-900">{selectedSession.title}</h4>
-                <p className="text-sm text-gray-600">
-                  {user.role === 'tutor' ? selectedSession.student_name : selectedSession.tutor_name}
-                </p>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Date</p>
-                  <p className="text-sm text-gray-900">{formatDate(selectedSession.scheduled_date)}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Time</p>
-                  <p className="text-sm text-gray-900">
-                    {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}
-                  </p>
-                </div>
-              </div>
-              
-              {selectedSession.subject && (
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Subject</p>
-                  <p className="text-sm text-gray-900">{selectedSession.subject}</p>
-                </div>
-              )}
-              
-              {selectedSession.description && (
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Description</p>
-                  <p className="text-sm text-gray-900">{selectedSession.description}</p>
-                </div>
-              )}
-              
-              {selectedSession.meeting_link && (
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Meeting Link</p>
-                  <a
-                    href={selectedSession.meeting_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-primary-600 hover:text-primary-500"
-                  >
-                    {selectedSession.meeting_link}
-                  </a>
-                </div>
-              )}
-              
-              <div>
-                <p className="text-sm font-medium text-gray-700">Status</p>
-                <span className={`badge ${getStatusColor(selectedSession.status)}`}>
-                  {selectedSession.status.charAt(0).toUpperCase() + selectedSession.status.slice(1)}
-                </span>
-              </div>
-            </div>
-            
-            <div className="flex justify-end space-x-3 pt-6">
-              {selectedSession.status === 'scheduled' && (
-                <>
-                  <button
-                    onClick={() => handleUpdateStatus(selectedSession.id, 'completed')}
-                    className="btn btn-success"
-                  >
-                    Mark Complete
-                  </button>
-                  <button
-                    onClick={() => handleUpdateStatus(selectedSession.id, 'cancelled')}
-                    className="btn btn-error"
-                  >
-                    Cancel Session
-                  </button>
-                </>
-              )}
-              <button
-                onClick={() => setSelectedSession(null)}
-                className="btn btn-ghost"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      ) : null}
+    </AppShell>
   );
 };
 
 export default Sessions;
-

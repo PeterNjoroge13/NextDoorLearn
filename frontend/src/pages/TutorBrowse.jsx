@@ -1,370 +1,229 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import React, { useEffect, useMemo, useState } from 'react';
+import { BookOpenCheck, Filter, GraduationCap, MapPin, MessageCircle, Search, SlidersHorizontal, Star } from 'lucide-react';
 import api from '../services/api';
-import StatusIndicator from '../components/StatusIndicator';
-import ThemeToggle from '../components/ThemeToggle';
+import AppShell, { Avatar, EmptyState, ErrorState, LoadingState } from '../components/AppShell';
+import { parseList } from '../utils/format';
+
+const subjectOptions = ['Math', 'Science', 'English', 'History', 'Computer Science', 'Physics', 'Chemistry'];
 
 const TutorBrowse = () => {
-  const { user } = useAuth();
   const [tutors, setTutors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState('');
-  const [tutorStatuses, setTutorStatuses] = useState({});
-  const [profile, setProfile] = useState(null);
+  const [toast, setToast] = useState('');
+  const [requestSent, setRequestSent] = useState({});
   const [filters, setFilters] = useState({
+    search: '',
     subject: '',
-    priceRange: [0, 100],
-    onlineOnly: false,
-    sortBy: 'name' // name, price, rating
+    maxRate: '100',
+    minRating: '0',
+    sortBy: 'rating',
   });
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchTutors = async () => {
       try {
-        const token = localStorage.getItem('token');
-        
-        // Fetch tutors
-        const tutorsResponse = await api.getTutors();
-            if (tutorsResponse.error) {
-              // If user not found, unauthorized, or invalid token, clear localStorage and redirect to login
-              if (tutorsResponse.error.includes('User not found') || tutorsResponse.error.includes('Unauthorized') || tutorsResponse.error.includes('Invalid or expired token')) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                window.location.href = '/login';
-                return;
-              }
-              setError(tutorsResponse.error);
-            } else {
-          setTutors(tutorsResponse);
-        }
-
-        // Fetch profile for avatar
-        const profileResponse = await api.getProfile(token);
-        if (profileResponse.error) {
-          console.error('Error fetching profile:', profileResponse.error);
+        const response = await api.getTutors();
+        if (response.error) {
+          setError(response.error);
         } else {
-          setProfile(profileResponse);
+          setTutors(Array.isArray(response) ? response : []);
         }
-
-        // Fetch status for each tutor
-        const statusPromises = tutorsResponse.map(async (tutor) => {
-          try {
-            const statusResponse = await api.getUserStatus(tutor.id, token);
-            return { tutorId: tutor.id, status: statusResponse };
-          } catch (error) {
-            return { tutorId: tutor.id, status: { isOnline: false, lastSeenFormatted: 'Unknown' } };
-          }
-        });
-        
-        const statuses = await Promise.all(statusPromises);
-        const statusMap = {};
-        statuses.forEach(({ tutorId, status }) => {
-          statusMap[tutorId] = status;
-        });
-        setTutorStatuses(statusMap);
-      } catch (err) {
-        setError('Failed to load tutors');
+      } catch {
+        setError('Tutors could not be loaded.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
+    fetchTutors();
   }, []);
+
+  const filteredTutors = useMemo(() => {
+    const search = filters.search.trim().toLowerCase();
+    const maxRate = Number(filters.maxRate || 100);
+    const minRating = Number(filters.minRating || 0);
+
+    return tutors
+      .filter((tutor) => {
+        const subjects = parseList(tutor.subjects);
+        const searchable = [tutor.name, tutor.bio, tutor.teaching_style, ...subjects].join(' ').toLowerCase();
+        const hourlyRate = Number(tutor.hourly_rate || 0);
+        const rating = Number(tutor.averageRating || tutor.average_rating || 0);
+        const matchesSearch = !search || searchable.includes(search);
+        const matchesSubject = !filters.subject || subjects.some((subject) => subject.toLowerCase().includes(filters.subject.toLowerCase()));
+        const matchesRate = hourlyRate <= maxRate;
+        const matchesRating = rating >= minRating;
+        return matchesSearch && matchesSubject && matchesRate && matchesRating;
+      })
+      .sort((a, b) => {
+        if (filters.sortBy === 'price') return Number(a.hourly_rate || 0) - Number(b.hourly_rate || 0);
+        if (filters.sortBy === 'name') return a.name.localeCompare(b.name);
+        return Number(b.averageRating || b.average_rating || 0) - Number(a.averageRating || a.average_rating || 0);
+      });
+  }, [tutors, filters]);
 
   const handleRequestConnection = async (tutorId) => {
     try {
       const token = localStorage.getItem('token');
       const response = await api.sendConnectionRequest(tutorId, token);
-      
       if (response.error) {
-        alert(response.error);
+        setToast(response.error);
       } else {
-        alert('Connection request sent successfully!');
+        setRequestSent((current) => ({ ...current, [tutorId]: true }));
+        setToast('Request sent. The tutor will see it in their queue.');
       }
-    } catch (err) {
-      alert('Failed to send connection request');
+    } catch {
+      setToast('Connection request failed. Please try again.');
+    } finally {
+      setTimeout(() => setToast(''), 4200);
     }
   };
 
-  const filteredTutors = tutors.filter(tutor => {
-    const searchTerm = filter.toLowerCase();
-    const matchesSearch = tutor.name.toLowerCase().includes(searchTerm) ||
-           (tutor.subjects && tutor.subjects.some(subject => 
-             subject.toLowerCase().includes(searchTerm)
-           ));
-    
-    const matchesSubject = !filters.subject || 
-           (tutor.subjects && tutor.subjects.some(subject => 
-             subject.toLowerCase().includes(filters.subject.toLowerCase())
-           ));
-    
-    const matchesPrice = tutor.hourly_rate >= filters.priceRange[0] && 
-           tutor.hourly_rate <= filters.priceRange[1];
-    
-    const matchesOnline = !filters.onlineOnly || 
-           (tutorStatuses[tutor.id]?.isOnline === true);
-    
-    return matchesSearch && matchesSubject && matchesPrice && matchesOnline;
-  }).sort((a, b) => {
-    switch (filters.sortBy) {
-      case 'price':
-        return a.hourly_rate - b.hourly_rate;
-      case 'name':
-        return a.name.localeCompare(b.name);
-      case 'online':
-        const aOnline = tutorStatuses[a.id]?.isOnline || false;
-        const bOnline = tutorStatuses[b.id]?.isOnline || false;
-        return bOnline - aOnline;
-      default:
-        return 0;
-    }
-  });
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="spinner"></div>
-          <p className="mt-4 text-gray-600">Loading tutors...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingState label="Finding tutors..." />;
+  if (error) return <ErrorState message={error} />;
 
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <header className="navbar">
-        <div className="container">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              {/* Profile Picture in Header */}
-              {profile?.avatar_url ? (
-                <img
-                  src={`http://localhost:3001${profile.avatar_url}`}
-                  alt="Profile"
-                  className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-md"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-100 to-secondary-100 flex items-center justify-center border-2 border-white shadow-md">
-                  <span className="text-xl text-primary-600">👤</span>
-                </div>
-              )}
-              <div>
-                <h1 className="text-gradient">Find Tutors</h1>
-                <p className="text-gray-600">Connect with experienced tutors in your area</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <ThemeToggle />
-              <a
-                href="/dashboard"
-                className="btn btn-ghost"
-              >
-                ← Back to Dashboard
-              </a>
-            </div>
+    <AppShell>
+      <main className="page">
+        <section className="section-head">
+          <div>
+            <span className="eyebrow">
+              <Search size={15} />
+              Tutor discovery
+            </span>
+            <h1 className="page-title">Find someone who teaches the way you learn.</h1>
+            <p className="page-copy">
+              Search by subject, compare teaching styles, and send a request when a tutor feels like the right fit.
+            </p>
           </div>
-        </div>
-      </header>
+          <span className="badge badge-primary">
+            <BookOpenCheck size={15} />
+            {filteredTutors.length} available
+          </span>
+        </section>
 
-      {/* Search and Filter */}
-      <div className="container py-6">
-        <div className="card">
-          <div className="space-y-4">
-            {/* Search Bar */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <input
-                  type="text"
-                  placeholder="🔍 Search by name or subject..."
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  className="focus-ring"
-                />
-              </div>
-              <div className="text-sm text-gray-600 flex items-center space-x-2">
-                <span className="badge badge-primary">
-                  {filteredTutors.length} tutor{filteredTutors.length !== 1 ? 's' : ''} found
-                </span>
-                <button
-                  onClick={() => {
-                    setFilter('');
-                    setFilters({
-                      subject: '',
-                      priceRange: [0, 100],
-                      onlineOnly: false,
-                      sortBy: 'name'
-                    });
-                  }}
-                  className="btn btn-ghost btn-sm"
-                >
-                  Clear Filters
-                </button>
-              </div>
-            </div>
+        {toast ? <div className="alert" style={{ marginBottom: 16 }}>{toast}</div> : null}
 
-            {/* Advanced Filters */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Subject Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Subject
-                </label>
-                <select
-                  value={filters.subject}
-                  onChange={(e) => setFilters(prev => ({ ...prev, subject: e.target.value }))}
-                  className="focus-ring"
-                >
-                  <option value="">All Subjects</option>
-                  <option value="math">Math</option>
-                  <option value="science">Science</option>
-                  <option value="english">English</option>
-                  <option value="history">History</option>
-                  <option value="computer">Computer Science</option>
-                  <option value="physics">Physics</option>
-                  <option value="chemistry">Chemistry</option>
-                </select>
-              </div>
-
-              {/* Price Range */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Max Price: ${filters.priceRange[1]}
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="200"
-                  value={filters.priceRange[1]}
-                  onChange={(e) => setFilters(prev => ({ 
-                    ...prev, 
-                    priceRange: [prev.priceRange[0], parseInt(e.target.value)]
-                  }))}
-                  className="w-full"
-                />
-              </div>
-
-              {/* Online Only */}
-              <div className="flex items-center">
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={filters.onlineOnly}
-                    onChange={(e) => setFilters(prev => ({ ...prev, onlineOnly: e.target.checked }))}
-                    className="rounded"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Online Only</span>
-                </label>
-              </div>
-
-              {/* Sort By */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Sort By
-                </label>
-                <select
-                  value={filters.sortBy}
-                  onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value }))}
-                  className="focus-ring"
-                >
-                  <option value="name">Name</option>
-                  <option value="price">Price (Low to High)</option>
-                  <option value="online">Online First</option>
-                </select>
-              </div>
-            </div>
+        <section className="card toolbar" aria-label="Tutor filters">
+          <div className="field">
+            <label htmlFor="search">
+              <Search size={14} /> Search
+            </label>
+            <input
+              id="search"
+              value={filters.search}
+              onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+              placeholder="Name, subject, or teaching style"
+            />
           </div>
-        </div>
-      </div>
-
-      {/* Tutors Grid */}
-      <div className="container pb-8">
-        {error && (
-          <div className="alert alert-error mb-6">
-            {error}
+          <div className="field">
+            <label htmlFor="subject">
+              <Filter size={14} /> Subject
+            </label>
+            <select
+              id="subject"
+              value={filters.subject}
+              onChange={(event) => setFilters((current) => ({ ...current, subject: event.target.value }))}
+            >
+              <option value="">All subjects</option>
+              {subjectOptions.map((subject) => (
+                <option key={subject} value={subject}>{subject}</option>
+              ))}
+            </select>
           </div>
-        )}
+          <div className="field">
+            <label htmlFor="maxRate">Max rate</label>
+            <select
+              id="maxRate"
+              value={filters.maxRate}
+              onChange={(event) => setFilters((current) => ({ ...current, maxRate: event.target.value }))}
+            >
+              <option value="25">$25/hr</option>
+              <option value="50">$50/hr</option>
+              <option value="75">$75/hr</option>
+              <option value="100">$100/hr</option>
+              <option value="999">Any rate</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="sortBy">
+              <SlidersHorizontal size={14} /> Sort
+            </label>
+            <select
+              id="sortBy"
+              value={filters.sortBy}
+              onChange={(event) => setFilters((current) => ({ ...current, sortBy: event.target.value }))}
+            >
+              <option value="rating">Highest rated</option>
+              <option value="price">Lowest price</option>
+              <option value="name">Name</option>
+            </select>
+          </div>
+        </section>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredTutors.map((tutor) => (
-            <div key={tutor.id} className="card hover-lift hover-glow">
-              <div className="card-header">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    {tutor.avatar_url ? (
-                      <img
-                        src={`http://localhost:3001${tutor.avatar_url}`}
-                        alt={tutor.name}
-                        className="w-12 h-12 rounded-full object-cover border-2 border-primary-200 shadow-md"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-100 to-secondary-100 flex items-center justify-center border-2 border-primary-200 shadow-md">
-                        <span className="text-lg text-primary-600">👤</span>
+        <section className="section">
+          {filteredTutors.length ? (
+            <div className="grid grid-3">
+              {filteredTutors.map((tutor) => {
+                const subjects = parseList(tutor.subjects);
+                const rating = Number(tutor.averageRating || tutor.average_rating || 0);
+                const requested = requestSent[tutor.id];
+                return (
+                  <article className="card tutor-card" key={tutor.id}>
+                    <div className="tutor-card-head">
+                      <div className="item-main">
+                        <Avatar name={tutor.name} src={tutor.avatar_url} size={54} />
+                        <div>
+                          <h3>{tutor.name}</h3>
+                          <p className="muted">{tutor.experience_years || 0} years experience</p>
+                        </div>
                       </div>
-                    )}
-                    <div>
-                      <h3 className="text-xl font-semibold text-gray-900">{tutor.name}</h3>
-                      <StatusIndicator 
-                        isOnline={tutorStatuses[tutor.id]?.isOnline || false}
-                        lastSeenFormatted={tutorStatuses[tutor.id]?.lastSeenFormatted}
-                        showText={true}
-                      />
-                    </div>
-                  </div>
-                  {tutor.hourly_rate > 0 && (
-                    <span className="text-lg font-bold text-primary-600">
-                      ${tutor.hourly_rate}/hr
-                    </span>
-                  )}
-                </div>
-              </div>
-              
-              <div className="card-body">
-                {tutor.bio && (
-                  <p className="text-gray-600 mb-4 italic">"{tutor.bio}"</p>
-                )}
-
-                <div className="mb-4">
-                  <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                    📚 Subjects:
-                  </h4>
-                  <div className="flex flex-wrap gap-2">
-                    {tutor.subjects.map((subject, index) => (
-                      <span
-                        key={index}
-                        className="badge badge-primary"
-                      >
-                        {subject}
+                      <span className="badge badge-warning">
+                        <Star size={14} />
+                        {rating ? rating.toFixed(1) : 'New'}
                       </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
+                    </div>
 
-              <div className="card-footer">
-                <button
-                  onClick={() => handleRequestConnection(tutor.id)}
-                  className="btn btn-primary w-full hover-glow"
-                >
-                  🤝 Request Connection
-                </button>
-              </div>
+                    <p className="muted">
+                      {tutor.bio || tutor.teaching_style || 'A NextDoorLearn tutor ready to help students build confidence.'}
+                    </p>
+
+                    <div className="chip-row">
+                      {subjects.slice(0, 4).map((subject) => (
+                        <span className="badge badge-primary" key={subject}>{subject}</span>
+                      ))}
+                      {subjects.length === 0 ? <span className="badge">Subjects coming soon</span> : null}
+                    </div>
+
+                    <div className="list-item" style={{ padding: 12 }}>
+                      <span className="muted">
+                        <MapPin size={14} /> {tutor.location || 'Remote or local'}
+                      </span>
+                      <span className="price">{Number(tutor.hourly_rate || 0) === 0 ? 'Free' : `$${tutor.hourly_rate}/hr`}</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      className={`btn ${requested ? 'btn-ghost' : 'btn-primary'} w-full`}
+                      onClick={() => handleRequestConnection(tutor.id)}
+                      disabled={requested}
+                    >
+                      <MessageCircle size={18} />
+                      {requested ? 'Request sent' : 'Request help'}
+                    </button>
+                  </article>
+                );
+              })}
             </div>
-          ))}
-        </div>
-
-        {filteredTutors.length === 0 && !loading && (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">🔍</div>
-            <p className="text-gray-500 text-lg">No tutors found matching your criteria.</p>
-            <p className="text-gray-400 text-sm mt-2">Try adjusting your search terms</p>
-          </div>
-        )}
-      </div>
-    </div>
+          ) : (
+            <EmptyState icon={GraduationCap} title="No tutors match these filters">
+              Try widening the subject, rate, or search filters.
+            </EmptyState>
+          )}
+        </section>
+      </main>
+    </AppShell>
   );
 };
 
