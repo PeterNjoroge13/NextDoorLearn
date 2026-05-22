@@ -22,6 +22,7 @@ const googleRoutes = require('./routes/google');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const uploadRoot = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
 
 // Middleware
 app.set('trust proxy', 1);
@@ -78,7 +79,7 @@ const authLimiter = rateLimit({
 app.use('/api', apiLimiter);
 
 // Serve static files from uploads directory
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static(uploadRoot));
 
 // Routes
 app.use('/api/auth', authLimiter, authRoutes);

@@ -10,10 +10,16 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
   try {
     const { email, password, role, name, bio } = req.body;
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const displayName = String(name || '').trim();
 
     // Validate required fields
-    if (!email || !password || !role || !name) {
+    if (!normalizedEmail || !password || !role || !displayName) {
       return res.status(400).json({ error: 'Email, password, role, and name are required' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
     if (!['student', 'tutor'].includes(role)) {
@@ -21,7 +27,7 @@ router.post('/register', async (req, res) => {
     }
 
     // Check if user already exists
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
     if (existingUser) {
       return res.status(400).json({ error: 'User with this email already exists' });
     }
@@ -36,7 +42,7 @@ router.post('/register', async (req, res) => {
       VALUES (?, ?, ?, ?, ?)
     `);
     
-    const result = insertUser.run(email, passwordHash, role, name, bio || '');
+    const result = insertUser.run(normalizedEmail, passwordHash, role, displayName, bio || '');
     const userId = result.lastInsertRowid;
 
     // Create profile based on role
@@ -56,7 +62,7 @@ router.post('/register', async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId, email, role, name },
+      { userId, email: normalizedEmail, role, name: displayName },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -64,7 +70,7 @@ router.post('/register', async (req, res) => {
     res.status(201).json({
       message: 'User created successfully',
       token,
-      user: { id: userId, email, role, name, bio }
+      user: { id: userId, email: normalizedEmail, role, name: displayName, bio }
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -76,13 +82,14 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = String(email || '').trim().toLowerCase();
 
-    if (!email || !password) {
+    if (!normalizedEmail || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
     // Find user
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }

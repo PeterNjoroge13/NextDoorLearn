@@ -22,6 +22,7 @@ NODE_ENV=production
 PORT=3001
 JWT_SECRET=use-a-long-random-secret
 DATABASE_PATH=/data/nextdoorlearn.db
+UPLOAD_DIR=/data/uploads
 FRONTEND_URL=https://your-vercel-app.vercel.app
 CORS_ORIGINS=https://your-custom-domain.com
 RATE_LIMIT_MAX=300
@@ -89,7 +90,7 @@ Local URLs:
 ## 4. Production Notes
 
 - `backend/node_modules`, `backend/uploads`, and local SQLite database files are intentionally ignored by Git.
-- For a Railway SQLite beta, attach a persistent volume and set `DATABASE_PATH=/data/nextdoorlearn.db`.
+- For a Railway SQLite beta, attach a persistent volume and set `DATABASE_PATH=/data/nextdoorlearn.db` and `UPLOAD_DIR=/data/uploads`.
 - Local avatar uploads work for development, but Railway filesystem storage is not the right long-term upload solution.
 - Before a public launch, move uploads to Cloudinary, Supabase Storage, or another persistent object store.
 - SQLite can work for a tiny beta, but Railway PostgreSQL is the recommended next database step.

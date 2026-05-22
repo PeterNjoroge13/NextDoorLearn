@@ -6,11 +6,12 @@ const { authenticateToken } = require('../middleware/auth');
 const db = require('../db/database');
 
 const router = express.Router();
+const uploadRoot = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
 
 // Configure multer for avatar uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, '../../uploads/avatars');
+    const uploadPath = path.join(uploadRoot, 'avatars');
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
     }
@@ -71,7 +72,7 @@ router.delete('/avatar', authenticateToken, async (req, res) => {
     
     if (user && user.avatar_url) {
       // Remove the file from filesystem
-      const filePath = path.join(__dirname, '../../', user.avatar_url);
+      const filePath = path.join(uploadRoot, user.avatar_url.replace(/^\/uploads\//, ''));
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
@@ -89,6 +90,6 @@ router.delete('/avatar', authenticateToken, async (req, res) => {
 });
 
 // Serve uploaded files
-router.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
+router.use('/uploads', express.static(uploadRoot));
 
 module.exports = router;
