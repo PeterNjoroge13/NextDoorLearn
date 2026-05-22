@@ -8,6 +8,7 @@
 - Set `JWT_SECRET`, `FRONTEND_URL`, `DATABASE_PATH`, and `UPLOAD_DIR` in Railway.
 - Attach a Railway volume if using SQLite for beta.
 - Verify `https://your-api/api/health`.
+- Run `SMOKE_API_URL=https://your-api/api npm run smoke` from `backend`.
 - Register a student and tutor in production.
 - Complete a tutor profile with subjects.
 - Send and accept a connection request.
@@ -20,7 +21,7 @@
 - Move avatar uploads to persistent object storage.
 - Add password reset email.
 - Add email verification.
-- Add API integration tests and Playwright smoke tests.
+- Add Playwright UI smoke tests.
 - Add monitoring/error reporting.
 
 ## Known Local Notes
@@ -29,4 +30,3 @@
 - Local development still works with SQLite.
 - Local uploads are stored under `backend/uploads`.
 - Generated runtime files are intentionally ignored by Git.
-

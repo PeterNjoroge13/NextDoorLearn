@@ -1,0 +1,107 @@
+const API_BASE_URL = process.env.SMOKE_API_URL || 'http://localhost:3001/api';
+
+const request = async (path, options = {}) => {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+      ...(options.headers || {})
+    }
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`${options.method || 'GET'} ${path} failed: ${response.status} ${JSON.stringify(body)}`);
+  }
+  return body;
+};
+
+const main = async () => {
+  const unique = Date.now();
+  const studentEmail = `smoke.student.${unique}@example.com`;
+  const tutorEmail = `smoke.tutor.${unique}@example.com`;
+  const password = 'password123';
+
+  const health = await request('/health');
+  if (health.status !== 'ok') {
+    throw new Error('Health check did not return ok');
+  }
+
+  const tutor = await request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: tutorEmail,
+      password,
+      role: 'tutor',
+      name: 'Smoke Tutor',
+      bio: 'Smoke test tutor'
+    })
+  });
+
+  const student = await request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: studentEmail,
+      password,
+      role: 'student',
+      name: 'Smoke Student',
+      bio: 'Smoke test student'
+    })
+  });
+
+  await request('/users/profile', {
+    method: 'PUT',
+    token: tutor.token,
+    body: JSON.stringify({
+      profile: {
+        subjects: ['Math'],
+        hourly_rate: 0,
+        experience_years: 1,
+        teaching_style: 'Patient and practical'
+      }
+    })
+  });
+
+  const tutors = await request('/users/tutors');
+  const createdTutor = tutors.find((item) => item.id === tutor.user.id);
+  if (!createdTutor) {
+    throw new Error('Created tutor was not returned by tutor browse endpoint');
+  }
+
+  const connection = await request('/connections/request', {
+    method: 'POST',
+    token: student.token,
+    body: JSON.stringify({ tutorId: tutor.user.id })
+  });
+
+  await request(`/requests/${connection.connectionId}/respond`, {
+    method: 'POST',
+    token: tutor.token,
+    body: JSON.stringify({ action: 'accept' })
+  });
+
+  await request('/messages/send', {
+    method: 'POST',
+    token: student.token,
+    body: JSON.stringify({
+      connectionId: connection.connectionId,
+      content: 'Hello from the smoke test.'
+    })
+  });
+
+  const messages = await request(`/messages/${connection.connectionId}`, {
+    token: tutor.token
+  });
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    throw new Error('Expected at least one message after smoke test send');
+  }
+
+  console.log('Smoke test passed');
+};
+
+main().catch((error) => {
+  console.error(error.message);
+  process.exit(1);
+});

@@ -45,6 +45,13 @@ curl https://your-railway-api.up.railway.app/api/health
 
 Expected response includes `"status":"ok"` and `"database":"ok"`.
 
+You can also run the backend smoke workflow against the deployed API:
+
+```bash
+cd backend
+SMOKE_API_URL=https://your-railway-api.up.railway.app/api npm run smoke
+```
+
 ## 2. Deploy The Frontend On Vercel
 
 1. Import the GitHub repo in Vercel.
@@ -111,3 +118,5 @@ After both services deploy:
 8. Student and tutor exchange messages.
 9. A session is scheduled.
 10. Refresh nested routes like `/dashboard`, `/tutors`, and `/profile`.
+
+The automated backend smoke test covers health, student/tutor registration, tutor browse, connection request acceptance, and messaging.

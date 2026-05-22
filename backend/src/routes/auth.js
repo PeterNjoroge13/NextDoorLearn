@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
 const { JWT_SECRET } = require('../middleware/auth');
+const { isValidEmail, sanitizeText } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -11,11 +12,16 @@ router.post('/register', async (req, res) => {
   try {
     const { email, password, role, name, bio } = req.body;
     const normalizedEmail = String(email || '').trim().toLowerCase();
-    const displayName = String(name || '').trim();
+    const displayName = sanitizeText(name, 120);
+    const safeBio = sanitizeText(bio, 1000);
 
     // Validate required fields
     if (!normalizedEmail || !password || !role || !displayName) {
       return res.status(400).json({ error: 'Email, password, role, and name are required' });
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
+      return res.status(400).json({ error: 'Enter a valid email address' });
     }
 
     if (password.length < 6) {
@@ -42,7 +48,7 @@ router.post('/register', async (req, res) => {
       VALUES (?, ?, ?, ?, ?)
     `);
     
-    const result = insertUser.run(normalizedEmail, passwordHash, role, displayName, bio || '');
+    const result = insertUser.run(normalizedEmail, passwordHash, role, displayName, safeBio);
     const userId = result.lastInsertRowid;
 
     // Create profile based on role
@@ -70,7 +76,7 @@ router.post('/register', async (req, res) => {
     res.status(201).json({
       message: 'User created successfully',
       token,
-      user: { id: userId, email: normalizedEmail, role, name: displayName, bio }
+      user: { id: userId, email: normalizedEmail, role, name: displayName, bio: safeBio }
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -86,6 +92,10 @@ router.post('/login', async (req, res) => {
 
     if (!normalizedEmail || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
+      return res.status(400).json({ error: 'Enter a valid email address' });
     }
 
     // Find user

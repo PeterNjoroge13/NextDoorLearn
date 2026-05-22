@@ -9,6 +9,7 @@ import Profile from './pages/Profile';
 import Messages from './pages/Messages';
 import Requests from './pages/Requests';
 import Sessions from './pages/Sessions';
+import LegalPage from './pages/LegalPage';
 
 const LoadingScreen = () => (
   <div className="loading-wrap">
@@ -103,6 +104,10 @@ function App() {
                 </ProtectedRoute>
               } 
             />
+            <Route path="/privacy" element={<LegalPage type="/privacy" />} />
+            <Route path="/terms" element={<LegalPage type="/terms" />} />
+            <Route path="/guidelines" element={<LegalPage type="/guidelines" />} />
+            <Route path="/support" element={<LegalPage type="/support" />} />
             <Route path="/" element={<Navigate to="/dashboard" />} />
           </Routes>
         </div>

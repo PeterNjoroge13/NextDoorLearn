@@ -4,6 +4,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
 const { isTimeRangeWithinAvailability } = require('../utils/availability');
 const { syncSessionToGoogle } = require('../services/googleCalendar');
+const { isPositiveInteger, isValidDate, isValidTime, sanitizeText } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -95,9 +96,14 @@ router.post('/', authenticateToken, (req, res) => {
     const userId = req.user.userId;
     
     // Validate required fields
-    if (!connectionId || !title || !scheduledDate || !startTime || !endTime) {
+    if (!isPositiveInteger(connectionId) || !sanitizeText(title, 120) || !isValidDate(scheduledDate) || !isValidTime(startTime) || !isValidTime(endTime)) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+
+    const safeTitle = sanitizeText(title, 120);
+    const safeDescription = sanitizeText(description, 2000);
+    const safeSubject = sanitizeText(subject, 120);
+    const safeMeetingLink = sanitizeText(meetingLink, 500);
     
     // Verify the connection exists and user is part of it
     const connection = db.prepare(`
@@ -167,14 +173,14 @@ router.post('/', authenticateToken, (req, res) => {
       connectionId,
       connection.tutor_id,
       connection.student_id,
-      title,
-      description || '',
-      subject || '',
+      safeTitle,
+      safeDescription,
+      safeSubject,
       scheduledDate,
       startTime,
       endTime,
       durationMinutes,
-      meetingLink || ''
+      safeMeetingLink
     );
     
     // Get the created session with user details
@@ -197,7 +203,7 @@ router.post('/', authenticateToken, (req, res) => {
       recipientId,
       'session_created',
       'New session scheduled',
-      `${creatorName} scheduled a session: "${title}" on ${scheduledDate} at ${startTime}`,
+      `${creatorName} scheduled a session: "${safeTitle}" on ${scheduledDate} at ${startTime}`,
       '/sessions',
       result.lastInsertRowid
     );
@@ -218,6 +224,10 @@ router.patch('/:id/status', authenticateToken, (req, res) => {
     const { status, notes } = req.body;
     const userId = req.user.userId;
     
+    if (!isPositiveInteger(sessionId)) {
+      return res.status(400).json({ error: 'Valid session ID is required' });
+    }
+
     if (!['scheduled', 'completed', 'cancelled', 'no_show'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
@@ -239,7 +249,7 @@ router.patch('/:id/status', authenticateToken, (req, res) => {
       WHERE id = ?
     `);
     
-    updateSession.run(status, notes || session.notes, sessionId);
+    updateSession.run(status, sanitizeText(notes, 2000) || session.notes, sessionId);
     
     // Get updated session
     const updatedSession = db.prepare(`

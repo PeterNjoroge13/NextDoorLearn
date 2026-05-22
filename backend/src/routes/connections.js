@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
+const { isPositiveInteger } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -15,7 +16,7 @@ router.post('/request', authenticateToken, (req, res) => {
       return res.status(403).json({ error: 'Only students can send connection requests' });
     }
 
-    if (!tutorId) {
+    if (!isPositiveInteger(tutorId)) {
       return res.status(400).json({ error: 'Tutor ID is required' });
     }
 
@@ -90,6 +91,10 @@ router.put('/:connectionId/respond', authenticateToken, (req, res) => {
   try {
     const { connectionId } = req.params;
     const { status } = req.body;
+
+    if (!isPositiveInteger(connectionId)) {
+      return res.status(400).json({ error: 'Valid connection ID is required' });
+    }
 
     if (req.user.role !== 'tutor') {
       return res.status(403).json({ error: 'Only tutors can respond to connection requests' });

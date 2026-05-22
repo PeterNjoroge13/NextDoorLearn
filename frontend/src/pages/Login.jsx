@@ -180,6 +180,13 @@ const Login = () => {
               {loading ? 'Working...' : isLogin ? 'Sign in' : 'Create account'}
             </button>
           </form>
+
+          <div className="chip-row" style={{ justifyContent: 'center', marginTop: 22 }}>
+            <a className="badge" href="/privacy">Privacy</a>
+            <a className="badge" href="/terms">Terms</a>
+            <a className="badge" href="/guidelines">Guidelines</a>
+            <a className="badge" href="/support">Support</a>
+          </div>
         </div>
       </section>
     </main>
