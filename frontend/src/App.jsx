@@ -10,6 +10,7 @@ import Messages from './pages/Messages';
 import Requests from './pages/Requests';
 import Sessions from './pages/Sessions';
 import LegalPage from './pages/LegalPage';
+import AuthUtilityPage from './pages/AuthUtilityPage';
 
 const LoadingScreen = () => (
   <div className="loading-wrap">
@@ -108,6 +109,9 @@ function App() {
             <Route path="/terms" element={<LegalPage type="/terms" />} />
             <Route path="/guidelines" element={<LegalPage type="/guidelines" />} />
             <Route path="/support" element={<LegalPage type="/support" />} />
+            <Route path="/forgot-password" element={<AuthUtilityPage mode="forgot" />} />
+            <Route path="/reset-password" element={<AuthUtilityPage mode="reset" />} />
+            <Route path="/verify-email" element={<AuthUtilityPage mode="verify" />} />
             <Route path="/" element={<Navigate to="/dashboard" />} />
           </Routes>
         </div>

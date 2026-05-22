@@ -27,6 +27,26 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS tutor_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -186,6 +206,7 @@ const migrations = [
   { table: 'users', column: 'languages', type: 'TEXT' },
   { table: 'users', column: 'website', type: 'TEXT' },
   { table: 'users', column: 'linkedin', type: 'TEXT' },
+  { table: 'users', column: 'email_verified_at', type: 'DATETIME' },
   // Tutor profile new columns
   { table: 'tutor_profiles', column: 'experience_years', type: 'INTEGER DEFAULT 0' },
   { table: 'tutor_profiles', column: 'education', type: 'TEXT' },

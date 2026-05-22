@@ -50,6 +50,34 @@ const main = async () => {
     })
   });
 
+  if (!tutor.verificationToken) {
+    throw new Error('Expected development verification token from tutor registration');
+  }
+
+  await request('/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ token: tutor.verificationToken })
+  });
+
+  const reset = await request('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email: studentEmail })
+  });
+
+  if (!reset.resetToken) {
+    throw new Error('Expected development reset token from forgot password');
+  }
+
+  await request('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token: reset.resetToken, password: 'password456' })
+  });
+
+  await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: studentEmail, password: 'password456' })
+  });
+
   await request('/users/profile', {
     method: 'PUT',
     token: tutor.token,

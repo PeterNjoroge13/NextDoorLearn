@@ -27,6 +27,8 @@ FRONTEND_URL=https://your-vercel-app.vercel.app
 CORS_ORIGINS=https://your-custom-domain.com
 RATE_LIMIT_MAX=300
 AUTH_RATE_LIMIT_MAX=30
+RESEND_API_KEY=your-resend-api-key
+EMAIL_FROM=NextDoorLearn <no-reply@your-domain.com>
 ```
 
 Optional Google Calendar variables:

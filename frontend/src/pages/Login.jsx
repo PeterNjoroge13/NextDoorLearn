@@ -182,6 +182,7 @@ const Login = () => {
           </form>
 
           <div className="chip-row" style={{ justifyContent: 'center', marginTop: 22 }}>
+            <a className="badge" href="/forgot-password">Forgot password</a>
             <a className="badge" href="/privacy">Privacy</a>
             <a className="badge" href="/terms">Terms</a>
             <a className="badge" href="/guidelines">Guidelines</a>
