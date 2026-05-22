@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -32,7 +32,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
@@ -77,7 +77,7 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.role]);
 
   useEffect(() => {
     fetchDashboard();
@@ -85,7 +85,7 @@ const Dashboard = () => {
     return () => {
       delete window.refreshDashboardStats;
     };
-  }, []);
+  }, [fetchDashboard]);
 
   if (loading) return <LoadingState label="Preparing your dashboard..." />;
   if (error) return <ErrorState message={error} action={<Link className="btn btn-primary" to="/login">Go to login</Link>} />;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { CalendarDays, CheckCircle2, Clock, Plus, Trash2, X } from 'lucide-react';
 import api from '../services/api';
 import AppShell, { EmptyState, ErrorState, LoadingState } from '../components/AppShell';
@@ -28,7 +28,7 @@ const Sessions = () => {
     meetingLink: '',
   });
 
-  const fetchSessions = async () => {
+  const fetchSessions = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       const [sessionsResponse, connectionsResponse] = await Promise.all([
@@ -47,11 +47,11 @@ const Sessions = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
 
   useEffect(() => {
     fetchSessions();
-  }, [filters.status, filters.month, filters.year]);
+  }, [fetchSessions]);
 
   const handleCreateSession = async (event) => {
     event.preventDefault();
