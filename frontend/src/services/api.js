@@ -46,6 +46,27 @@ const api = {
     return response.json();
   },
 
+  changePassword: async (currentPassword, newPassword, token) => {
+    const response = await fetch(`${API_BASE_URL}/users/change-password`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    return response.json();
+  },
+
+  getProfileCompletion: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/users/profile-completion`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
   getTutors: async () => {
     const response = await fetch(`${API_BASE_URL}/users/tutors`);
     return response.json();
@@ -224,6 +245,203 @@ const api = {
 
   getSessionStats: async (token) => {
     const response = await fetch(`${API_BASE_URL}/sessions/stats`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  // Availability endpoints
+  getMyAvailability: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/availability/me`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  updateMyAvailability: async (slots, timezone, token) => {
+    const response = await fetch(`${API_BASE_URL}/availability/me`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ slots, timezone }),
+    });
+    return response.json();
+  },
+
+  getTutorAvailability: async (tutorId, date, token) => {
+    const params = new URLSearchParams();
+    if (date) params.append('date', date);
+    const response = await fetch(`${API_BASE_URL}/availability/tutor/${tutorId}?${params}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  // Google Calendar endpoints
+  getGoogleAuthUrl: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/google/auth-url`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  getGoogleStatus: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/google/status`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  toggleGoogleSync: async (enabled, token) => {
+    const response = await fetch(`${API_BASE_URL}/google/sync-toggle`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ enabled }),
+    });
+    return response.json();
+  },
+
+  disconnectGoogle: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/google/disconnect`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  // Request endpoints
+  getRequests: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/requests`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  respondToRequest: async (requestId, action, token) => {
+    const response = await fetch(`${API_BASE_URL}/requests/${requestId}/respond`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ action }),
+    });
+    return response.json();
+  },
+
+  // Review endpoints
+  createReview: async (tutorId, rating, comment, sessionId, token) => {
+    const response = await fetch(`${API_BASE_URL}/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ tutorId, rating, comment, sessionId }),
+    });
+    return response.json();
+  },
+
+  getTutorReviews: async (tutorId) => {
+    const response = await fetch(`${API_BASE_URL}/reviews/tutor/${tutorId}`);
+    return response.json();
+  },
+
+  getTutorAverageRating: async (tutorId) => {
+    const response = await fetch(`${API_BASE_URL}/reviews/tutor/${tutorId}/average`);
+    return response.json();
+  },
+
+  getMyReview: async (tutorId, token) => {
+    const response = await fetch(`${API_BASE_URL}/reviews/tutor/${tutorId}/my-review`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  deleteReview: async (reviewId, token) => {
+    const response = await fetch(`${API_BASE_URL}/reviews/${reviewId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  // Notification endpoints
+  getNotifications: async (token, limit = 50, unreadOnly = false) => {
+    const response = await fetch(`${API_BASE_URL}/notifications?limit=${limit}&unread_only=${unreadOnly}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  getUnreadCount: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/notifications/unread-count`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  markNotificationRead: async (notificationId, token) => {
+    const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  markAllNotificationsRead: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/notifications/read-all`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  deleteNotification: async (notificationId, token) => {
+    const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  clearReadNotifications: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/notifications/clear/read`, {
+      method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`,
       },

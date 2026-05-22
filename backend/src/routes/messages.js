@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
+const { createNotification } = require('./notifications');
 
 const router = express.Router();
 
@@ -14,10 +15,14 @@ router.post('/send', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Connection ID and content are required' });
     }
 
-    // Verify user is part of this connection
+    // Verify user is part of this connection and get recipient info
     const connection = db.prepare(`
-      SELECT id FROM connections 
-      WHERE id = ? AND (student_id = ? OR tutor_id = ?) AND status = 'accepted'
+      SELECT c.id, c.student_id, c.tutor_id, 
+             s.name as student_name, t.name as tutor_name
+      FROM connections c
+      JOIN users s ON c.student_id = s.id
+      JOIN users t ON c.tutor_id = t.id
+      WHERE c.id = ? AND (c.student_id = ? OR c.tutor_id = ?) AND c.status = 'accepted'
     `).get(connectionId, senderId, senderId);
 
     if (!connection) {
@@ -31,6 +36,20 @@ router.post('/send', authenticateToken, (req, res) => {
     `);
     
     const result = insertMessage.run(connectionId, senderId, content);
+
+    // Send notification to recipient
+    const recipientId = senderId === connection.student_id ? connection.tutor_id : connection.student_id;
+    const senderName = senderId === connection.student_id ? connection.student_name : connection.tutor_name;
+    const preview = content.length > 50 ? content.substring(0, 50) + '...' : content;
+    
+    createNotification(
+      recipientId,
+      'message',
+      `New message from ${senderName}`,
+      preview,
+      '/messages',
+      connectionId
+    );
     
     res.status(201).json({
       message: 'Message sent successfully',

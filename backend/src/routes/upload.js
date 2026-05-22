@@ -18,7 +18,7 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, `avatar-${req.user.id}-${uniqueSuffix}${path.extname(file.originalname)}`);
+    cb(null, `avatar-${req.user.userId}-${uniqueSuffix}${path.extname(file.originalname)}`);
   }
 });
 
@@ -51,7 +51,7 @@ router.post('/avatar', authenticateToken, upload.single('avatar'), async (req, r
     
     // Update user's avatar in database
     const updateUser = db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?');
-    updateUser.run(avatarUrl, req.user.id);
+    updateUser.run(avatarUrl, req.user.userId);
 
     res.json({ 
       message: 'Avatar uploaded successfully',
@@ -67,7 +67,7 @@ router.post('/avatar', authenticateToken, upload.single('avatar'), async (req, r
 router.delete('/avatar', authenticateToken, async (req, res) => {
   try {
     // Get current avatar URL from database
-    const user = db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.id);
+    const user = db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.userId);
     
     if (user && user.avatar_url) {
       // Remove the file from filesystem
@@ -78,7 +78,7 @@ router.delete('/avatar', authenticateToken, async (req, res) => {
       
       // Update database to remove avatar URL
       const updateUser = db.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?');
-      updateUser.run(req.user.id);
+      updateUser.run(req.user.userId);
     }
 
     res.json({ message: 'Avatar removed successfully' });

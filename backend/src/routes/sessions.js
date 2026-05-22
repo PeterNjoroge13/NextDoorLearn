@@ -1,6 +1,9 @@
 const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
+const { createNotification } = require('./notifications');
+const { isTimeRangeWithinAvailability } = require('../utils/availability');
+const { syncSessionToGoogle } = require('../services/googleCalendar');
 
 const router = express.Router();
 
@@ -114,6 +117,19 @@ router.post('/', authenticateToken, (req, res) => {
     if (durationMinutes <= 0) {
       return res.status(400).json({ error: 'End time must be after start time' });
     }
+
+    const isInAvailability = isTimeRangeWithinAvailability(
+      connection.tutor_id,
+      scheduledDate,
+      startTime,
+      endTime
+    );
+
+    if (!isInAvailability) {
+      return res.status(400).json({
+        error: 'Selected time is outside tutor availability for that day'
+      });
+    }
     
     // Check for time conflicts
     const conflicts = db.prepare(`
@@ -172,6 +188,21 @@ router.post('/', authenticateToken, (req, res) => {
       JOIN users u2 ON s.student_id = u2.id
       WHERE s.id = ?
     `).get(result.lastInsertRowid);
+
+    // Notify the other participant
+    const recipientId = userId === connection.tutor_id ? connection.student_id : connection.tutor_id;
+    const creatorName = userId === connection.tutor_id ? newSession.tutor_name : newSession.student_name;
+    
+    createNotification(
+      recipientId,
+      'session_created',
+      'New session scheduled',
+      `${creatorName} scheduled a session: "${title}" on ${scheduledDate} at ${startTime}`,
+      '/sessions',
+      result.lastInsertRowid
+    );
+
+    syncSessionToGoogle(newSession, 'upsert');
     
     res.status(201).json(newSession);
   } catch (error) {
@@ -221,6 +252,32 @@ router.patch('/:id/status', authenticateToken, (req, res) => {
       JOIN users u2 ON s.student_id = u2.id
       WHERE s.id = ?
     `).get(sessionId);
+
+    // Notify the other participant
+    const recipientId = userId === session.tutor_id ? session.student_id : session.tutor_id;
+    const updaterName = userId === session.tutor_id ? updatedSession.tutor_name : updatedSession.student_name;
+    
+    const statusMessages = {
+      'completed': `Your session "${session.title}" has been marked as completed`,
+      'cancelled': `${updaterName} cancelled the session "${session.title}"`,
+      'no_show': `The session "${session.title}" was marked as no-show`,
+      'scheduled': `The session "${session.title}" has been rescheduled`
+    };
+
+    createNotification(
+      recipientId,
+      'session_update',
+      `Session ${status}`,
+      statusMessages[status],
+      '/sessions',
+      sessionId
+    );
+
+    if (status === 'cancelled') {
+      syncSessionToGoogle(updatedSession, 'delete');
+    } else {
+      syncSessionToGoogle(updatedSession, 'upsert');
+    }
     
     res.json(updatedSession);
   } catch (error) {
@@ -253,6 +310,8 @@ router.delete('/:id', authenticateToken, (req, res) => {
     // Delete session
     const deleteSession = db.prepare('DELETE FROM sessions WHERE id = ?');
     deleteSession.run(sessionId);
+
+    syncSessionToGoogle(session, 'delete');
     
     res.json({ message: 'Session deleted successfully' });
   } catch (error) {

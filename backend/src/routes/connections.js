@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
+const { createNotification } = require('./notifications');
 
 const router = express.Router();
 
@@ -19,7 +20,7 @@ router.post('/request', authenticateToken, (req, res) => {
     }
 
     // Check if tutor exists
-    const tutor = db.prepare('SELECT id FROM users WHERE id = ? AND role = ?').get(tutorId, 'tutor');
+    const tutor = db.prepare('SELECT id, name FROM users WHERE id = ? AND role = ?').get(tutorId, 'tutor');
     if (!tutor) {
       return res.status(404).json({ error: 'Tutor not found' });
     }
@@ -41,6 +42,16 @@ router.post('/request', authenticateToken, (req, res) => {
     `);
     
     const result = insertConnection.run(studentId, tutorId);
+
+    // Notify tutor of new connection request
+    createNotification(
+      tutorId,
+      'connection_request',
+      'New connection request',
+      `${req.user.name} wants to connect with you`,
+      '/requests',
+      result.lastInsertRowid
+    );
     
     res.status(201).json({
       message: 'Connection request sent successfully',
@@ -90,8 +101,10 @@ router.put('/:connectionId/respond', authenticateToken, (req, res) => {
 
     // Check if connection exists and belongs to this tutor
     const connection = db.prepare(`
-      SELECT id FROM connections 
-      WHERE id = ? AND tutor_id = ? AND status = 'pending'
+      SELECT c.id, c.student_id, u.name as tutor_name
+      FROM connections c
+      JOIN users u ON c.tutor_id = u.id
+      WHERE c.id = ? AND c.tutor_id = ? AND c.status = 'pending'
     `).get(connectionId, req.user.userId);
 
     if (!connection) {
@@ -103,6 +116,18 @@ router.put('/:connectionId/respond', authenticateToken, (req, res) => {
       UPDATE connections SET status = ? WHERE id = ?
     `);
     updateConnection.run(status, connectionId);
+
+    // Notify student of response
+    createNotification(
+      connection.student_id,
+      'connection_response',
+      status === 'accepted' ? 'Connection accepted!' : 'Connection declined',
+      status === 'accepted' 
+        ? `${connection.tutor_name} accepted your connection request. You can now message them!`
+        : `${connection.tutor_name} declined your connection request.`,
+      status === 'accepted' ? '/messages' : '/tutors',
+      connectionId
+    );
 
     res.json({ message: `Connection request ${status} successfully` });
   } catch (error) {
@@ -119,7 +144,7 @@ router.get('/my-connections', authenticateToken, (req, res) => {
 
     if (req.user.role === 'student') {
       connections = db.prepare(`
-        SELECT c.id, c.status, c.created_at, u.name as tutor_name, u.bio as tutor_bio
+        SELECT c.id, c.status, c.created_at, c.tutor_id, c.student_id, u.name as tutor_name, u.bio as tutor_bio
         FROM connections c
         JOIN users u ON c.tutor_id = u.id
         WHERE c.student_id = ?
@@ -127,7 +152,7 @@ router.get('/my-connections', authenticateToken, (req, res) => {
       `).all(userId);
     } else {
       connections = db.prepare(`
-        SELECT c.id, c.status, c.created_at, u.name as student_name, u.bio as student_bio
+        SELECT c.id, c.status, c.created_at, c.tutor_id, c.student_id, u.name as student_name, u.bio as student_bio
         FROM connections c
         JOIN users u ON c.student_id = u.id
         WHERE c.tutor_id = ? AND c.status = 'accepted'
