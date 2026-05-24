@@ -10,6 +10,7 @@ import Profile from './pages/Profile';
 import Messages from './pages/Messages';
 import Requests from './pages/Requests';
 import Sessions from './pages/Sessions';
+import Admin from './pages/Admin';
 import LegalPage from './pages/LegalPage';
 import AuthUtilityPage from './pages/AuthUtilityPage';
 
@@ -113,6 +114,14 @@ function App() {
                   <Sessions />
                 </ProtectedRoute>
               } 
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <Admin />
+                </ProtectedRoute>
+              }
             />
             <Route path="/privacy" element={<LegalPage type="/privacy" />} />
             <Route path="/terms" element={<LegalPage type="/terms" />} />

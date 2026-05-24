@@ -722,6 +722,30 @@ textarea:focus {
   letter-spacing: -0.02em;
 }
 
+.admin-list {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+}
+
+.admin-row h2 {
+  margin-top: 12px;
+  font-size: 1.1rem;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .price {
   font-weight: 900;
   color: var(--brand-strong);
@@ -993,6 +1017,7 @@ textarea:focus {
   }
 
   .toolbar,
+  .admin-row,
   .grid-4,
   .grid-3,
   .grid-2 {

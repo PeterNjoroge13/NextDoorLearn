@@ -9,6 +9,7 @@ import {
   LogOut,
   MessageCircle,
   Search,
+  ShieldCheck,
   Settings,
   Users,
 } from 'lucide-react';
@@ -28,8 +29,17 @@ const navItems = [
   { to: '/messages', label: 'Messages', icon: MessageCircle },
   { to: '/sessions', label: 'Sessions', icon: CalendarDays },
   { to: '/requests', label: 'Requests', icon: Inbox, tutorsOnly: true },
+  { to: '/admin', label: 'Admin', icon: ShieldCheck, adminOnly: true },
   { to: '/profile', label: 'Profile', icon: Settings },
 ];
+
+const isAdminUser = (user) => {
+  const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+  return adminEmails.includes(String(user?.email || '').toLowerCase());
+};
 
 const AppShell = ({ children }) => {
   const { user } = useAuth();
@@ -55,6 +65,7 @@ const AppShell = ({ children }) => {
           <nav className="nav-links" aria-label="Main navigation">
             {navItems
               .filter((item) => !item.tutorsOnly || user?.role === 'tutor')
+              .filter((item) => !item.adminOnly || isAdminUser(user))
               .map(({ to, label, icon }) => (
                 <NavLink key={to} to={to} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
                   {React.createElement(icon, { size: 17 })}

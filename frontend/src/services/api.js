@@ -542,6 +542,49 @@ const api = {
     });
     return response.json();
   },
+
+  // Admin endpoints
+  getAdminUsers: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/users`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  updateAdminUser: async (userId, updates, token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(updates),
+    });
+    return response.json();
+  },
+
+  getAdminReports: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/reports`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  updateAdminReport: async (reportId, status, token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/reports/${reportId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ status }),
+    });
+    return response.json();
+  },
 };
 
 export default api;
