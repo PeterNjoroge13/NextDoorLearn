@@ -123,6 +123,20 @@ const main = async () => {
     throw new Error('Expected saved tutor to be removed from favorites endpoint');
   }
 
+  const report = await request('/reports', {
+    method: 'POST',
+    token: student.token,
+    body: JSON.stringify({
+      reportedUserId: tutor.user.id,
+      reason: 'Smoke test report',
+      details: 'Report submission should be accepted during smoke testing.'
+    })
+  });
+
+  if (!report.reportId) {
+    throw new Error('Expected report endpoint to return a report id');
+  }
+
   const connection = await request('/connections/request', {
     method: 'POST',
     token: student.token,
@@ -150,6 +164,14 @@ const main = async () => {
 
   if (!Array.isArray(messages) || messages.length === 0) {
     throw new Error('Expected at least one message after smoke test send');
+  }
+
+  const conversations = await request('/messages', {
+    token: student.token
+  });
+
+  if (!conversations.some((item) => item.other_user_id === tutor.user.id)) {
+    throw new Error('Expected conversations endpoint to include the other user id');
   }
 
   console.log('Smoke test passed');

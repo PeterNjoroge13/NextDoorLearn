@@ -145,6 +145,18 @@ const api = {
     return response.json();
   },
 
+  submitReport: async (reportedUserId, reason, details, token) => {
+    const response = await fetch(`${API_BASE_URL}/reports`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reportedUserId, reason, details }),
+    });
+    return response.json();
+  },
+
   // Connection endpoints
   sendConnectionRequest: async (tutorId, token) => {
     const response = await fetch(`${API_BASE_URL}/connections/request`, {

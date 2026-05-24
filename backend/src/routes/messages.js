@@ -17,7 +17,7 @@ router.post('/send', authenticateToken, (req, res) => {
 
     // Verify user is part of this connection and get recipient info
     const connection = db.prepare(`
-      SELECT c.id, c.student_id, c.tutor_id, 
+      SELECT c.id, c.student_id, c.tutor_id,
              s.name as student_name, t.name as tutor_name
       FROM connections c
       JOIN users s ON c.student_id = s.id
@@ -34,14 +34,14 @@ router.post('/send', authenticateToken, (req, res) => {
       INSERT INTO messages (connection_id, sender_id, content)
       VALUES (?, ?, ?)
     `);
-    
+
     const result = insertMessage.run(connectionId, senderId, content);
 
     // Send notification to recipient
     const recipientId = senderId === connection.student_id ? connection.tutor_id : connection.student_id;
     const senderName = senderId === connection.student_id ? connection.student_name : connection.tutor_name;
     const preview = content.length > 50 ? content.substring(0, 50) + '...' : content;
-    
+
     createNotification(
       recipientId,
       'message',
@@ -50,13 +50,56 @@ router.post('/send', authenticateToken, (req, res) => {
       '/messages',
       connectionId
     );
-    
+
     res.status(201).json({
       message: 'Message sent successfully',
       messageId: result.lastInsertRowid
     });
   } catch (error) {
     console.error('Send message error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get message statistics for a user
+router.get('/stats', authenticateToken, (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // Get total messages sent by this user
+    const messagesSent = db.prepare(`
+      SELECT COUNT(*) as count FROM messages WHERE sender_id = ?
+    `).get(userId);
+
+    // Get total connections for this user
+    const connections = db.prepare(`
+      SELECT COUNT(*) as count FROM connections
+      WHERE (student_id = ? OR tutor_id = ?) AND status = 'accepted'
+    `).get(userId, userId);
+
+    // Get total students helped (for tutors) or tutors connected (for students)
+    const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId);
+    let peopleHelped = 0;
+
+    if (user.role === 'tutor') {
+      peopleHelped = db.prepare(`
+        SELECT COUNT(DISTINCT student_id) as count FROM connections
+        WHERE tutor_id = ? AND status = 'accepted'
+      `).get(userId);
+    } else {
+      peopleHelped = db.prepare(`
+        SELECT COUNT(DISTINCT tutor_id) as count FROM connections
+        WHERE student_id = ? AND status = 'accepted'
+      `).get(userId);
+    }
+
+    res.json({
+      messagesSent: messagesSent.count,
+      activeConnections: connections.count,
+      peopleHelped: peopleHelped.count
+    });
+  } catch (error) {
+    console.error('Get message stats error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -69,7 +112,7 @@ router.get('/:connectionId', authenticateToken, (req, res) => {
 
     // Verify user is part of this connection
     const connection = db.prepare(`
-      SELECT id FROM connections 
+      SELECT id FROM connections
       WHERE id = ? AND (student_id = ? OR tutor_id = ?) AND status = 'accepted'
     `).get(connectionId, userId, userId);
 
@@ -88,8 +131,8 @@ router.get('/:connectionId', authenticateToken, (req, res) => {
 
     // Mark messages as read for the current user (except their own messages)
     const markAsRead = db.prepare(`
-      UPDATE messages 
-      SET read_at = CURRENT_TIMESTAMP 
+      UPDATE messages
+      SET read_at = CURRENT_TIMESTAMP
       WHERE connection_id = ? AND sender_id != ? AND read_at IS NULL
     `);
     markAsRead.run(connectionId, userId);
@@ -109,7 +152,7 @@ router.get('/', authenticateToken, (req, res) => {
 
     if (req.user.role === 'student') {
       conversations = db.prepare(`
-        SELECT c.id as connection_id, u.name as tutor_name, u.bio as tutor_bio,
+        SELECT c.id as connection_id, u.id as other_user_id, u.name as tutor_name, u.bio as tutor_bio, u.avatar_url,
                (SELECT content FROM messages WHERE connection_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message,
                (SELECT timestamp FROM messages WHERE connection_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message_time
         FROM connections c
@@ -119,7 +162,7 @@ router.get('/', authenticateToken, (req, res) => {
       `).all(userId);
     } else {
       conversations = db.prepare(`
-        SELECT c.id as connection_id, u.name as student_name, u.bio as student_bio,
+        SELECT c.id as connection_id, u.id as other_user_id, u.name as student_name, u.bio as student_bio, u.avatar_url,
                (SELECT content FROM messages WHERE connection_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message,
                (SELECT timestamp FROM messages WHERE connection_id = c.id ORDER BY timestamp DESC LIMIT 1) as last_message_time
         FROM connections c
@@ -132,49 +175,6 @@ router.get('/', authenticateToken, (req, res) => {
     res.json(conversations);
   } catch (error) {
     console.error('Get conversations error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get message statistics for a user
-router.get('/stats', authenticateToken, (req, res) => {
-  try {
-    const userId = req.user.userId;
-    
-    // Get total messages sent by this user
-    const messagesSent = db.prepare(`
-      SELECT COUNT(*) as count FROM messages WHERE sender_id = ?
-    `).get(userId);
-    
-    // Get total connections for this user
-    const connections = db.prepare(`
-      SELECT COUNT(*) as count FROM connections 
-      WHERE (student_id = ? OR tutor_id = ?) AND status = 'accepted'
-    `).get(userId, userId);
-    
-    // Get total students helped (for tutors) or tutors connected (for students)
-    const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId);
-    let peopleHelped = 0;
-    
-    if (user.role === 'tutor') {
-      peopleHelped = db.prepare(`
-        SELECT COUNT(DISTINCT student_id) as count FROM connections 
-        WHERE tutor_id = ? AND status = 'accepted'
-      `).get(userId);
-    } else {
-      peopleHelped = db.prepare(`
-        SELECT COUNT(DISTINCT tutor_id) as count FROM connections 
-        WHERE student_id = ? AND status = 'accepted'
-      `).get(userId);
-    }
-    
-    res.json({
-      messagesSent: messagesSent.count,
-      activeConnections: connections.count,
-      peopleHelped: peopleHelped.count
-    });
-  } catch (error) {
-    console.error('Get message stats error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

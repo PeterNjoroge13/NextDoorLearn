@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Bookmark, BookOpenCheck, Filter, GraduationCap, MapPin, MessageCircle, Search, SlidersHorizontal, Star } from 'lucide-react';
+import { Bookmark, BookOpenCheck, Filter, Flag, GraduationCap, MapPin, MessageCircle, Search, SlidersHorizontal, Star } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import AppShell, { Avatar, EmptyState, ErrorState, LoadingState } from '../components/AppShell';
+import ReportUserModal from '../components/ReportUserModal';
 import { parseList } from '../utils/format';
 
 const subjectOptions = ['Math', 'Science', 'English', 'History', 'Computer Science', 'Physics', 'Chemistry'];
@@ -14,6 +15,7 @@ const TutorBrowse = () => {
   const [toast, setToast] = useState('');
   const [requestSent, setRequestSent] = useState({});
   const [favoriteIds, setFavoriteIds] = useState(new Set());
+  const [reportUser, setReportUser] = useState(null);
   const [filters, setFilters] = useState({
     search: '',
     subject: '',
@@ -264,6 +266,16 @@ const TutorBrowse = () => {
                           {favoriteIds.has(tutor.id) ? 'Saved' : 'Save'}
                         </button>
                       ) : null}
+                      {user ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => setReportUser({ id: tutor.id, name: tutor.name })}
+                        >
+                          <Flag size={18} />
+                          Report
+                        </button>
+                      ) : null}
                     </div>
                   </article>
                 );
@@ -276,6 +288,13 @@ const TutorBrowse = () => {
           )}
         </section>
       </main>
+      {reportUser ? (
+        <ReportUserModal
+          user={reportUser}
+          onClose={() => setReportUser(null)}
+          onSubmitted={setToast}
+        />
+      ) : null}
     </AppShell>
   );
 };

@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Send, MessageCircle, Search } from 'lucide-react';
+import { Flag, Send, MessageCircle, Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { formatMessageTime } from '../utils/timeUtils';
 import AppShell, { Avatar, EmptyState, ErrorState, LoadingState } from '../components/AppShell';
+import ReportUserModal from '../components/ReportUserModal';
 
 const Messages = () => {
   const { user } = useAuth();
@@ -14,6 +15,8 @@ const Messages = () => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState('');
+  const [reportUser, setReportUser] = useState(null);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -77,6 +80,11 @@ const Messages = () => {
   const getConversationName = (conversation) =>
     conversation.other_user_name || conversation.tutor_name || conversation.student_name || conversation.name || 'Conversation';
 
+  const getConversationUser = (conversation) => ({
+    id: conversation?.other_user_id,
+    name: getConversationName(conversation),
+  });
+
   if (loading) return <LoadingState label="Opening conversations..." />;
   if (error) return <ErrorState message={error} />;
 
@@ -93,6 +101,8 @@ const Messages = () => {
             <p className="page-copy">Coordinate homework questions, session details, and next steps with your connections.</p>
           </div>
         </section>
+
+        {toast ? <div className="alert" style={{ marginBottom: 16 }}>{toast}</div> : null}
 
         {conversations.length === 0 ? (
           <EmptyState icon={Search} title="No conversations yet">
@@ -132,6 +142,16 @@ const Messages = () => {
                     <p className="muted">{user?.role === 'tutor' ? 'Student connection' : 'Tutor connection'}</p>
                   </div>
                 </div>
+                {selectedConversation?.other_user_id ? (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    type="button"
+                    onClick={() => setReportUser(getConversationUser(selectedConversation))}
+                  >
+                    <Flag size={16} />
+                    Report
+                  </button>
+                ) : null}
               </header>
 
               <div className="message-scroll">
@@ -169,6 +189,13 @@ const Messages = () => {
           </section>
         )}
       </main>
+      {reportUser ? (
+        <ReportUserModal
+          user={reportUser}
+          onClose={() => setReportUser(null)}
+          onSubmitted={setToast}
+        />
+      ) : null}
     </AppShell>
   );
 };
