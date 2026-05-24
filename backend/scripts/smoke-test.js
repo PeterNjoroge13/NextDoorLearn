@@ -97,6 +97,32 @@ const main = async () => {
     throw new Error('Created tutor was not returned by tutor browse endpoint');
   }
 
+  await request(`/favorites/${tutor.user.id}`, {
+    method: 'POST',
+    token: student.token
+  });
+
+  const favorites = await request('/favorites', {
+    token: student.token
+  });
+
+  if (!Array.isArray(favorites) || !favorites.some((item) => item.id === tutor.user.id)) {
+    throw new Error('Expected saved tutor to be returned by favorites endpoint');
+  }
+
+  await request(`/favorites/${tutor.user.id}`, {
+    method: 'DELETE',
+    token: student.token
+  });
+
+  const favoritesAfterDelete = await request('/favorites', {
+    token: student.token
+  });
+
+  if (favoritesAfterDelete.some((item) => item.id === tutor.user.id)) {
+    throw new Error('Expected saved tutor to be removed from favorites endpoint');
+  }
+
   const connection = await request('/connections/request', {
     method: 'POST',
     token: student.token,

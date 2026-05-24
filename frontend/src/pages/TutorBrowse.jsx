@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpenCheck, Filter, GraduationCap, MapPin, MessageCircle, Search, SlidersHorizontal, Star } from 'lucide-react';
+import { Bookmark, BookOpenCheck, Filter, GraduationCap, MapPin, MessageCircle, Search, SlidersHorizontal, Star } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import AppShell, { Avatar, EmptyState, ErrorState, LoadingState } from '../components/AppShell';
 import { parseList } from '../utils/format';
@@ -12,6 +13,7 @@ const TutorBrowse = () => {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
   const [requestSent, setRequestSent] = useState({});
+  const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [filters, setFilters] = useState({
     search: '',
     subject: '',
@@ -19,6 +21,7 @@ const TutorBrowse = () => {
     minRating: '0',
     sortBy: 'rating',
   });
+  const { user } = useAuth();
 
   useEffect(() => {
     const fetchTutors = async () => {
@@ -29,6 +32,13 @@ const TutorBrowse = () => {
         } else {
           setTutors(Array.isArray(response) ? response : []);
         }
+        const token = localStorage.getItem('token');
+        if (token && user?.role === 'student') {
+          const favoritesResponse = await api.getFavorites(token);
+          if (!favoritesResponse.error && Array.isArray(favoritesResponse)) {
+            setFavoriteIds(new Set(favoritesResponse.map((favorite) => favorite.id)));
+          }
+        }
       } catch {
         setError('Tutors could not be loaded.');
       } finally {
@@ -37,7 +47,7 @@ const TutorBrowse = () => {
     };
 
     fetchTutors();
-  }, []);
+  }, [user?.role]);
 
   const filteredTutors = useMemo(() => {
     const search = filters.search.trim().toLowerCase();
@@ -78,6 +88,36 @@ const TutorBrowse = () => {
     } finally {
       setTimeout(() => setToast(''), 4200);
     }
+  };
+
+  const handleToggleFavorite = async (tutorId) => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const isFavorite = favoriteIds.has(tutorId);
+    setFavoriteIds((current) => {
+      const next = new Set(current);
+      if (isFavorite) next.delete(tutorId);
+      else next.add(tutorId);
+      return next;
+    });
+
+    const response = isFavorite
+      ? await api.removeFavorite(tutorId, token)
+      : await api.addFavorite(tutorId, token);
+
+    if (response.error) {
+      setFavoriteIds((current) => {
+        const next = new Set(current);
+        if (isFavorite) next.add(tutorId);
+        else next.delete(tutorId);
+        return next;
+      });
+      setToast(response.error);
+    } else {
+      setToast(isFavorite ? 'Removed from saved tutors.' : 'Saved to your tutor shortlist.');
+    }
+    setTimeout(() => setToast(''), 3200);
   };
 
   if (loading) return <LoadingState label="Finding tutors..." />;
@@ -203,15 +243,28 @@ const TutorBrowse = () => {
                       <span className="price">{Number(tutor.hourly_rate || 0) === 0 ? 'Free' : `$${tutor.hourly_rate}/hr`}</span>
                     </div>
 
-                    <button
-                      type="button"
-                      className={`btn ${requested ? 'btn-ghost' : 'btn-primary'} w-full`}
-                      onClick={() => handleRequestConnection(tutor.id)}
-                      disabled={requested}
-                    >
-                      <MessageCircle size={18} />
-                      {requested ? 'Request sent' : 'Request help'}
-                    </button>
+                    <div className="button-row">
+                      <button
+                        type="button"
+                        className={`btn ${requested ? 'btn-ghost' : 'btn-primary'}`}
+                        style={{ flex: '1 1 180px' }}
+                        onClick={() => handleRequestConnection(tutor.id)}
+                        disabled={requested}
+                      >
+                        <MessageCircle size={18} />
+                        {requested ? 'Request sent' : 'Request help'}
+                      </button>
+                      {user?.role === 'student' ? (
+                        <button
+                          type="button"
+                          className={`btn ${favoriteIds.has(tutor.id) ? 'btn-secondary' : 'btn-ghost'}`}
+                          onClick={() => handleToggleFavorite(tutor.id)}
+                        >
+                          <Bookmark size={18} />
+                          {favoriteIds.has(tutor.id) ? 'Saved' : 'Save'}
+                        </button>
+                      ) : null}
+                    </div>
                   </article>
                 );
               })}

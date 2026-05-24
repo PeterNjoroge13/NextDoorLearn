@@ -116,6 +116,35 @@ const api = {
     return response.json();
   },
 
+  getFavorites: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/favorites`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  addFavorite: async (tutorId, token) => {
+    const response = await fetch(`${API_BASE_URL}/favorites/${tutorId}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
+  removeFavorite: async (tutorId, token) => {
+    const response = await fetch(`${API_BASE_URL}/favorites/${tutorId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
   // Connection endpoints
   sendConnectionRequest: async (tutorId, token) => {
     const response = await fetch(`${API_BASE_URL}/connections/request`, {

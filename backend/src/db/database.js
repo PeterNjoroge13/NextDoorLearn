@@ -40,6 +40,16 @@ db.exec(`
     FOREIGN KEY (reported_user_id) REFERENCES users (id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS favorites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    tutor_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES users (id) ON DELETE CASCADE,
+    FOREIGN KEY (tutor_id) REFERENCES users (id) ON DELETE CASCADE,
+    UNIQUE(student_id, tutor_id)
+  );
+
   CREATE TABLE IF NOT EXISTS email_verification_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -208,6 +218,9 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_session_google_events_session_user
   ON session_google_events (session_id, user_id);
+
+  CREATE INDEX IF NOT EXISTS idx_favorites_student
+  ON favorites (student_id, tutor_id);
 `);
 
 // Run migrations to add new columns to existing tables

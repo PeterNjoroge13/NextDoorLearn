@@ -7,6 +7,7 @@ import {
   Clock,
   GraduationCap,
   MessageCircle,
+  Bookmark,
   Search,
   Sparkles,
   Users,
@@ -22,6 +23,7 @@ const Dashboard = () => {
   const [connections, setConnections] = useState([]);
   const [upcomingSessions, setUpcomingSessions] = useState([]);
   const [requests, setRequests] = useState([]);
+  const [favorites, setFavorites] = useState([]);
   const [stats, setStats] = useState({ messagesSent: 0, activeConnections: 0, peopleHelped: 0 });
   const [sessionStats, setSessionStats] = useState({
     totalSessions: 0,
@@ -70,6 +72,9 @@ const Dashboard = () => {
       if (user?.role === 'tutor') {
         const requestResponse = await api.getRequests(token);
         setRequests(Array.isArray(requestResponse) ? requestResponse : []);
+      } else {
+        const favoriteResponse = await api.getFavorites(token);
+        setFavorites(Array.isArray(favoriteResponse) ? favoriteResponse : []);
       }
       setError('');
     } catch {
@@ -160,11 +165,42 @@ const Dashboard = () => {
             <span>Upcoming sessions</span>
           </div>
           <div className="card stat">
-            <span className="stat-icon"><CheckCircle2 size={21} /></span>
-            <strong>{sessionStats.completedSessions || 0}</strong>
-            <span>Completed sessions</span>
+            <span className="stat-icon">{user?.role === 'student' ? <Bookmark size={21} /> : <CheckCircle2 size={21} />}</span>
+            <strong>{user?.role === 'student' ? favorites.length : (sessionStats.completedSessions || 0)}</strong>
+            <span>{user?.role === 'student' ? 'Saved tutors' : 'Completed sessions'}</span>
           </div>
         </section>
+
+        {user?.role === 'student' && favorites.length ? (
+          <section className="section">
+            <div className="section-head">
+              <div>
+                <h2>Saved tutors</h2>
+                <p>Your shortlist for comparing and requesting help later.</p>
+              </div>
+              <Link className="btn btn-ghost btn-sm" to="/tutors">Browse more</Link>
+            </div>
+            <div className="grid grid-3">
+              {favorites.slice(0, 3).map((favorite) => (
+                <article className="card tutor-card" key={favorite.id}>
+                  <div className="item-main">
+                    <Avatar name={favorite.name} src={favorite.avatar_url} />
+                    <div>
+                      <h3>{favorite.name}</h3>
+                      <p className="muted">{Number(favorite.hourly_rate || 0) === 0 ? 'Free' : `$${favorite.hourly_rate}/hr`}</p>
+                    </div>
+                  </div>
+                  <div className="chip-row">
+                    {parseList(favorite.subjects).slice(0, 3).map((subject) => (
+                      <span className="badge badge-primary" key={subject}>{subject}</span>
+                    ))}
+                  </div>
+                  <Link className="btn btn-primary" to="/tutors">Request help</Link>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="section grid grid-2">
           <div>
