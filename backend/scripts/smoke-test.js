@@ -166,6 +166,14 @@ const main = async () => {
     throw new Error('Expected at least one message after smoke test send');
   }
 
+  const messageStats = await request('/messages/stats', {
+    token: student.token
+  });
+
+  if (!messageStats.messagesSent || !messageStats.activeConnections) {
+    throw new Error('Expected message stats endpoint to return sent message and connection counts');
+  }
+
   const conversations = await request('/messages', {
     token: student.token
   });

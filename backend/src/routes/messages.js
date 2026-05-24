@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
+const { isPositiveInteger, sanitizeText } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -10,8 +11,9 @@ router.post('/send', authenticateToken, (req, res) => {
   try {
     const { connectionId, content } = req.body;
     const senderId = req.user.userId;
+    const messageContent = sanitizeText(content, 2000);
 
-    if (!connectionId || !content) {
+    if (!isPositiveInteger(connectionId) || !messageContent) {
       return res.status(400).json({ error: 'Connection ID and content are required' });
     }
 
@@ -35,12 +37,12 @@ router.post('/send', authenticateToken, (req, res) => {
       VALUES (?, ?, ?)
     `);
 
-    const result = insertMessage.run(connectionId, senderId, content);
+    const result = insertMessage.run(connectionId, senderId, messageContent);
 
     // Send notification to recipient
     const recipientId = senderId === connection.student_id ? connection.tutor_id : connection.student_id;
     const senderName = senderId === connection.student_id ? connection.student_name : connection.tutor_name;
-    const preview = content.length > 50 ? content.substring(0, 50) + '...' : content;
+    const preview = messageContent.length > 50 ? messageContent.substring(0, 50) + '...' : messageContent;
 
     createNotification(
       recipientId,
@@ -109,6 +111,10 @@ router.get('/:connectionId', authenticateToken, (req, res) => {
   try {
     const { connectionId } = req.params;
     const userId = req.user.userId;
+
+    if (!isPositiveInteger(connectionId)) {
+      return res.status(400).json({ error: 'Valid connection ID is required' });
+    }
 
     // Verify user is part of this connection
     const connection = db.prepare(`
