@@ -195,7 +195,7 @@ const Dashboard = () => {
                       <span className="badge badge-primary" key={subject}>{subject}</span>
                     ))}
                   </div>
-                  <Link className="btn btn-primary" to="/tutors">Request help</Link>
+                  <Link className="btn btn-primary" to={`/tutors/${favorite.id}`}>View profile</Link>
                 </article>
               ))}
             </div>

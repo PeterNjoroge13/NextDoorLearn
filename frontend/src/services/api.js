@@ -116,6 +116,15 @@ const api = {
     return response.json();
   },
 
+  getTutorProfile: async (tutorId, token) => {
+    const response = await fetch(`${API_BASE_URL}/users/tutors/${tutorId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    return response.json();
+  },
+
   getFavorites: async (token) => {
     const response = await fetch(`${API_BASE_URL}/favorites`, {
       headers: {

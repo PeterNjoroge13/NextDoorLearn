@@ -5,6 +5,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import TutorBrowse from './pages/TutorBrowse';
+import TutorProfile from './pages/TutorProfile';
 import Profile from './pages/Profile';
 import Messages from './pages/Messages';
 import Requests from './pages/Requests';
@@ -70,6 +71,14 @@ function App() {
                   <TutorBrowse />
                 </ProtectedRoute>
               } 
+            />
+            <Route
+              path="/tutors/:tutorId"
+              element={
+                <ProtectedRoute>
+                  <TutorProfile />
+                </ProtectedRoute>
+              }
             />
             <Route 
               path="/profile" 

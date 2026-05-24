@@ -97,6 +97,14 @@ const main = async () => {
     throw new Error('Created tutor was not returned by tutor browse endpoint');
   }
 
+  const tutorProfile = await request(`/users/tutors/${tutor.user.id}`, {
+    token: student.token
+  });
+
+  if (tutorProfile.id !== tutor.user.id || !Array.isArray(tutorProfile.subjects)) {
+    throw new Error('Created tutor profile endpoint did not return expected tutor details');
+  }
+
   await request(`/favorites/${tutor.user.id}`, {
     method: 'POST',
     token: student.token

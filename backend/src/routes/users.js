@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { getAvailabilitySlots } = require('../utils/availability');
+const { isPositiveInteger } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -250,6 +251,87 @@ router.get('/tutors', (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Get one tutor profile
+router.get('/tutors/:tutorId', authenticateToken, (req, res) => {
+  try {
+    const { tutorId } = req.params;
+
+    if (!isPositiveInteger(tutorId)) {
+      return res.status(400).json({ error: 'Valid tutor ID is required' });
+    }
+
+    const tutor = db.prepare(`
+      SELECT
+        u.id,
+        u.name,
+        u.bio,
+        u.avatar_url,
+        u.location,
+        u.languages,
+        u.website,
+        u.linkedin,
+        u.created_at,
+        tp.subjects,
+        tp.hourly_rate,
+        tp.experience_years,
+        tp.education,
+        tp.certifications,
+        tp.teaching_style,
+        COALESCE(AVG(r.rating), 0) as averageRating,
+        COUNT(r.id) as totalReviews
+      FROM users u
+      JOIN tutor_profiles tp ON u.id = tp.user_id
+      LEFT JOIN reviews r ON u.id = r.tutor_id
+      WHERE u.id = ? AND u.role = 'tutor'
+      GROUP BY u.id, tp.id
+    `).get(tutorId);
+
+    if (!tutor) {
+      return res.status(404).json({ error: 'Tutor not found' });
+    }
+
+    const reviews = db.prepare(`
+      SELECT
+        r.id,
+        r.rating,
+        r.comment,
+        r.created_at,
+        u.name as student_name,
+        u.avatar_url as student_avatar
+      FROM reviews r
+      JOIN users u ON r.student_id = u.id
+      WHERE r.tutor_id = ?
+      ORDER BY r.created_at DESC
+      LIMIT 8
+    `).all(tutorId);
+
+    res.json({
+      ...tutor,
+      subjects: safeJsonArray(tutor.subjects),
+      languages: safeJsonArray(tutor.languages),
+      certifications: safeJsonArray(tutor.certifications),
+      availability: getAvailabilitySlots(tutor.id),
+      averageRating: Math.round(tutor.averageRating * 10) / 10,
+      totalReviews: tutor.totalReviews,
+      reviews
+    });
+  } catch (error) {
+    console.error('Get tutor profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const safeJsonArray = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
 
 // Get profile completion percentage
 router.get('/profile-completion', authenticateToken, (req, res) => {

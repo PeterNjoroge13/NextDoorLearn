@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Bookmark, BookOpenCheck, Filter, Flag, GraduationCap, MapPin, MessageCircle, Search, SlidersHorizontal, Star } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -246,6 +247,9 @@ const TutorBrowse = () => {
                     </div>
 
                     <div className="button-row">
+                      <Link className="btn btn-ghost" to={`/tutors/${tutor.id}`}>
+                        View profile
+                      </Link>
                       <button
                         type="button"
                         className={`btn ${requested ? 'btn-ghost' : 'btn-primary'}`}
