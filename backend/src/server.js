@@ -53,9 +53,34 @@ const allowedOrigins = new Set(
     : [...configuredOrigins, ...defaultDevOrigins]
 );
 
+const defaultProductionOriginPatterns = [
+  /^https:\/\/[a-z0-9-]+\.vercel\.app$/i
+];
+
+const configuredOriginPatterns = (process.env.CORS_ORIGIN_PATTERNS || '')
+  .split(',')
+  .map((pattern) => pattern.trim())
+  .filter(Boolean)
+  .map((pattern) => {
+    try {
+      return new RegExp(pattern);
+    } catch {
+      console.warn(`Ignoring invalid CORS origin pattern: ${pattern}`);
+      return null;
+    }
+  })
+  .filter(Boolean);
+
+const allowedOriginPatterns = process.env.NODE_ENV === 'production'
+  ? [...defaultProductionOriginPatterns, ...configuredOriginPatterns]
+  : configuredOriginPatterns;
+
+const isAllowedOrigin = (origin) =>
+  allowedOrigins.has(origin) || allowedOriginPatterns.some((pattern) => pattern.test(origin));
+
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin)) {
+    if (!origin || isAllowedOrigin(origin)) {
       return callback(null, true);
     }
     return callback(new Error(`CORS blocked origin: ${origin}`));
