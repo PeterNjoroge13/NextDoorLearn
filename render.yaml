@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: nextdoorlearn-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_PATH
+        value: /tmp/nextdoorlearn/nextdoorlearn.db
+      - key: UPLOAD_DIR
+        value: /tmp/nextdoorlearn/uploads
+      - key: RATE_LIMIT_MAX
+        value: 300
+      - key: AUTH_RATE_LIMIT_MAX
+        value: 30
