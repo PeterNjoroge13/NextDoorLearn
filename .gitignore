@@ -27,3 +27,4 @@ npm-debug.log*
 
 # Accidental root npm lockfile from running npm outside app folders
 /package-lock.json
+.vercel/
