@@ -1,4 +1,9 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const configuredApiUrl = import.meta.env.VITE_API_URL;
+export const API_BASE_URL = configuredApiUrl || 'http://localhost:3001/api';
+
+export const isApiConfiguredForProduction = () =>
+  import.meta.env.DEV ||
+  Boolean(configuredApiUrl && !configuredApiUrl.includes('localhost') && !configuredApiUrl.includes('127.0.0.1'));
 
 const api = {
   // Auth endpoints

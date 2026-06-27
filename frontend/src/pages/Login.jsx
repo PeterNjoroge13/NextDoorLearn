@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { BookOpen, GraduationCap, HeartHandshake, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import api from '../services/api';
+import api, { isApiConfiguredForProduction } from '../services/api';
 
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -29,6 +29,11 @@ const Login = () => {
     setError('');
 
     try {
+      if (!isApiConfiguredForProduction()) {
+        setError('NextDoorLearn is missing its deployed API URL. Set VITE_API_URL in Vercel to your backend URL ending in /api, then redeploy.');
+        return;
+      }
+
       const response = isLogin
         ? await api.login({ email: formData.email, password: formData.password })
         : await api.register(formData);
