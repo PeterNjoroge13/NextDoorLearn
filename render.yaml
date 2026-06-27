@@ -16,6 +16,10 @@ services:
         value: /tmp/nextdoorlearn/nextdoorlearn.db
       - key: UPLOAD_DIR
         value: /tmp/nextdoorlearn/uploads
+      - key: FRONTEND_URL
+        value: https://next-door-learn.vercel.app
+      - key: CORS_ORIGINS
+        value: https://next-door-learn.vercel.app
       - key: RATE_LIMIT_MAX
         value: 300
       - key: AUTH_RATE_LIMIT_MAX
