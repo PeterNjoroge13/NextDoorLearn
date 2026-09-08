@@ -94,6 +94,50 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS tutor_applications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    phone TEXT,
+    location TEXT,
+    subjects TEXT NOT NULL,
+    education TEXT,
+    experience TEXT,
+    motivation TEXT NOT NULL,
+    availability TEXT,
+    tutoring_mode TEXT,
+    hourly_rate REAL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'reviewing', 'approved', 'declined')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS student_waitlist_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL UNIQUE,
+    subjects TEXT NOT NULL,
+    grade_level TEXT,
+    budget_preference TEXT,
+    preferred_schedule TEXT,
+    tutoring_mode TEXT,
+    learning_goals TEXT,
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'matched', 'closed')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES users (id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS sponsor_inquiries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    organization TEXT,
+    sponsor_type TEXT NOT NULL,
+    message TEXT,
+    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'closed')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS connections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     student_id INTEGER NOT NULL,
@@ -240,10 +284,26 @@ const migrations = [
   { table: 'tutor_profiles', column: 'education', type: 'TEXT' },
   { table: 'tutor_profiles', column: 'certifications', type: 'TEXT' },
   { table: 'tutor_profiles', column: 'teaching_style', type: 'TEXT' },
+  { table: 'tutor_profiles', column: 'headline', type: 'TEXT' },
+  { table: 'tutor_profiles', column: 'motivation', type: 'TEXT' },
+  { table: 'tutor_profiles', column: 'tutoring_mode', type: 'TEXT' },
+  { table: 'tutor_profiles', column: 'service_area', type: 'TEXT' },
+  { table: 'tutor_profiles', column: 'max_students', type: 'INTEGER DEFAULT 5' },
+  { table: 'tutor_profiles', column: 'availability_notes', type: 'TEXT' },
+  { table: 'tutor_profiles', column: 'age_groups', type: 'TEXT' },
+  { table: 'tutor_profiles', column: 'public_profile_enabled', type: 'INTEGER DEFAULT 0' },
   // Student profile new columns
   { table: 'student_profiles', column: 'school', type: 'TEXT' },
   { table: 'student_profiles', column: 'learning_goals', type: 'TEXT' },
   { table: 'student_profiles', column: 'preferred_schedule', type: 'TEXT' },
+  { table: 'student_profiles', column: 'learning_style', type: 'TEXT' },
+  { table: 'student_profiles', column: 'support_needs', type: 'TEXT' },
+  { table: 'student_profiles', column: 'budget_preference', type: 'TEXT' },
+  { table: 'student_profiles', column: 'tutoring_mode', type: 'TEXT' },
+  { table: 'student_profiles', column: 'accessibility_needs', type: 'TEXT' },
+  { table: 'student_profiles', column: 'guardian_name', type: 'TEXT' },
+  { table: 'student_profiles', column: 'guardian_contact', type: 'TEXT' },
+  { table: 'student_profiles', column: 'intake_completed_at', type: 'DATETIME' },
   // Sessions new columns
   { table: 'sessions', column: 'google_event_id', type: 'TEXT' },
 ];

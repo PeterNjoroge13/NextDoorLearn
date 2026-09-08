@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Settings,
   UserRoundCheck,
+  ClipboardCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
@@ -26,9 +27,10 @@ export const Avatar = ({ name, src, size = 38 }) => (
 
 const studentNavItems = [
   { to: '/dashboard', label: 'Home', icon: Home },
+  { to: '/intake', label: 'My needs', icon: ClipboardCheck },
   { to: '/tutors', label: 'Find tutors', icon: Search },
   { to: '/messages', label: 'Messages', icon: MessageCircle },
-  { to: '/sessions', label: 'Sessions', icon: CalendarDays },
+  { to: '/sessions', label: 'Calendar', icon: CalendarDays },
   { to: '/profile', label: 'My learning', icon: Settings },
 ];
 
@@ -36,7 +38,7 @@ const tutorNavItems = [
   { to: '/dashboard', label: 'Home', icon: Home },
   { to: '/requests', label: 'Requests', icon: Inbox },
   { to: '/messages', label: 'Students', icon: UserRoundCheck },
-  { to: '/sessions', label: 'Sessions', icon: CalendarDays },
+  { to: '/sessions', label: 'Calendar', icon: CalendarDays },
   { to: '/profile?tab=availability', label: 'Availability', icon: CalendarClock },
   { to: '/profile', label: 'Profile', icon: Settings, end: true },
 ];

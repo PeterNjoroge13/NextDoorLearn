@@ -4,12 +4,14 @@ import {
   ArrowLeft,
   Bookmark,
   CalendarDays,
+  ExternalLink,
   Flag,
   GraduationCap,
   Languages,
   MapPin,
   MessageCircle,
   Star,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -94,6 +96,7 @@ const TutorProfile = () => {
   const subjects = parseList(tutor.subjects);
   const languages = parseList(tutor.languages);
   const certifications = parseList(tutor.certifications);
+  const ageGroups = parseList(tutor.age_groups);
   const availability = Array.isArray(tutor.availability) ? tutor.availability : [];
   const rating = Number(tutor.averageRating || 0);
 
@@ -116,6 +119,7 @@ const TutorProfile = () => {
                 Tutor profile
               </span>
               <h1>{tutor.name}</h1>
+              {tutor.headline ? <h2 className="profile-headline">{tutor.headline}</h2> : null}
               <p>{tutor.bio || tutor.teaching_style || 'A NextDoorLearn tutor ready to help students make progress.'}</p>
               <div className="chip-row">
                 <span className="badge badge-warning">
@@ -157,6 +161,12 @@ const TutorProfile = () => {
               <Flag size={18} />
               Report profile
             </button>
+            {tutor.public_profile_enabled ? (
+              <a className="btn btn-ghost w-full" href={`/community/tutors/${tutor.id}`} target="_blank" rel="noreferrer">
+                <ExternalLink size={18} />
+                Public profile
+              </a>
+            ) : null}
           </aside>
         </section>
 
@@ -184,6 +194,15 @@ const TutorProfile = () => {
                   {language}
                 </span>
               )) : <span className="badge">Not listed yet</span>}
+            </div>
+          </article>
+
+          <article className="card card-pad">
+            <h2>Students and format</h2>
+            <div className="chip-row" style={{ marginTop: 14 }}>
+              {ageGroups.map((group) => <span className="badge" key={group}><Users size={14} />{group}</span>)}
+              {tutor.tutoring_mode ? <span className="badge badge-blue">{tutor.tutoring_mode}</span> : null}
+              {!ageGroups.length && !tutor.tutoring_mode ? <span className="badge">Not listed yet</span> : null}
             </div>
           </article>
         </section>
@@ -225,6 +244,13 @@ const TutorProfile = () => {
             ) : null}
           </article>
         </section>
+
+        {tutor.motivation ? (
+          <section className="section card card-pad">
+            <h2>Why {tutor.name.split(' ')[0]} tutors</h2>
+            <p className="page-copy">{tutor.motivation}</p>
+          </section>
+        ) : null}
 
         <section className="section">
           <div className="section-head">

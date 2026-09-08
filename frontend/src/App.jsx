@@ -14,6 +14,10 @@ import Sessions from './pages/Sessions';
 import Admin from './pages/Admin';
 import LegalPage from './pages/LegalPage';
 import AuthUtilityPage from './pages/AuthUtilityPage';
+import TutorApplication from './pages/TutorApplication';
+import StudentIntake from './pages/StudentIntake';
+import Donate from './pages/Donate';
+import PublicTutorProfile from './pages/PublicTutorProfile';
 
 const LoadingScreen = () => (
   <div className="loading-wrap">
@@ -51,6 +55,9 @@ function App() {
         <div className="app-root">
           <Routes>
             <Route path="/" element={<Landing />} />
+            <Route path="/apply/tutor" element={<TutorApplication />} />
+            <Route path="/donate" element={<Donate />} />
+            <Route path="/community/tutors/:tutorId" element={<PublicTutorProfile />} />
             <Route 
               path="/login" 
               element={
@@ -82,6 +89,14 @@ function App() {
                   <TutorBrowse />
                 </ProtectedRoute>
               } 
+            />
+            <Route
+              path="/intake"
+              element={
+                <ProtectedRoute>
+                  <StudentIntake />
+                </ProtectedRoute>
+              }
             />
             <Route
               path="/tutors/:tutorId"

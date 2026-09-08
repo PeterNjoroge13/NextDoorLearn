@@ -116,8 +116,10 @@ const api = {
     return response.json();
   },
 
-  getTutors: async () => {
-    const response = await fetch(`${API_BASE_URL}/users/tutors`);
+  getTutors: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/users/tutors`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
     return response.json();
   },
 
@@ -126,6 +128,53 @@ const api = {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
+    });
+    return response.json();
+  },
+
+  getPublicTutorProfile: async (tutorId) => {
+    const response = await fetch(`${API_BASE_URL}/users/public/tutors/${tutorId}`);
+    return response.json();
+  },
+
+  submitTutorApplication: async (application) => {
+    const response = await fetch(`${API_BASE_URL}/community/tutor-applications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(application),
+    });
+    return response.json();
+  },
+
+  submitSponsorInquiry: async (inquiry) => {
+    const response = await fetch(`${API_BASE_URL}/community/sponsor-inquiries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(inquiry),
+    });
+    return response.json();
+  },
+
+  getMyWaitlistEntry: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/community/waitlist/me`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
+  joinWaitlist: async (details, token) => {
+    const response = await fetch(`${API_BASE_URL}/community/waitlist/me`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(details),
+    });
+    return response.json();
+  },
+
+  leaveWaitlist: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/community/waitlist/me`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` },
     });
     return response.json();
   },

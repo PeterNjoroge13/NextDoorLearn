@@ -60,7 +60,7 @@ const useDashboardData = (role) => {
       const roleResults = await Promise.allSettled(
         role === 'tutor'
           ? [api.getRequests(token), api.getMyAvailability(token)]
-          : [api.getFavorites(token), api.getTutors()]
+          : [api.getFavorites(token), api.getTutors(token)]
       );
       const rawSessionStats = valueOr(sharedResults[6], {});
 

@@ -25,6 +25,7 @@ const Landing = () => {
         <nav className="landing-nav-actions" aria-label="Welcome navigation">
           <a href="#mission">Mission</a>
           <a href="#founder">Founder</a>
+          <Link to="/donate">Sponsor</Link>
           <Link className="btn btn-ghost btn-sm" to="/login">Log in</Link>
           <Link className="btn btn-primary btn-sm" to="/signup">Sign up</Link>
         </nav>
@@ -48,6 +49,7 @@ const Landing = () => {
               <ArrowRight size={18} />
             </Link>
             <Link className="btn btn-ghost" to="/login">Log in</Link>
+            <Link className="btn btn-ghost" to="/apply/tutor">Become a tutor</Link>
           </div>
         </div>
       </section>
@@ -143,6 +145,7 @@ const Landing = () => {
             <MessageCircle size={18} />
             Log in
           </Link>
+          <Link className="btn btn-ghost" to="/donate">Sponsor access</Link>
         </div>
       </section>
     </main>

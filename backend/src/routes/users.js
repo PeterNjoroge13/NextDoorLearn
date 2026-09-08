@@ -27,12 +27,16 @@ router.get('/profile', authenticateToken, (req, res) => {
     if (user.role === 'tutor') {
       profile = db.prepare(`
         SELECT subjects, availability, hourly_rate, experience_years, 
-               education, certifications, teaching_style 
+               education, certifications, teaching_style, headline, motivation,
+               tutoring_mode, service_area, max_students, availability_notes,
+               age_groups, public_profile_enabled
         FROM tutor_profiles WHERE user_id = ?
       `).get(userId);
     } else {
       profile = db.prepare(`
-        SELECT grade_level, subjects_needed, school, learning_goals, preferred_schedule 
+        SELECT grade_level, subjects_needed, school, learning_goals, preferred_schedule,
+               learning_style, support_needs, budget_preference, tutoring_mode,
+               accessibility_needs, guardian_name, guardian_contact, intake_completed_at
         FROM student_profiles WHERE user_id = ?
       `).get(userId);
     }
@@ -103,7 +107,11 @@ router.put('/profile', authenticateToken, (req, res) => {
     // Update role-specific profile
     if (profile) {
       if (req.user.role === 'tutor') {
-        const { subjects, availability, hourly_rate, experience_years, education, certifications, teaching_style } = profile;
+        const {
+          subjects, availability, hourly_rate, experience_years, education, certifications,
+          teaching_style, headline, motivation, tutoring_mode, service_area, max_students,
+          availability_notes, age_groups, public_profile_enabled
+        } = profile;
         const updateTutorProfile = db.prepare(`
           UPDATE tutor_profiles SET 
             subjects = COALESCE(?, subjects),
@@ -112,7 +120,15 @@ router.put('/profile', authenticateToken, (req, res) => {
             experience_years = COALESCE(?, experience_years),
             education = COALESCE(?, education),
             certifications = COALESCE(?, certifications),
-            teaching_style = COALESCE(?, teaching_style)
+            teaching_style = COALESCE(?, teaching_style),
+            headline = COALESCE(?, headline),
+            motivation = COALESCE(?, motivation),
+            tutoring_mode = COALESCE(?, tutoring_mode),
+            service_area = COALESCE(?, service_area),
+            max_students = COALESCE(?, max_students),
+            availability_notes = COALESCE(?, availability_notes),
+            age_groups = COALESCE(?, age_groups),
+            public_profile_enabled = COALESCE(?, public_profile_enabled)
           WHERE user_id = ?
         `);
         updateTutorProfile.run(
@@ -121,19 +137,39 @@ router.put('/profile', authenticateToken, (req, res) => {
           hourly_rate !== undefined ? hourly_rate : null,
           experience_years !== undefined ? experience_years : null,
           education !== undefined ? education : null,
-          certifications !== undefined ? certifications : null,
+          certifications !== undefined ? JSON.stringify(Array.isArray(certifications) ? certifications : safeJsonArray(certifications)) : null,
           teaching_style !== undefined ? teaching_style : null,
+          headline !== undefined ? headline : null,
+          motivation !== undefined ? motivation : null,
+          tutoring_mode !== undefined ? tutoring_mode : null,
+          service_area !== undefined ? service_area : null,
+          max_students !== undefined ? Math.max(1, Number(max_students) || 1) : null,
+          availability_notes !== undefined ? availability_notes : null,
+          age_groups ? JSON.stringify(age_groups) : null,
+          public_profile_enabled !== undefined ? (public_profile_enabled ? 1 : 0) : null,
           userId
         );
       } else {
-        const { grade_level, subjects_needed, school, learning_goals, preferred_schedule } = profile;
+        const {
+          grade_level, subjects_needed, school, learning_goals, preferred_schedule,
+          learning_style, support_needs, budget_preference, tutoring_mode,
+          accessibility_needs, guardian_name, guardian_contact, intake_completed
+        } = profile;
         const updateStudentProfile = db.prepare(`
           UPDATE student_profiles SET 
             grade_level = COALESCE(?, grade_level),
             subjects_needed = COALESCE(?, subjects_needed),
             school = COALESCE(?, school),
             learning_goals = COALESCE(?, learning_goals),
-            preferred_schedule = COALESCE(?, preferred_schedule)
+            preferred_schedule = COALESCE(?, preferred_schedule),
+            learning_style = COALESCE(?, learning_style),
+            support_needs = COALESCE(?, support_needs),
+            budget_preference = COALESCE(?, budget_preference),
+            tutoring_mode = COALESCE(?, tutoring_mode),
+            accessibility_needs = COALESCE(?, accessibility_needs),
+            guardian_name = COALESCE(?, guardian_name),
+            guardian_contact = COALESCE(?, guardian_contact),
+            intake_completed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE intake_completed_at END
           WHERE user_id = ?
         `);
         updateStudentProfile.run(
@@ -142,6 +178,14 @@ router.put('/profile', authenticateToken, (req, res) => {
           school !== undefined ? school : null,
           learning_goals !== undefined ? learning_goals : null,
           preferred_schedule !== undefined ? preferred_schedule : null,
+          learning_style !== undefined ? learning_style : null,
+          support_needs !== undefined ? support_needs : null,
+          budget_preference !== undefined ? budget_preference : null,
+          tutoring_mode !== undefined ? tutoring_mode : null,
+          accessibility_needs !== undefined ? accessibility_needs : null,
+          guardian_name !== undefined ? guardian_name : null,
+          guardian_contact !== undefined ? guardian_contact : null,
+          intake_completed ? 1 : 0,
           userId
         );
       }
@@ -196,7 +240,7 @@ router.put('/change-password', authenticateToken, async (req, res) => {
 });
 
 // Get all tutors
-router.get('/tutors', (req, res) => {
+router.get('/tutors', authenticateToken, (req, res) => {
   try {
     const tutors = db.prepare(`
       SELECT 
@@ -212,6 +256,11 @@ router.get('/tutors', (req, res) => {
         tp.experience_years,
         tp.education,
         tp.teaching_style,
+        tp.headline,
+        tp.tutoring_mode,
+        tp.service_area,
+        tp.age_groups,
+        tp.public_profile_enabled,
         COALESCE(AVG(r.rating), 0) as averageRating,
         COUNT(r.id) as totalReviews
       FROM users u
@@ -220,7 +269,8 @@ router.get('/tutors', (req, res) => {
       WHERE u.role = 'tutor'
       GROUP BY u.id, u.name, u.bio, u.avatar_url, u.location, u.languages,
                tp.subjects, tp.availability, tp.hourly_rate, tp.experience_years, 
-               tp.education, tp.teaching_style
+               tp.education, tp.teaching_style, tp.headline, tp.tutoring_mode,
+               tp.service_area, tp.age_groups, tp.public_profile_enabled
     `).all();
 
     // Parse JSON fields and format ratings
@@ -240,6 +290,8 @@ router.get('/tutors', (req, res) => {
         subjects,
         availability: slotAvailability.length > 0 ? slotAvailability : availability,
         languages,
+        age_groups: safeJsonArray(tutor.age_groups),
+        public_profile_enabled: Boolean(tutor.public_profile_enabled),
         averageRating: Math.round(tutor.averageRating * 10) / 10,
         totalReviews: tutor.totalReviews
       };
@@ -278,6 +330,14 @@ router.get('/tutors/:tutorId', authenticateToken, (req, res) => {
         tp.education,
         tp.certifications,
         tp.teaching_style,
+        tp.headline,
+        tp.motivation,
+        tp.tutoring_mode,
+        tp.service_area,
+        tp.max_students,
+        tp.availability_notes,
+        tp.age_groups,
+        tp.public_profile_enabled,
         COALESCE(AVG(r.rating), 0) as averageRating,
         COUNT(r.id) as totalReviews
       FROM users u
@@ -311,6 +371,8 @@ router.get('/tutors/:tutorId', authenticateToken, (req, res) => {
       subjects: safeJsonArray(tutor.subjects),
       languages: safeJsonArray(tutor.languages),
       certifications: safeJsonArray(tutor.certifications),
+      age_groups: safeJsonArray(tutor.age_groups),
+      public_profile_enabled: Boolean(tutor.public_profile_enabled),
       availability: getAvailabilitySlots(tutor.id),
       averageRating: Math.round(tutor.averageRating * 10) / 10,
       totalReviews: tutor.totalReviews,
@@ -318,6 +380,49 @@ router.get('/tutors/:tutorId', authenticateToken, (req, res) => {
     });
   } catch (error) {
     console.error('Get tutor profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Public tutor pages are opt-in and intentionally exclude private contact details.
+router.get('/public/tutors/:tutorId', (req, res) => {
+  try {
+    const { tutorId } = req.params;
+    if (!isPositiveInteger(tutorId)) return res.status(400).json({ error: 'Valid tutor ID is required' });
+
+    const tutor = db.prepare(`
+      SELECT u.id, u.name, u.bio, u.avatar_url, u.languages,
+             tp.subjects, tp.hourly_rate, tp.experience_years, tp.education,
+             tp.certifications, tp.teaching_style, tp.headline, tp.motivation,
+             tp.tutoring_mode, tp.service_area, tp.age_groups,
+             COALESCE(AVG(r.rating), 0) AS averageRating, COUNT(r.id) AS totalReviews
+      FROM users u
+      JOIN tutor_profiles tp ON u.id = tp.user_id
+      LEFT JOIN reviews r ON u.id = r.tutor_id
+      WHERE u.id = ? AND u.role = 'tutor' AND u.status = 'active'
+        AND tp.public_profile_enabled = 1
+      GROUP BY u.id, tp.id
+    `).get(tutorId);
+
+    if (!tutor) return res.status(404).json({ error: 'Public tutor profile not found' });
+
+    const reviews = db.prepare(`
+      SELECT id, rating, comment, created_at
+      FROM reviews WHERE tutor_id = ? AND comment IS NOT NULL AND trim(comment) != ''
+      ORDER BY created_at DESC LIMIT 6
+    `).all(tutorId).map((review) => ({ ...review, student_name: 'NextDoorLearn student' }));
+
+    res.json({
+      ...tutor,
+      subjects: safeJsonArray(tutor.subjects),
+      languages: safeJsonArray(tutor.languages),
+      certifications: safeJsonArray(tutor.certifications),
+      age_groups: safeJsonArray(tutor.age_groups),
+      averageRating: Math.round(tutor.averageRating * 10) / 10,
+      reviews
+    });
+  } catch (error) {
+    console.error('Get public tutor profile error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -361,11 +466,12 @@ router.get('/profile-completion', authenticateToken, (req, res) => {
 
     if (role === 'tutor') {
       profile = db.prepare(`
-        SELECT subjects, hourly_rate, experience_years, education, teaching_style 
+        SELECT subjects, hourly_rate, experience_years, education, teaching_style,
+               headline, motivation, tutoring_mode, age_groups
         FROM tutor_profiles WHERE user_id = ?
       `).get(userId);
 
-      const tutorFields = ['subjects', 'hourly_rate', 'experience_years', 'education', 'teaching_style'];
+      const tutorFields = ['subjects', 'experience_years', 'education', 'teaching_style', 'headline', 'motivation', 'tutoring_mode', 'age_groups'];
       tutorFields.forEach(field => {
         totalFields++;
         if (profile && profile[field]) {
@@ -374,8 +480,8 @@ router.get('/profile-completion', authenticateToken, (req, res) => {
               const subjects = JSON.parse(profile[field]);
               if (subjects.length > 0) completedFields++;
             } catch (e) {}
-          } else if (field === 'hourly_rate') {
-            if (profile[field] > 0) completedFields++;
+          } else if (field === 'age_groups') {
+            if (safeJsonArray(profile[field]).length > 0) completedFields++;
           } else {
             completedFields++;
           }
@@ -383,11 +489,12 @@ router.get('/profile-completion', authenticateToken, (req, res) => {
       });
     } else {
       profile = db.prepare(`
-        SELECT grade_level, subjects_needed, school, learning_goals 
+        SELECT grade_level, subjects_needed, school, learning_goals, preferred_schedule,
+               learning_style, support_needs, budget_preference, tutoring_mode
         FROM student_profiles WHERE user_id = ?
       `).get(userId);
 
-      const studentFields = ['grade_level', 'subjects_needed', 'school', 'learning_goals'];
+      const studentFields = ['grade_level', 'subjects_needed', 'school', 'learning_goals', 'preferred_schedule', 'learning_style', 'support_needs', 'budget_preference', 'tutoring_mode'];
       studentFields.forEach(field => {
         totalFields++;
         if (profile && profile[field]) {

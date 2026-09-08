@@ -30,13 +30,13 @@ const TutorBrowse = () => {
   useEffect(() => {
     const fetchTutors = async () => {
       try {
-        const response = await api.getTutors();
+        const token = localStorage.getItem('token');
+        const response = await api.getTutors(token);
         if (response.error) {
           setError(response.error);
         } else {
           setTutors(Array.isArray(response) ? response : []);
         }
-        const token = localStorage.getItem('token');
         if (token && user?.role === 'student') {
           const favoritesResponse = await api.getFavorites(token);
           if (!favoritesResponse.error && Array.isArray(favoritesResponse)) {
@@ -289,8 +289,12 @@ const TutorBrowse = () => {
               })}
             </div>
           ) : (
-            <EmptyState icon={GraduationCap} title="No tutors match these filters">
-              Try widening the subject, rate, or search filters.
+            <EmptyState
+              icon={GraduationCap}
+              title="No tutors match these filters"
+              action={user?.role === 'student' ? <Link className="btn btn-primary" to="/intake">Tell us what you need</Link> : null}
+            >
+              Update your learning needs and join the waitlist so the right tutor can find you.
             </EmptyState>
           )}
         </section>

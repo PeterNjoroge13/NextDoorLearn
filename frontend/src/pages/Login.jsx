@@ -101,7 +101,7 @@ const Login = ({ initialMode = 'login' }) => {
           <p className="page-copy">
             {isLogin
               ? 'Pick up conversations, sessions, and tutor requests where you left off.'
-              : 'Tell us who you are, then build a profile students and tutors can trust.'}
+              : 'Students can create an account now. Tutors begin with a short application so the community stays trustworthy.'}
           </p>
 
           <div className="segmented" role="tablist" aria-label="Authentication mode">
@@ -137,17 +137,16 @@ const Login = ({ initialMode = 'login' }) => {
                         <span className="muted" style={{ display: 'block', fontSize: '0.82rem' }}>Find support</span>
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      className={`role-choice${formData.role === 'tutor' ? ' active' : ''}`}
-                      onClick={() => setFormData((current) => ({ ...current, role: 'tutor' }))}
+                    <Link
+                      className="role-choice"
+                      to="/apply/tutor"
                     >
                       <Users size={24} />
                       <span>
-                        <strong>Tutor</strong>
-                        <span className="muted" style={{ display: 'block', fontSize: '0.82rem' }}>Offer help</span>
+                        <strong>Tutor application</strong>
+                        <span className="muted" style={{ display: 'block', fontSize: '0.82rem' }}>Apply to offer help</span>
                       </span>
-                    </button>
+                    </Link>
                   </div>
                 </div>
               </>

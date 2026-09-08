@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { CalendarClock, Lock, Save, Settings, UserRound } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { CalendarClock, ClipboardCheck, ExternalLink, Globe2, Lock, Save, Settings, UserRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import AppShell, { Avatar, ErrorState, LoadingState } from '../components/AppShell';
@@ -37,11 +37,25 @@ const Profile = () => {
     education: '',
     certifications: '',
     teaching_style: '',
+    headline: '',
+    motivation: '',
+    tutoring_mode: 'online',
+    service_area: '',
+    max_students: 5,
+    availability_notes: '',
+    age_groups: [],
+    public_profile_enabled: false,
     grade_level: '',
     subjects_needed: [],
     school: '',
     learning_goals: '',
     preferred_schedule: '',
+    learning_style: '',
+    support_needs: '',
+    budget_preference: 'free',
+    accessibility_needs: '',
+    guardian_name: '',
+    guardian_contact: '',
     avatar_url: '',
   });
 
@@ -77,13 +91,27 @@ const Profile = () => {
           hourly_rate: response.profile?.hourly_rate || 0,
           experience_years: response.profile?.experience_years || 0,
           education: response.profile?.education || '',
-          certifications: response.profile?.certifications || '',
+          certifications: parseList(response.profile?.certifications),
           teaching_style: response.profile?.teaching_style || '',
+          headline: response.profile?.headline || '',
+          motivation: response.profile?.motivation || '',
+          tutoring_mode: response.profile?.tutoring_mode || 'online',
+          service_area: response.profile?.service_area || '',
+          max_students: response.profile?.max_students || 5,
+          availability_notes: response.profile?.availability_notes || '',
+          age_groups: parseList(response.profile?.age_groups),
+          public_profile_enabled: Boolean(response.profile?.public_profile_enabled),
           grade_level: response.profile?.grade_level || '',
           subjects_needed: parseList(response.profile?.subjects_needed),
           school: response.profile?.school || '',
           learning_goals: response.profile?.learning_goals || '',
           preferred_schedule: response.profile?.preferred_schedule || '',
+          learning_style: response.profile?.learning_style || '',
+          support_needs: response.profile?.support_needs || '',
+          budget_preference: response.profile?.budget_preference || 'free',
+          accessibility_needs: response.profile?.accessibility_needs || '',
+          guardian_name: response.profile?.guardian_name || '',
+          guardian_contact: response.profile?.guardian_contact || '',
           avatar_url: response.avatar_url || '',
         });
 
@@ -124,6 +152,14 @@ const Profile = () => {
         education: formData.education,
         certifications: formData.certifications,
         teaching_style: formData.teaching_style,
+        headline: formData.headline,
+        motivation: formData.motivation,
+        tutoring_mode: formData.tutoring_mode,
+        service_area: formData.service_area,
+        max_students: Number(formData.max_students || 1),
+        availability_notes: formData.availability_notes,
+        age_groups: formData.age_groups,
+        public_profile_enabled: formData.public_profile_enabled,
       };
     } else {
       base.profile = {
@@ -132,6 +168,13 @@ const Profile = () => {
         school: formData.school,
         learning_goals: formData.learning_goals,
         preferred_schedule: formData.preferred_schedule,
+        learning_style: formData.learning_style,
+        support_needs: formData.support_needs,
+        budget_preference: formData.budget_preference,
+        tutoring_mode: formData.tutoring_mode,
+        accessibility_needs: formData.accessibility_needs,
+        guardian_name: formData.guardian_name,
+        guardian_contact: formData.guardian_contact,
       };
     }
 
@@ -300,6 +343,10 @@ const Profile = () => {
                 {user?.role === 'tutor' ? (
                   <>
                     <div className="field">
+                      <label>Profile headline</label>
+                      <input value={formData.headline} onChange={(event) => setField('headline', event.target.value)} placeholder="Patient math tutor helping students rebuild confidence" />
+                    </div>
+                    <div className="field">
                       <label>Subjects</label>
                       <input value={formData.subjects.join(', ')} onChange={(event) => setListField('subjects', event.target.value)} placeholder="Math, Biology, SAT prep" />
                     </div>
@@ -312,15 +359,32 @@ const Profile = () => {
                         <label>Experience years</label>
                         <input type="number" min="0" value={formData.experience_years} onChange={(event) => setField('experience_years', event.target.value)} />
                       </div>
+                      <div className="field">
+                        <label>Maximum active students</label>
+                        <input type="number" min="1" max="50" value={formData.max_students} onChange={(event) => setField('max_students', event.target.value)} />
+                      </div>
                     </div>
+                    <div className="grid grid-2">
+                      <div className="field"><label>Tutoring format</label><select value={formData.tutoring_mode} onChange={(event) => setField('tutoring_mode', event.target.value)}><option value="online">Online</option><option value="in-person">In person</option><option value="hybrid">Online and in person</option></select></div>
+                      <div className="field"><label>Public service area</label><input value={formData.service_area} onChange={(event) => setField('service_area', event.target.value)} placeholder="Baltimore area or remote" /></div>
+                    </div>
+                    <div className="field"><label>Student age groups</label><input value={formData.age_groups.join(', ')} onChange={(event) => setListField('age_groups', event.target.value)} placeholder="Middle school, High school, College" /></div>
                     <div className="field">
                       <label>Teaching style</label>
                       <textarea value={formData.teaching_style} onChange={(event) => setField('teaching_style', event.target.value)} />
                     </div>
                     <div className="field">
-                      <label>Education and certifications</label>
+                      <label>Education</label>
                       <textarea value={formData.education} onChange={(event) => setField('education', event.target.value)} />
                     </div>
+                    <div className="field"><label>Certifications</label><input value={formData.certifications.join(', ')} onChange={(event) => setListField('certifications', event.target.value)} placeholder="Teaching license, CPR, subject certifications" /></div>
+                    <div className="field"><label>Why you tutor</label><textarea value={formData.motivation} onChange={(event) => setField('motivation', event.target.value)} /></div>
+                    <div className="field"><label>Availability notes</label><textarea value={formData.availability_notes} onChange={(event) => setField('availability_notes', event.target.value)} placeholder="Lead time, schedule limits, or anything students should know after connecting" /></div>
+                    <div className="profile-visibility-panel">
+                      <div><span className="stat-icon"><Globe2 size={20} /></span><div><strong>Public tutor page</strong><p>Opt in to a shareable page. Email, phone, exact location, private notes, and student identities are never shown.</p></div></div>
+                      <label className="switch"><input type="checkbox" checked={formData.public_profile_enabled} onChange={(event) => setField('public_profile_enabled', event.target.checked)} /><span /></label>
+                    </div>
+                    {formData.public_profile_enabled && user?.id ? <a className="btn btn-ghost" href={`/community/tutors/${user.id}`} target="_blank" rel="noreferrer"><ExternalLink size={17} />Preview public profile</a> : null}
                   </>
                 ) : (
                   <>
@@ -338,10 +402,20 @@ const Profile = () => {
                       <label>Subjects needed</label>
                       <input value={formData.subjects_needed.join(', ')} onChange={(event) => setListField('subjects_needed', event.target.value)} />
                     </div>
+                    <div className="grid grid-2">
+                      <div className="field"><label>Preferred format</label><select value={formData.tutoring_mode} onChange={(event) => setField('tutoring_mode', event.target.value)}><option value="online">Online</option><option value="in-person">In person</option><option value="hybrid">Either works</option></select></div>
+                      <div className="field"><label>Budget preference</label><select value={formData.budget_preference} onChange={(event) => setField('budget_preference', event.target.value)}><option value="free">Free only</option><option value="under-25">Up to $25/hour</option><option value="flexible">Flexible</option></select></div>
+                    </div>
+                    <div className="field"><label>How you learn best</label><input value={formData.learning_style} onChange={(event) => setField('learning_style', event.target.value)} placeholder="Visual examples, practice with feedback..." /></div>
+                    <div className="field"><label>Preferred schedule</label><textarea value={formData.preferred_schedule} onChange={(event) => setField('preferred_schedule', event.target.value)} /></div>
                     <div className="field">
                       <label>Learning goals</label>
                       <textarea value={formData.learning_goals} onChange={(event) => setField('learning_goals', event.target.value)} />
                     </div>
+                    <div className="field"><label>Support needs</label><textarea value={formData.support_needs} onChange={(event) => setField('support_needs', event.target.value)} placeholder="Organization, homework support, test confidence..." /></div>
+                    <div className="field"><label>Accessibility or accommodation needs</label><textarea value={formData.accessibility_needs} onChange={(event) => setField('accessibility_needs', event.target.value)} /></div>
+                    <div className="grid grid-2"><div className="field"><label>Guardian name (optional)</label><input value={formData.guardian_name} onChange={(event) => setField('guardian_name', event.target.value)} /></div><div className="field"><label>Guardian contact (optional)</label><input value={formData.guardian_contact} onChange={(event) => setField('guardian_contact', event.target.value)} /></div></div>
+                    <Link className="btn btn-ghost" to="/intake"><ClipboardCheck size={17} />Open guided learning intake</Link>
                   </>
                 )}
 

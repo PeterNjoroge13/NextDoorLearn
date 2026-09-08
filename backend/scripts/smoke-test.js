@@ -91,7 +91,7 @@ const main = async () => {
     })
   });
 
-  const tutors = await request('/users/tutors');
+  const tutors = await request('/users/tutors', { token: student.token });
   const createdTutor = tutors.find((item) => item.id === tutor.user.id);
   if (!createdTutor) {
     throw new Error('Created tutor was not returned by tutor browse endpoint');
@@ -103,6 +103,75 @@ const main = async () => {
 
   if (tutorProfile.id !== tutor.user.id || !Array.isArray(tutorProfile.subjects)) {
     throw new Error('Created tutor profile endpoint did not return expected tutor details');
+  }
+
+  await request('/users/profile', {
+    method: 'PUT',
+    token: tutor.token,
+    body: JSON.stringify({ profile: {
+      headline: 'Patient math tutor',
+      motivation: 'I want academic help to be easier to reach.',
+      tutoring_mode: 'online',
+      age_groups: ['High school'],
+      public_profile_enabled: true
+    } })
+  });
+
+  const publicTutor = await request(`/users/public/tutors/${tutor.user.id}`);
+  if (publicTutor.id !== tutor.user.id || publicTutor.email || publicTutor.phone) {
+    throw new Error('Public tutor profile did not apply the expected privacy boundary');
+  }
+
+  const application = await request('/community/tutor-applications', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Applicant Tutor',
+      email: `applicant.${unique}@example.com`,
+      location: 'Baltimore, MD',
+      subjects: ['Math'],
+      education: 'College student',
+      motivation: 'I want to volunteer as a tutor.',
+      availability: 'Saturday mornings',
+      tutoringMode: 'online',
+      hourlyRate: 0
+    })
+  });
+  if (!application.applicationId) throw new Error('Tutor application was not stored');
+
+  const sponsor = await request('/community/sponsor-inquiries', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Community Sponsor',
+      email: `sponsor.${unique}@example.com`,
+      sponsorType: 'Sponsor tutoring',
+      message: 'Interested in supporting student access.'
+    })
+  });
+  if (!sponsor.inquiryId) throw new Error('Sponsor inquiry was not stored');
+
+  await request('/users/profile', {
+    method: 'PUT',
+    token: student.token,
+    body: JSON.stringify({ profile: {
+      grade_level: 'College',
+      subjects_needed: ['Math'],
+      learning_style: 'Work through examples',
+      budget_preference: 'free',
+      tutoring_mode: 'online',
+      intake_completed: true
+    } })
+  });
+
+  const waitlist = await request('/community/waitlist/me', {
+    method: 'PUT',
+    token: student.token,
+    body: JSON.stringify({ subjects: ['Math'], gradeLevel: 'College', budgetPreference: 'free', tutoringMode: 'online' })
+  });
+  if (waitlist.status !== 'open') throw new Error('Student waitlist entry was not created');
+
+  const savedWaitlist = await request('/community/waitlist/me', { token: student.token });
+  if (!Array.isArray(savedWaitlist.subjects) || !savedWaitlist.subjects.includes('Math')) {
+    throw new Error('Student waitlist entry was not returned');
   }
 
   await request(`/favorites/${tutor.user.id}`, {

@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, CheckCircle2, Clock, Plus, Trash2, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, List, Plus, Trash2, X } from 'lucide-react';
 import api from '../services/api';
 import AppShell, { EmptyState, ErrorState, LoadingState } from '../components/AppShell';
 
@@ -10,12 +10,16 @@ const statusClass = {
   no_show: 'badge-warning',
 };
 
+const dateKey = (year, month, day) => `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
 const Sessions = () => {
   const [sessions, setSessions] = useState([]);
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [view, setView] = useState('calendar');
   const [filters, setFilters] = useState({ status: '', month: new Date().getMonth() + 1, year: new Date().getFullYear() });
   const [formData, setFormData] = useState({
     connectionId: '',
@@ -91,6 +95,26 @@ const Sessions = () => {
     }
   };
 
+  const calendarDays = useMemo(() => {
+    const year = Number(filters.year);
+    const month = Number(filters.month);
+    const firstDay = new Date(year, month - 1, 1).getDay();
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const previousMonthDays = new Date(year, month - 1, 0).getDate();
+    return Array.from({ length: 42 }, (_, index) => {
+      const rawDay = index - firstDay + 1;
+      if (rawDay < 1) return { day: previousMonthDays + rawDay, outside: true, key: `previous-${index}`, sessions: [] };
+      if (rawDay > daysInMonth) return { day: rawDay - daysInMonth, outside: true, key: `next-${index}`, sessions: [] };
+      const key = dateKey(year, month, rawDay);
+      return { day: rawDay, outside: false, key, sessions: sessions.filter((session) => session.scheduled_date === key) };
+    });
+  }, [filters.month, filters.year, sessions]);
+
+  const changeMonth = (offset) => {
+    const next = new Date(Number(filters.year), Number(filters.month) - 1 + offset, 1);
+    setFilters((current) => ({ ...current, month: next.getMonth() + 1, year: next.getFullYear() }));
+  };
+
   if (loading) return <LoadingState label="Loading sessions..." />;
   if (error) return <ErrorState message={error} action={<button className="btn btn-primary" onClick={fetchSessions}>Try again</button>} />;
 
@@ -112,10 +136,15 @@ const Sessions = () => {
           </button>
         </section>
 
-        <section className="card toolbar" style={{ gridTemplateColumns: 'repeat(3, minmax(150px, 1fr))' }}>
+        <section className="card calendar-toolbar">
+          <div className="calendar-navigation">
+            <button className="icon-button" type="button" onClick={() => changeMonth(-1)} aria-label="Previous month"><ChevronLeft size={19} /></button>
+            <strong>{monthNames[Number(filters.month) - 1]} {filters.year}</strong>
+            <button className="icon-button" type="button" onClick={() => changeMonth(1)} aria-label="Next month"><ChevronRight size={19} /></button>
+          </div>
           <div className="field">
-            <label>Status</label>
-            <select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+            <label htmlFor="session-status">Status</label>
+            <select id="session-status" value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
               <option value="">All statuses</option>
               <option value="scheduled">Scheduled</option>
               <option value="completed">Completed</option>
@@ -123,28 +152,29 @@ const Sessions = () => {
               <option value="no_show">No-show</option>
             </select>
           </div>
-          <div className="field">
-            <label>Month</label>
-            <input
-              type="number"
-              min="1"
-              max="12"
-              value={filters.month}
-              onChange={(event) => setFilters((current) => ({ ...current, month: event.target.value }))}
-            />
-          </div>
-          <div className="field">
-            <label>Year</label>
-            <input
-              type="number"
-              value={filters.year}
-              onChange={(event) => setFilters((current) => ({ ...current, year: event.target.value }))}
-            />
+          <div className="segmented calendar-view-toggle">
+            <button type="button" className={view === 'calendar' ? 'active' : ''} onClick={() => setView('calendar')}><CalendarDays size={16} />Month</button>
+            <button type="button" className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}><List size={16} />List</button>
           </div>
         </section>
 
         <section className="section">
-          {sessions.length ? (
+          {view === 'calendar' ? (
+            <div className="calendar-shell card">
+              <div className="calendar-weekdays">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}</div>
+              <div className="calendar-grid">
+                {calendarDays.map((day) => (
+                  <div className={`calendar-day${day.outside ? ' outside' : ''}`} key={day.key}>
+                    <span className="calendar-day-number">{day.day}</span>
+                    <div className="calendar-events">
+                      {day.sessions.slice(0, 3).map((session) => <button type="button" className={`calendar-event ${statusClass[session.status] || ''}`} key={session.id} onClick={() => setView('list')} title={`${session.start_time} ${session.title}`}><strong>{session.start_time?.slice(0, 5)}</strong><span>{session.title || session.subject || 'Tutoring'}</span></button>)}
+                      {day.sessions.length > 3 ? <button className="calendar-more" type="button" onClick={() => setView('list')}>+{day.sessions.length - 3} more</button> : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : sessions.length ? (
             <div className="grid">
               {sessions.map((session) => (
                 <article className="card card-pad" key={session.id}>
