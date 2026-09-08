@@ -639,6 +639,31 @@ const api = {
     });
     return response.json();
   },
+
+  getAdminTutorApplications: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/tutor-applications`, { headers: { 'Authorization': `Bearer ${token}` } });
+    return response.json();
+  },
+
+  updateAdminTutorApplication: async (applicationId, status, token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/tutor-applications/${applicationId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ status }) });
+    return response.json();
+  },
+
+  getAdminSponsorInquiries: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/sponsor-inquiries`, { headers: { 'Authorization': `Bearer ${token}` } });
+    return response.json();
+  },
+
+  updateAdminSponsorInquiry: async (inquiryId, status, token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/sponsor-inquiries/${inquiryId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ status }) });
+    return response.json();
+  },
+
+  getAdminWaitlist: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/waitlist`, { headers: { 'Authorization': `Bearer ${token}` } });
+    return response.json();
+  },
 };
 
 export default api;

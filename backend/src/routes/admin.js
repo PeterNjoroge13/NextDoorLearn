@@ -112,4 +112,80 @@ router.patch('/reports/:id', (req, res) => {
   }
 });
 
+router.get('/tutor-applications', (req, res) => {
+  try {
+    const applications = db.prepare(`
+      SELECT id, name, email, phone, location, subjects, education, experience,
+             motivation, availability, tutoring_mode, hourly_rate, status, created_at, updated_at
+      FROM tutor_applications ORDER BY created_at DESC LIMIT 250
+    `).all().map((application) => ({
+      ...application,
+      subjects: JSON.parse(application.subjects || '[]')
+    }));
+    res.json(applications);
+  } catch (error) {
+    console.error('Admin tutor applications error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.patch('/tutor-applications/:id', (req, res) => {
+  try {
+    const applicationId = req.params.id;
+    const status = sanitizeText(req.body.status, 40);
+    if (!isPositiveInteger(applicationId)) return res.status(400).json({ error: 'Valid application ID is required' });
+    if (!['pending', 'reviewing', 'approved', 'declined'].includes(status)) return res.status(400).json({ error: 'Invalid application status' });
+
+    const result = db.prepare('UPDATE tutor_applications SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, applicationId);
+    if (!result.changes) return res.status(404).json({ error: 'Application not found' });
+    res.json(db.prepare('SELECT id, status, updated_at FROM tutor_applications WHERE id = ?').get(applicationId));
+  } catch (error) {
+    console.error('Admin tutor application update error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/sponsor-inquiries', (req, res) => {
+  try {
+    res.json(db.prepare(`
+      SELECT id, name, email, organization, sponsor_type, message, status, created_at
+      FROM sponsor_inquiries ORDER BY created_at DESC LIMIT 250
+    `).all());
+  } catch (error) {
+    console.error('Admin sponsor inquiries error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.patch('/sponsor-inquiries/:id', (req, res) => {
+  try {
+    const inquiryId = req.params.id;
+    const status = sanitizeText(req.body.status, 40);
+    if (!isPositiveInteger(inquiryId)) return res.status(400).json({ error: 'Valid inquiry ID is required' });
+    if (!['new', 'contacted', 'closed'].includes(status)) return res.status(400).json({ error: 'Invalid inquiry status' });
+
+    const result = db.prepare('UPDATE sponsor_inquiries SET status = ? WHERE id = ?').run(status, inquiryId);
+    if (!result.changes) return res.status(404).json({ error: 'Inquiry not found' });
+    res.json(db.prepare('SELECT id, status FROM sponsor_inquiries WHERE id = ?').get(inquiryId));
+  } catch (error) {
+    console.error('Admin sponsor inquiry update error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/waitlist', (req, res) => {
+  try {
+    const entries = db.prepare(`
+      SELECT w.*, u.name, u.email
+      FROM student_waitlist_entries w JOIN users u ON u.id = w.student_id
+      ORDER BY CASE w.status WHEN 'open' THEN 0 ELSE 1 END, w.updated_at DESC
+      LIMIT 250
+    `).all().map((entry) => ({ ...entry, subjects: JSON.parse(entry.subjects || '[]') }));
+    res.json(entries);
+  } catch (error) {
+    console.error('Admin waitlist error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
