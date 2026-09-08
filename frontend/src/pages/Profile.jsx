@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { CalendarClock, Lock, Save, Settings, UserRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -11,11 +12,13 @@ const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 
 const Profile = () => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(requestedTab === 'availability' && user?.role === 'tutor' ? 'availability' : 'profile');
   const [completion, setCompletion] = useState(0);
   const [availabilitySlots, setAvailabilitySlots] = useState([]);
   const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -41,6 +44,15 @@ const Profile = () => {
     preferred_schedule: '',
     avatar_url: '',
   });
+
+  useEffect(() => {
+    const nextTab = requestedTab === 'availability' && user?.role === 'tutor'
+      ? 'availability'
+      : requestedTab === 'security'
+        ? 'security'
+        : 'profile';
+    setActiveTab(nextTab);
+  }, [requestedTab, user?.role]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -143,6 +155,12 @@ const Profile = () => {
     }));
   };
 
+  const selectTab = (tab) => {
+    setActiveTab(tab);
+    if (tab === 'profile') setSearchParams({});
+    else setSearchParams({ tab });
+  };
+
   const handleSave = async (event) => {
     event.preventDefault();
     setSaving(true);
@@ -218,15 +236,15 @@ const Profile = () => {
               <div className="progress"><span style={{ width: `${completion}%` }} /></div>
             </div>
             <div className="tabs" style={{ marginTop: 20 }}>
-              <button className={`tab${activeTab === 'profile' ? ' active' : ''}`} onClick={() => setActiveTab('profile')} type="button">
+              <button className={`tab${activeTab === 'profile' ? ' active' : ''}`} onClick={() => selectTab('profile')} type="button">
                 <UserRound size={15} /> Profile
               </button>
               {user?.role === 'tutor' ? (
-                <button className={`tab${activeTab === 'availability' ? ' active' : ''}`} onClick={() => setActiveTab('availability')} type="button">
+                <button className={`tab${activeTab === 'availability' ? ' active' : ''}`} onClick={() => selectTab('availability')} type="button">
                   <CalendarClock size={15} /> Availability
                 </button>
               ) : null}
-              <button className={`tab${activeTab === 'security' ? ' active' : ''}`} onClick={() => setActiveTab('security')} type="button">
+              <button className={`tab${activeTab === 'security' ? ' active' : ''}`} onClick={() => selectTab('security')} type="button">
                 <Lock size={15} /> Security
               </button>
             </div>

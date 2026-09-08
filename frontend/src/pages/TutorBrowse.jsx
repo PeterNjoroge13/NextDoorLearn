@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Bookmark, BookOpenCheck, Filter, Flag, GraduationCap, MapPin, MessageCircle, Search, SlidersHorizontal, Star } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -10,6 +10,7 @@ import { parseList } from '../utils/format';
 const subjectOptions = ['Math', 'Science', 'English', 'History', 'Computer Science', 'Physics', 'Chemistry'];
 
 const TutorBrowse = () => {
+  const [searchParams] = useSearchParams();
   const [tutors, setTutors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -18,7 +19,7 @@ const TutorBrowse = () => {
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [reportUser, setReportUser] = useState(null);
   const [filters, setFilters] = useState({
-    search: '',
+    search: searchParams.get('search') || '',
     subject: '',
     maxRate: '100',
     minRating: '0',
@@ -250,25 +251,27 @@ const TutorBrowse = () => {
                       <Link className="btn btn-ghost" to={`/tutors/${tutor.id}`}>
                         View profile
                       </Link>
-                      <button
-                        type="button"
-                        className={`btn ${requested ? 'btn-ghost' : 'btn-primary'}`}
-                        style={{ flex: '1 1 180px' }}
-                        onClick={() => handleRequestConnection(tutor.id)}
-                        disabled={requested}
-                      >
-                        <MessageCircle size={18} />
-                        {requested ? 'Request sent' : 'Request help'}
-                      </button>
                       {user?.role === 'student' ? (
-                        <button
-                          type="button"
-                          className={`btn ${favoriteIds.has(tutor.id) ? 'btn-secondary' : 'btn-ghost'}`}
-                          onClick={() => handleToggleFavorite(tutor.id)}
-                        >
-                          <Bookmark size={18} />
-                          {favoriteIds.has(tutor.id) ? 'Saved' : 'Save'}
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className={`btn ${requested ? 'btn-ghost' : 'btn-primary'}`}
+                            style={{ flex: '1 1 180px' }}
+                            onClick={() => handleRequestConnection(tutor.id)}
+                            disabled={requested}
+                          >
+                            <MessageCircle size={18} />
+                            {requested ? 'Request sent' : 'Request help'}
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn ${favoriteIds.has(tutor.id) ? 'btn-secondary' : 'btn-ghost'}`}
+                            onClick={() => handleToggleFavorite(tutor.id)}
+                          >
+                            <Bookmark size={18} />
+                            {favoriteIds.has(tutor.id) ? 'Saved' : 'Save'}
+                          </button>
+                        </>
                       ) : null}
                       {user ? (
                         <button

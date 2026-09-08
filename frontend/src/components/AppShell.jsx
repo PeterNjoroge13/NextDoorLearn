@@ -1,7 +1,8 @@
 import React from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookOpen,
+  CalendarClock,
   CalendarDays,
   GraduationCap,
   Home,
@@ -11,7 +12,7 @@ import {
   Search,
   ShieldCheck,
   Settings,
-  Users,
+  UserRoundCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
@@ -23,14 +24,21 @@ export const Avatar = ({ name, src, size = 38 }) => (
   </span>
 );
 
-const navItems = [
+const studentNavItems = [
   { to: '/dashboard', label: 'Home', icon: Home },
-  { to: '/tutors', label: 'Tutors', icon: Search },
+  { to: '/tutors', label: 'Find tutors', icon: Search },
   { to: '/messages', label: 'Messages', icon: MessageCircle },
   { to: '/sessions', label: 'Sessions', icon: CalendarDays },
-  { to: '/requests', label: 'Requests', icon: Inbox, tutorsOnly: true },
-  { to: '/admin', label: 'Admin', icon: ShieldCheck, adminOnly: true },
-  { to: '/profile', label: 'Profile', icon: Settings },
+  { to: '/profile', label: 'My learning', icon: Settings },
+];
+
+const tutorNavItems = [
+  { to: '/dashboard', label: 'Home', icon: Home },
+  { to: '/requests', label: 'Requests', icon: Inbox },
+  { to: '/messages', label: 'Students', icon: UserRoundCheck },
+  { to: '/sessions', label: 'Sessions', icon: CalendarDays },
+  { to: '/profile?tab=availability', label: 'Availability', icon: CalendarClock },
+  { to: '/profile', label: 'Profile', icon: Settings, end: true },
 ];
 
 const isAdminUser = (user) => {
@@ -42,12 +50,17 @@ const isAdminUser = (user) => {
 };
 
 const AppShell = ({ children }) => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const navItems = [...(user?.role === 'tutor' ? tutorNavItems : studentNavItems)];
+
+  if (isAdminUser(user)) {
+    navItems.push({ to: '/admin', label: 'Admin', icon: ShieldCheck });
+  }
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    logout();
     navigate('/login', { replace: true });
   };
 
@@ -63,11 +76,18 @@ const AppShell = ({ children }) => {
           </Link>
 
           <nav className="nav-links" aria-label="Main navigation">
-            {navItems
-              .filter((item) => !item.tutorsOnly || user?.role === 'tutor')
-              .filter((item) => !item.adminOnly || isAdminUser(user))
-              .map(({ to, label, icon }) => (
-                <NavLink key={to} to={to} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+            {navItems.map(({ to, label, icon, end }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  className={({ isActive }) => {
+                    const targetsAvailability = to.includes('tab=availability');
+                    const isAvailability = location.pathname === '/profile' && location.search.includes('tab=availability');
+                    const active = targetsAvailability ? isAvailability : isActive && !(to === '/profile' && isAvailability);
+                    return `nav-link${active ? ' active' : ''}`;
+                  }}
+                >
                   {React.createElement(icon, { size: 17 })}
                   {label}
                 </NavLink>

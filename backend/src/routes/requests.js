@@ -8,23 +8,31 @@ const router = express.Router();
 router.get('/', authenticateToken, (req, res) => {
   try {
     const userId = req.user.userId;
+
+    if (req.user.role !== 'tutor') {
+      return res.status(403).json({ error: 'Only tutors can view connection requests' });
+    }
     
     // Get all pending connection requests for this tutor
     const requests = db.prepare(`
       SELECT 
         c.id,
+        c.student_id,
         c.status,
         c.created_at,
         u.name as student_name,
         u.email as student_email,
         u.bio as student_bio,
+        u.avatar_url,
         sp.grade_level,
-        sp.subjects_needed
+        sp.subjects_needed,
+        sp.learning_goals,
+        sp.preferred_schedule
       FROM connections c
       JOIN users u ON c.student_id = u.id
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
-      WHERE c.tutor_id = ? AND c.status = 'pending'
-      ORDER BY c.created_at DESC
+      WHERE c.tutor_id = ?
+      ORDER BY CASE c.status WHEN 'pending' THEN 0 WHEN 'accepted' THEN 1 ELSE 2 END, c.created_at DESC
     `).all(userId);
 
     res.json(requests);
@@ -106,4 +114,3 @@ router.get('/connections', authenticateToken, (req, res) => {
 });
 
 module.exports = router;
-
