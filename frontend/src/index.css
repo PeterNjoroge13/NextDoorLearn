@@ -588,7 +588,7 @@ textarea:focus {
 }
 
 .topbar-inner {
-  width: min(var(--container), calc(100% - 40px));
+  width: min(1320px, calc(100% - 40px));
   min-height: 76px;
   margin: 0 auto;
   display: flex;
@@ -621,6 +621,7 @@ textarea:focus {
   color: var(--muted);
   font-size: 0.9rem;
   font-weight: 750;
+  white-space: nowrap;
 }
 
 .nav-link.active,
@@ -1435,25 +1436,25 @@ textarea:focus {
 .dashboard-tone-gold .dashboard-stat-icon { background: var(--gold-soft); color: var(--gold); }
 .dashboard-tone-coral .dashboard-stat-icon { background: var(--coral-soft); color: var(--coral); }
 
-.dashboard-stat strong,
-.dashboard-stat span,
-.dashboard-stat small {
+.dashboard-stat > div > strong,
+.dashboard-stat > div > span,
+.dashboard-stat > div > small {
   display: block;
 }
 
-.dashboard-stat strong {
+.dashboard-stat > div > strong {
   font-size: 1.7rem;
   line-height: 1;
 }
 
-.dashboard-stat span {
+.dashboard-stat > div > span {
   margin-top: 5px;
   color: var(--ink);
   font-size: 0.82rem;
   font-weight: 750;
 }
 
-.dashboard-stat small {
+.dashboard-stat > div > small {
   margin-top: 3px;
   overflow: hidden;
   color: var(--muted);
