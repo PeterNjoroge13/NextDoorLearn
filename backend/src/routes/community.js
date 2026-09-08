@@ -2,22 +2,34 @@ const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { isValidEmail, sanitizeText } = require('../utils/validation');
+const { createImageUpload, handleSingleImage, isSupportedImage, removeUploadedFile } = require('../utils/imageUpload');
 
 const router = express.Router();
+const applicationPhotoUpload = createImageUpload({ directory: 'tutor-applications', prefix: 'tutor-application', maxSizeMb: 5 });
 
 const list = (value, maxItems = 12) => {
   const items = Array.isArray(value) ? value : String(value || '').split(',');
   return items.map((item) => sanitizeText(item, 80)).filter(Boolean).slice(0, maxItems);
 };
 
-router.post('/tutor-applications', (req, res) => {
+router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'profilePicture'), (req, res) => {
   try {
     const name = sanitizeText(req.body.name, 120);
     const email = String(req.body.email || '').trim().toLowerCase();
     const subjects = list(req.body.subjects);
     const motivation = sanitizeText(req.body.motivation, 2000);
 
+    if (!req.file) {
+      return res.status(400).json({ error: 'A profile picture is required' });
+    }
+
+    if (!isSupportedImage(req.file.path)) {
+      removeUploadedFile(req.file.path);
+      return res.status(400).json({ error: 'The selected file is not a valid JPG, PNG, or WebP image' });
+    }
+
     if (!name || !isValidEmail(email) || subjects.length === 0 || !motivation) {
+      removeUploadedFile(req.file.path);
       return res.status(400).json({ error: 'Name, valid email, subjects, and motivation are required' });
     }
 
@@ -28,13 +40,16 @@ router.post('/tutor-applications', (req, res) => {
     `).get(email);
 
     if (existing) {
+      removeUploadedFile(req.file.path);
       return res.status(409).json({ error: 'An application for this email is already under review' });
     }
 
+    const profilePictureUrl = `/uploads/tutor-applications/${req.file.filename}`;
+
     const result = db.prepare(`
       INSERT INTO tutor_applications
-        (name, email, phone, location, subjects, education, experience, motivation, availability, tutoring_mode, hourly_rate)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (name, email, phone, location, subjects, education, experience, motivation, availability, tutoring_mode, hourly_rate, profile_picture_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       name,
       email,
@@ -46,7 +61,8 @@ router.post('/tutor-applications', (req, res) => {
       motivation,
       sanitizeText(req.body.availability, 800),
       sanitizeText(req.body.tutoringMode, 40),
-      Math.max(0, Number(req.body.hourlyRate) || 0)
+      Math.max(0, Number(req.body.hourlyRate) || 0),
+      profilePictureUrl
     );
 
     res.status(201).json({
@@ -54,6 +70,7 @@ router.post('/tutor-applications', (req, res) => {
       message: 'Application received. We will contact you after it is reviewed.'
     });
   } catch (error) {
+    removeUploadedFile(req.file?.path);
     console.error('Tutor application error:', error);
     res.status(500).json({ error: 'Unable to submit tutor application' });
   }

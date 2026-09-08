@@ -1,66 +1,41 @@
 const express = require('express');
-const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const { authenticateToken } = require('../middleware/auth');
 const db = require('../db/database');
+const { createImageUpload, handleSingleImage, isSupportedImage, removeUploadedFile, uploadRoot } = require('../utils/imageUpload');
 
 const router = express.Router();
-const uploadRoot = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
-
-// Configure multer for avatar uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = path.join(uploadRoot, 'avatars');
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, `avatar-${req.user.userId}-${uniqueSuffix}${path.extname(file.originalname)}`);
-  }
-});
-
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit - will be compressed on frontend
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|webp/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    
-    if (mimetype && extname) {
-      return cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed!'));
-    }
-  }
-});
+const upload = createImageUpload({ directory: 'avatars', prefix: (req) => `avatar-${req.user.userId}`, maxSizeMb: 10 });
 
 // Upload avatar endpoint
-router.post('/avatar', authenticateToken, upload.single('avatar'), async (req, res) => {
+router.post('/avatar', authenticateToken, handleSingleImage(upload, 'avatar'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: 'No file uploaded' });
+      return res.status(400).json({ error: 'Choose a profile picture to upload' });
+    }
+
+    if (!isSupportedImage(req.file.path)) {
+      removeUploadedFile(req.file.path);
+      return res.status(400).json({ error: 'The selected file is not a valid JPG, PNG, or WebP image' });
     }
 
     const avatarUrl = `/uploads/avatars/${req.file.filename}`;
-    
-    // Update user's avatar in database
+    const previous = db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.userId);
     const updateUser = db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?');
     updateUser.run(avatarUrl, req.user.userId);
+
+    if (previous?.avatar_url?.startsWith('/uploads/avatars/')) {
+      removeUploadedFile(path.join(uploadRoot, previous.avatar_url.replace(/^\/uploads\//, '')));
+    }
 
     res.json({ 
       message: 'Avatar uploaded successfully',
       avatarUrl: avatarUrl
     });
   } catch (error) {
+    removeUploadedFile(req.file?.path);
     console.error('Avatar upload error:', error);
-    res.status(500).json({ message: 'Error uploading avatar' });
+    res.status(500).json({ error: 'Error uploading profile picture' });
   }
 });
 
@@ -73,9 +48,7 @@ router.delete('/avatar', authenticateToken, async (req, res) => {
     if (user && user.avatar_url) {
       // Remove the file from filesystem
       const filePath = path.join(uploadRoot, user.avatar_url.replace(/^\/uploads\//, ''));
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+      removeUploadedFile(filePath);
       
       // Update database to remove avatar URL
       const updateUser = db.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?');
@@ -85,7 +58,7 @@ router.delete('/avatar', authenticateToken, async (req, res) => {
     res.json({ message: 'Avatar removed successfully' });
   } catch (error) {
     console.error('Avatar removal error:', error);
-    res.status(500).json({ message: 'Error removing avatar' });
+    res.status(500).json({ error: 'Error removing profile picture' });
   }
 });
 

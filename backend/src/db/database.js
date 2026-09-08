@@ -107,6 +107,7 @@ db.exec(`
     availability TEXT,
     tutoring_mode TEXT,
     hourly_rate REAL DEFAULT 0,
+    profile_picture_url TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'reviewing', 'approved', 'declined')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -292,6 +293,7 @@ const migrations = [
   { table: 'tutor_profiles', column: 'availability_notes', type: 'TEXT' },
   { table: 'tutor_profiles', column: 'age_groups', type: 'TEXT' },
   { table: 'tutor_profiles', column: 'public_profile_enabled', type: 'INTEGER DEFAULT 0' },
+  { table: 'tutor_applications', column: 'profile_picture_url', type: 'TEXT' },
   // Student profile new columns
   { table: 'student_profiles', column: 'school', type: 'TEXT' },
   { table: 'student_profiles', column: 'learning_goals', type: 'TEXT' },

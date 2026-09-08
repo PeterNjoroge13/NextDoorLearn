@@ -115,7 +115,7 @@ router.patch('/reports/:id', (req, res) => {
 router.get('/tutor-applications', (req, res) => {
   try {
     const applications = db.prepare(`
-      SELECT id, name, email, phone, location, subjects, education, experience,
+      SELECT id, name, email, phone, location, profile_picture_url, subjects, education, experience,
              motivation, availability, tutoring_mode, hourly_rate, status, created_at, updated_at
       FROM tutor_applications ORDER BY created_at DESC LIMIT 250
     `).all().map((application) => ({

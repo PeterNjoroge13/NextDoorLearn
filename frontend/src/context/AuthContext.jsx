@@ -42,10 +42,19 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
   };
 
+  const updateUser = (updates) => {
+    setUser((current) => {
+      const next = { ...current, ...updates };
+      localStorage.setItem('user', JSON.stringify(next));
+      return next;
+    });
+  };
+
   const value = {
     user,
     login,
     logout,
+    updateUser,
     loading
   };
 

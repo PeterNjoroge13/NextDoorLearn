@@ -1,10 +1,11 @@
 const API_BASE_URL = process.env.SMOKE_API_URL || 'http://localhost:3001/api';
 
 const request = async (path, options = {}) => {
+  const isFormData = options.body instanceof FormData;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
       ...(options.headers || {})
     }
@@ -16,6 +17,10 @@ const request = async (path, options = {}) => {
   }
   return body;
 };
+
+const testImage = () => new Blob([
+  Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
+], { type: 'image/png' });
 
 const main = async () => {
   const unique = Date.now();
@@ -122,19 +127,28 @@ const main = async () => {
     throw new Error('Public tutor profile did not apply the expected privacy boundary');
   }
 
+  const avatarForm = new FormData();
+  avatarForm.append('avatar', testImage(), 'avatar.png');
+  const avatarUpload = await request('/upload/avatar', { method: 'POST', token: student.token, body: avatarForm });
+  if (!avatarUpload.avatarUrl) throw new Error('Profile picture was not uploaded');
+
+  const profileWithAvatar = await request('/users/profile', { token: student.token });
+  if (profileWithAvatar.avatar_url !== avatarUpload.avatarUrl) throw new Error('Uploaded profile picture was not saved');
+
+  const applicationForm = new FormData();
+  applicationForm.append('name', 'Applicant Tutor');
+  applicationForm.append('email', `applicant.${unique}@example.com`);
+  applicationForm.append('location', 'Baltimore, MD');
+  applicationForm.append('subjects', 'Math');
+  applicationForm.append('education', 'College student');
+  applicationForm.append('motivation', 'I want to volunteer as a tutor.');
+  applicationForm.append('availability', 'Saturday mornings');
+  applicationForm.append('tutoringMode', 'online');
+  applicationForm.append('hourlyRate', '0');
+  applicationForm.append('profilePicture', testImage(), 'profile.png');
   const application = await request('/community/tutor-applications', {
     method: 'POST',
-    body: JSON.stringify({
-      name: 'Applicant Tutor',
-      email: `applicant.${unique}@example.com`,
-      location: 'Baltimore, MD',
-      subjects: ['Math'],
-      education: 'College student',
-      motivation: 'I want to volunteer as a tutor.',
-      availability: 'Saturday mornings',
-      tutoringMode: 'online',
-      hourlyRate: 0
-    })
+    body: applicationForm
   });
   if (!application.applicationId) throw new Error('Tutor application was not stored');
 

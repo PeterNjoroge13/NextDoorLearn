@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { CalendarClock, ClipboardCheck, ExternalLink, Globe2, Lock, Save, Settings, UserRound } from 'lucide-react';
+import { CalendarClock, Camera, ClipboardCheck, ExternalLink, Globe2, Lock, Save, Settings, Trash2, UserRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import AppShell, { Avatar, ErrorState, LoadingState } from '../components/AppShell';
@@ -11,11 +11,12 @@ const timezones = ['America/New_York', 'America/Chicago', 'America/Denver', 'Ame
 const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const Profile = () => {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState(requestedTab === 'availability' && user?.role === 'tutor' ? 'availability' : 'profile');
@@ -232,6 +233,58 @@ const Profile = () => {
     if (!response.error) setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
   };
 
+  const handleAvatarUpload = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setMessage('Choose a JPG, PNG, or WebP image.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setMessage('Profile pictures must be 10 MB or smaller.');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    const previewUrl = URL.createObjectURL(file);
+    setField('avatar_url', previewUrl);
+    try {
+      const response = await api.uploadProfilePicture(file, localStorage.getItem('token'));
+      if (response.error) {
+        setMessage(response.error);
+        setField('avatar_url', user?.avatar_url || '');
+      } else {
+        setField('avatar_url', response.avatarUrl);
+        updateUser({ avatar_url: response.avatarUrl });
+        setMessage('Profile picture updated.');
+      }
+    } catch {
+      setField('avatar_url', user?.avatar_url || '');
+      setMessage('Profile picture could not be uploaded.');
+    } finally {
+      URL.revokeObjectURL(previewUrl);
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    setUploadingAvatar(true);
+    try {
+      const response = await api.deleteProfilePicture(localStorage.getItem('token'));
+      if (response.error) setMessage(response.error);
+      else {
+        setField('avatar_url', '');
+        updateUser({ avatar_url: '' });
+        setMessage('Profile picture removed.');
+      }
+    } catch {
+      setMessage('Profile picture could not be removed.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const addAvailabilitySlot = () => {
     setAvailabilitySlots((current) => [...current, { dayOfWeek: 1, startTime: '09:00', endTime: '10:00', timezone: formData.timezone }]);
   };
@@ -270,6 +323,11 @@ const Profile = () => {
                 <h2 style={{ fontSize: '1.15rem' }}>{formData.name || user?.name}</h2>
                 <p className="muted" style={{ textTransform: 'capitalize' }}>{user?.role}</p>
               </div>
+            </div>
+            <div className="profile-photo-actions">
+              <label className="btn btn-ghost btn-sm" htmlFor="profile-picture"><Camera size={16} />{uploadingAvatar ? 'Uploading...' : 'Change photo'}</label>
+              <input className="sr-only" id="profile-picture" type="file" accept="image/jpeg,image/png,image/webp" onChange={handleAvatarUpload} disabled={uploadingAvatar} />
+              {formData.avatar_url ? <button className="icon-button" type="button" onClick={handleAvatarRemove} disabled={uploadingAvatar} aria-label="Remove profile picture" title="Remove profile picture"><Trash2 size={16} /></button> : null}
             </div>
             <div style={{ marginTop: 20 }}>
               <div className="list-item" style={{ padding: 0, border: 0, marginBottom: 8 }}>

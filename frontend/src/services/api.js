@@ -138,10 +138,34 @@ const api = {
   },
 
   submitTutorApplication: async (application) => {
+    const formData = new FormData();
+    Object.entries(application).forEach(([key, value]) => {
+      if (key === 'profilePicture' && value) formData.append(key, value);
+      else if (Array.isArray(value)) formData.append(key, value.join(','));
+      else formData.append(key, value ?? '');
+    });
     const response = await fetch(`${API_BASE_URL}/community/tutor-applications`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(application),
+      body: formData,
+    });
+    return response.json();
+  },
+
+  uploadProfilePicture: async (file, token) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const response = await fetch(`${API_BASE_URL}/upload/avatar`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData,
+    });
+    return response.json();
+  },
+
+  deleteProfilePicture: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/upload/avatar`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` },
     });
     return response.json();
   },

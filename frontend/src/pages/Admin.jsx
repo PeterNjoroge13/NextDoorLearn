@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ClipboardList, HandCoins, ShieldCheck, UserCheck, Users } from 'lucide-react';
 import api from '../services/api';
-import AppShell, { EmptyState, ErrorState, LoadingState } from '../components/AppShell';
+import AppShell, { Avatar, EmptyState, ErrorState, LoadingState } from '../components/AppShell';
 
 const reportStatuses = ['open', 'reviewing', 'resolved', 'dismissed'];
 const applicationStatuses = ['pending', 'reviewing', 'approved', 'declined'];
@@ -163,7 +163,33 @@ const Admin = () => {
           </div>
 
           {activeTab === 'applications' ? (
-            applications.length ? <div className="admin-list">{applications.map((application) => <article className="card card-pad admin-row" key={application.id}><div><div className="button-row"><span className={`badge ${application.status === 'approved' ? 'badge-success' : application.status === 'declined' ? 'badge-error' : 'badge-warning'}`}>{application.status}</span>{application.subjects.map((subject) => <span className="badge" key={subject}>{subject}</span>)}</div><h2>{application.name}</h2><p className="muted">{application.email} · {application.location || 'Location not provided'} · {application.tutoring_mode || 'Format flexible'}</p><p className="page-copy"><strong>Motivation:</strong> {application.motivation}</p><p className="page-copy"><strong>Background:</strong> {application.education || application.experience || 'Not provided'}</p><p className="muted">Availability: {application.availability || 'Not provided'} · {Number(application.hourly_rate || 0) === 0 ? 'Volunteer' : `$${application.hourly_rate}/hr`}</p></div><div className="admin-actions"><select value={application.status} onChange={(event) => handleUpdateApplication(application.id, event.target.value)}>{applicationStatuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></div></article>)}</div> : <EmptyState icon={CheckCircle2} title="No tutor applications">New applicants will appear here for review.</EmptyState>
+            applications.length ? (
+              <div className="admin-list">
+                {applications.map((application) => (
+                  <article className="card card-pad admin-row" key={application.id}>
+                    <div>
+                      <div className="button-row">
+                        <span className={`badge ${application.status === 'approved' ? 'badge-success' : application.status === 'declined' ? 'badge-error' : 'badge-warning'}`}>{application.status}</span>
+                        {application.subjects.map((subject) => <span className="badge" key={subject}>{subject}</span>)}
+                      </div>
+                      <div className="admin-applicant">
+                        <Avatar name={application.name} src={application.profile_picture_url} size={58} />
+                        <h2>{application.name}</h2>
+                      </div>
+                      <p className="muted">{application.email} · {application.location || 'Location not provided'} · {application.tutoring_mode || 'Format flexible'}</p>
+                      <p className="page-copy"><strong>Motivation:</strong> {application.motivation}</p>
+                      <p className="page-copy"><strong>Background:</strong> {application.education || application.experience || 'Not provided'}</p>
+                      <p className="muted">Availability: {application.availability || 'Not provided'} · {Number(application.hourly_rate || 0) === 0 ? 'Volunteer' : `$${application.hourly_rate}/hr`}</p>
+                    </div>
+                    <div className="admin-actions">
+                      <select value={application.status} onChange={(event) => handleUpdateApplication(application.id, event.target.value)}>
+                        {applicationStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                      </select>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : <EmptyState icon={CheckCircle2} title="No tutor applications">New applicants will appear here for review.</EmptyState>
           ) : activeTab === 'waitlist' ? (
             waitlist.length ? <div className="admin-list">{waitlist.map((entry) => <article className="card card-pad admin-row" key={entry.id}><div><div className="button-row"><span className={`badge ${entry.status === 'open' ? 'badge-warning' : 'badge-success'}`}>{entry.status}</span>{entry.subjects.map((subject) => <span className="badge badge-primary" key={subject}>{subject}</span>)}</div><h2>{entry.name}</h2><p className="muted">{entry.email} · {entry.grade_level || 'Grade not listed'} · {entry.budget_preference || 'Budget flexible'} · {entry.tutoring_mode || 'Any format'}</p><p className="page-copy">{entry.learning_goals || 'No learning goal provided.'}</p><p className="muted">Preferred schedule: {entry.preferred_schedule || 'Not listed'}</p></div></article>)}</div> : <EmptyState icon={CheckCircle2} title="No students waiting">Unmatched students will appear here.</EmptyState>
           ) : activeTab === 'sponsors' ? (

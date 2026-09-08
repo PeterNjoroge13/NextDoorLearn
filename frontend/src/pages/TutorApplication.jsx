@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, GraduationCap, HeartHandshake, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, Camera, CheckCircle2, GraduationCap, HeartHandshake, ShieldCheck } from 'lucide-react';
 import api from '../services/api';
 
 const steps = ['About you', 'Experience', 'Commitment'];
@@ -9,17 +9,34 @@ const TutorApplication = () => {
   const [step, setStep] = useState(0);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const [photoPreview, setPhotoPreview] = useState('');
   const [form, setForm] = useState({
-    name: '', email: '', phone: '', location: '', subjects: '', education: '',
+    name: '', email: '', phone: '', location: '', profilePicture: null, subjects: '', education: '',
     experience: '', motivation: '', availability: '', tutoringMode: 'online', hourlyRate: 0,
   });
 
   const field = (name, value) => setForm((current) => ({ ...current, [name]: value }));
+  useEffect(() => () => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+  }, [photoPreview]);
   const next = () => {
     setError('');
-    if (step === 0 && (!form.name || !form.email || !form.location)) return setError('Please complete your name, email, and location.');
+    if (step === 0 && (!form.name || !form.email || !form.location || !form.profilePicture)) return setError('Please complete your name, email, location, and profile picture.');
     if (step === 1 && (!form.subjects || !form.education)) return setError('Please share your subjects and education or relevant training.');
     setStep((current) => Math.min(2, current + 1));
+  };
+
+  const selectPhoto = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      setError('Choose a JPG, PNG, or WebP image no larger than 5 MB.');
+      event.target.value = '';
+      return;
+    }
+    setPhotoPreview(URL.createObjectURL(file));
+    field('profilePicture', file);
+    setError('');
   };
 
   const submit = async (event) => {
@@ -81,6 +98,15 @@ const TutorApplication = () => {
               <div><span className="eyebrow">Step 1</span><h2>Tell us about yourself</h2><p className="muted">Use contact details you check regularly.</p></div>
               <div className="grid grid-2"><div className="field"><label>Full name</label><input value={form.name} onChange={(e) => field('name', e.target.value)} required /></div><div className="field"><label>Email</label><input type="email" value={form.email} onChange={(e) => field('email', e.target.value)} required /></div></div>
               <div className="grid grid-2"><div className="field"><label>Phone</label><input type="tel" value={form.phone} onChange={(e) => field('phone', e.target.value)} /></div><div className="field"><label>City and state</label><input value={form.location} onChange={(e) => field('location', e.target.value)} required /></div></div>
+              <div className="application-photo-field">
+                <div className="application-photo-preview">{photoPreview ? <img src={photoPreview} alt="Profile preview" /> : <Camera size={28} />}</div>
+                <div>
+                  <label htmlFor="application-photo">Profile picture <span aria-hidden="true">*</span></label>
+                  <p>Use a clear, current photo of yourself. JPG, PNG, or WebP up to 5 MB.</p>
+                  <label className="btn btn-ghost btn-sm" htmlFor="application-photo"><Camera size={16} />{photoPreview ? 'Choose a different photo' : 'Choose photo'}</label>
+                  <input className="sr-only" id="application-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={selectPhoto} required />
+                </div>
+              </div>
             </> : null}
             {step === 1 ? <>
               <div><span className="eyebrow">Step 2</span><h2>What can you teach?</h2><p className="muted">Specific subjects make student matching more useful.</p></div>
