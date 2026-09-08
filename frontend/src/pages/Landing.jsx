@@ -11,11 +11,8 @@ import {
   Sparkles,
   Users,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 
 const Landing = () => {
-  const { user } = useAuth();
-
   return (
     <main className="landing-page">
       <header className="landing-nav">
@@ -28,14 +25,8 @@ const Landing = () => {
         <nav className="landing-nav-actions" aria-label="Welcome navigation">
           <a href="#mission">Mission</a>
           <a href="#founder">Founder</a>
-          {user ? (
-            <Link className="btn btn-primary btn-sm" to="/dashboard">Dashboard</Link>
-          ) : (
-            <>
-              <Link className="btn btn-ghost btn-sm" to="/login">Log in</Link>
-              <Link className="btn btn-primary btn-sm" to="/signup">Sign up</Link>
-            </>
-          )}
+          <Link className="btn btn-ghost btn-sm" to="/login">Log in</Link>
+          <Link className="btn btn-primary btn-sm" to="/signup">Sign up</Link>
         </nav>
       </header>
 

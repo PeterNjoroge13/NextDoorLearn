@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, GraduationCap, HeartHandshake, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api, { isApiConfiguredForProduction } from '../services/api';
@@ -16,6 +16,7 @@ const Login = ({ initialMode = 'login' }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { login } = useAuth();
+  const navigate = useNavigate();
 
   const handleChange = (event) => {
     setFormData((current) => ({
@@ -43,6 +44,7 @@ const Login = ({ initialMode = 'login' }) => {
         setError(response.error);
       } else {
         login(response.user, response.token);
+        navigate('/dashboard', { replace: true });
       }
     } catch {
       setError('We could not reach NextDoorLearn. Please try again.');

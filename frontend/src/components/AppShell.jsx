@@ -107,6 +107,7 @@ const AppShell = ({ children }) => {
             </div>
             <button className="btn btn-ghost btn-sm" type="button" onClick={handleLogout} aria-label="Sign out">
               <LogOut size={16} />
+              <span>Log out</span>
             </button>
           </div>
         </div>

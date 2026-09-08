@@ -35,13 +35,13 @@ const ProtectedRoute = ({ children }) => {
 };
 
 const PublicRoute = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { loading } = useAuth();
   
   if (loading) {
     return <LoadingScreen />;
   }
   
-  return user ? <Navigate to="/dashboard" /> : children;
+  return children;
 };
 
 function App() {
