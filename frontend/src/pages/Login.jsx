@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { BookOpen, GraduationCap, HeartHandshake, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api, { isApiConfiguredForProduction } from '../services/api';
 
-const Login = () => {
-  const [isLogin, setIsLogin] = useState(true);
+const Login = ({ initialMode = 'login' }) => {
+  const [isLogin, setIsLogin] = useState(initialMode !== 'signup');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -53,37 +54,37 @@ const Login = () => {
   return (
     <main className="auth-page">
       <section className="auth-story">
-        <div className="auth-brand">
+        <Link to="/" className="auth-brand" aria-label="NextDoorLearn welcome page">
           <span className="brand-mark">
             <BookOpen size={22} />
           </span>
           NextDoorLearn
-        </div>
+        </Link>
 
         <div>
           <span className="eyebrow">
             <HeartHandshake size={15} />
-            Community tutoring
+            Mission-first tutoring
           </span>
-          <h1>Find the right help, right nearby.</h1>
+          <h1>Connect with help that should have always been within reach.</h1>
           <p>
-            NextDoorLearn connects students with tutors and mentors who can make homework, tests,
-            and big learning goals feel less overwhelming.
+            Students can request affordable support. Tutors can volunteer or offer low-cost help.
+            Together, NextDoorLearn keeps learning personal, local, and accessible.
           </p>
         </div>
 
         <div className="auth-metrics">
           <div className="auth-metric">
             <strong>1:1</strong>
-            <span>student and tutor connections</span>
+            <span>student and tutor support</span>
           </div>
           <div className="auth-metric">
             <strong>Fast</strong>
-            <span>requests, messages, and sessions</span>
+            <span>matching, messaging, and sessions</span>
           </div>
           <div className="auth-metric">
             <strong>Local</strong>
-            <span>support built around community</span>
+            <span>built for underserved students</span>
           </div>
         </div>
       </section>
@@ -187,6 +188,7 @@ const Login = () => {
           </form>
 
           <div className="chip-row" style={{ justifyContent: 'center', marginTop: 22 }}>
+            <Link className="badge" to="/">Welcome page</Link>
             <a className="badge" href="/forgot-password">Forgot password</a>
             <a className="badge" href="/privacy">Privacy</a>
             <a className="badge" href="/terms">Terms</a>

@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ErrorBoundary from './components/ErrorBoundary';
+import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import TutorBrowse from './pages/TutorBrowse';
@@ -49,13 +50,22 @@ function App() {
       <Router>
         <div className="app-root">
           <Routes>
+            <Route path="/" element={<Landing />} />
             <Route 
               path="/login" 
               element={
                 <PublicRoute>
-                  <Login />
+                  <Login initialMode="login" />
                 </PublicRoute>
               } 
+            />
+            <Route
+              path="/signup"
+              element={
+                <PublicRoute>
+                  <Login initialMode="signup" />
+                </PublicRoute>
+              }
             />
             <Route 
               path="/dashboard" 
@@ -130,7 +140,7 @@ function App() {
             <Route path="/forgot-password" element={<AuthUtilityPage mode="forgot" />} />
             <Route path="/reset-password" element={<AuthUtilityPage mode="reset" />} />
             <Route path="/verify-email" element={<AuthUtilityPage mode="verify" />} />
-            <Route path="/" element={<Navigate to="/dashboard" />} />
+            <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </div>
       </Router>
