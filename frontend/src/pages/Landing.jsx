@@ -96,8 +96,9 @@ const Landing = () => {
       </section>
 
       <section className="landing-split" id="founder">
-        <div className="founder-portrait" aria-hidden="true">
-          <div>
+        <div className="founder-portrait">
+          <img src="/images/peter-njoroge-headshot.jpeg" alt="Peter Njoroge" />
+          <div className="founder-portrait-caption">
             <span>Built from lived experience</span>
             <strong>Baltimore to computer science</strong>
           </div>
@@ -113,16 +114,19 @@ const Landing = () => {
             <a href="https://www.linkedin.com/in/peter-njoroge13" target="_blank" rel="noreferrer">
               Peter Njoroge
             </a>
-            . I am a college student, and through my computer science degree I have
-            first-hand experience with how much the right tutor can change a hard
-            class from isolating to possible.
+            . I am a college student studying computer science, and I know what it
+            feels like to hit a class that makes you question whether you belong.
+            The right tutor can turn that kind of class from isolating to possible,
+            but I have also felt the other side: needing help and not being able to
+            access it because tutoring costs too much.
           </p>
           <p>
-            I also grew up in Baltimore, where I have spent my life seeing how the
-            education gap affects students, families, confidence, and opportunity.
-            NextDoorLearn comes from that combination: needing help myself, seeing
-            how uneven access can be, and wanting to build a platform that makes
-            support feel close, human, and reachable.
+            I grew up in Baltimore, and I have seen how the education gap shows up
+            in real life: in students, families, confidence, and opportunity. I am
+            building NextDoorLearn because I want education to be one of the
+            foundations of the communities I grew up in. This platform comes from
+            needing help myself, seeing how uneven access can be, and believing
+            support should feel close, human, and reachable.
           </p>
         </div>
       </section>
