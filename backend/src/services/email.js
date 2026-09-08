@@ -3,8 +3,10 @@ const sendEmail = async ({ to, subject, text, html }) => {
   const from = process.env.EMAIL_FROM;
 
   if (!apiKey || !from) {
+    const message = `[email:skipped] Email provider is not configured. To: ${to}; Subject: ${subject}`;
     if (process.env.NODE_ENV === 'production') {
-      throw new Error('Email provider is not configured');
+      console.warn(message);
+      return { id: 'email-skipped', skipped: true };
     }
     console.log(`[email:dev] To: ${to}`);
     console.log(`[email:dev] Subject: ${subject}`);
