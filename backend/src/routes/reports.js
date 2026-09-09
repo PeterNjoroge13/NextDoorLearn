@@ -5,7 +5,7 @@ const { isPositiveInteger, sanitizeText } = require('../utils/validation');
 
 const router = express.Router();
 
-router.post('/', authenticateToken, (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const reporterId = req.user.userId;
     const reportedUserId = req.body.reportedUserId;
@@ -20,12 +20,12 @@ router.post('/', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'You cannot report your own account' });
     }
 
-    const reportedUser = db.prepare('SELECT id FROM users WHERE id = ?').get(reportedUserId);
+    const reportedUser = await db.prepare('SELECT id FROM users WHERE id = ?').get(reportedUserId);
     if (!reportedUser) {
       return res.status(404).json({ error: 'Reported user not found' });
     }
 
-    const result = db.prepare(`
+    const result = await db.prepare(`
       INSERT INTO user_reports (reporter_id, reported_user_id, reason, details)
       VALUES (?, ?, ?, ?)
     `).run(reporterId, reportedUserId, reason, details);

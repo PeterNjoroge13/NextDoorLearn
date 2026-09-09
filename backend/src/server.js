@@ -131,9 +131,9 @@ app.use('/api/community', communityRoutes);
 app.use('/api/progress', progressRoutes);
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   try {
-    db.prepare('SELECT 1 as ok').get();
+    await db.prepare('SELECT 1 as ok').get();
     res.json({
       status: 'ok',
       message: 'NextDoorLearn API is running',
@@ -155,6 +155,16 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+const startServer = async () => {
+  try {
+    await db.initialize();
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT} with ${db.dialect}`);
+    });
+  } catch (error) {
+    console.error('Database initialization failed:', error);
+    process.exit(1);
+  }
+};
+
+startServer();

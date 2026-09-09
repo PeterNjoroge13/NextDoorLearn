@@ -5,13 +5,13 @@ const { isPositiveInteger } = require('../utils/validation');
 
 const router = express.Router();
 
-router.get('/', authenticateToken, (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'student') {
       return res.status(403).json({ error: 'Only students can manage favorite tutors' });
     }
 
-    const favorites = db.prepare(`
+    const favorites = await db.prepare(`
       SELECT 
         f.id as favorite_id,
         f.created_at as favorited_at,
@@ -48,7 +48,7 @@ router.get('/', authenticateToken, (req, res) => {
   }
 });
 
-router.post('/:tutorId', authenticateToken, (req, res) => {
+router.post('/:tutorId', authenticateToken, async (req, res) => {
   try {
     const tutorId = req.params.tutorId;
 
@@ -60,12 +60,12 @@ router.post('/:tutorId', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Valid tutor ID is required' });
     }
 
-    const tutor = db.prepare("SELECT id FROM users WHERE id = ? AND role = 'tutor'").get(tutorId);
+    const tutor = await db.prepare("SELECT id FROM users WHERE id = ? AND role = 'tutor'").get(tutorId);
     if (!tutor) {
       return res.status(404).json({ error: 'Tutor not found' });
     }
 
-    db.prepare(`
+    await db.prepare(`
       INSERT OR IGNORE INTO favorites (student_id, tutor_id)
       VALUES (?, ?)
     `).run(req.user.userId, tutorId);
@@ -77,7 +77,7 @@ router.post('/:tutorId', authenticateToken, (req, res) => {
   }
 });
 
-router.delete('/:tutorId', authenticateToken, (req, res) => {
+router.delete('/:tutorId', authenticateToken, async (req, res) => {
   try {
     const tutorId = req.params.tutorId;
 
@@ -89,7 +89,7 @@ router.delete('/:tutorId', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Valid tutor ID is required' });
     }
 
-    db.prepare(`
+    await db.prepare(`
       DELETE FROM favorites
       WHERE student_id = ? AND tutor_id = ?
     `).run(req.user.userId, tutorId);

@@ -6,9 +6,9 @@ NextDoorLearn is a tutoring and mentorship platform for connecting students with
 
 - Frontend: React 19 + Vite
 - Backend: Node.js + Express
-- Database: SQLite for local/beta use
+- Database: PostgreSQL (Neon) in production, SQLite fallback for local development
 - Authentication: JWT + bcrypt
-- Hosting target: Vercel frontend + Railway backend
+- Hosting: Vercel frontend + Render backend + Neon PostgreSQL
 
 ## Requirements
 
@@ -59,16 +59,15 @@ Local URLs:
 
 ## Deployment
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for Vercel and Railway setup.
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for the Vercel, Render, and Neon setup.
 
 Useful production env vars:
 
 ```env
 JWT_SECRET=use-a-long-random-secret
 FRONTEND_URL=https://your-vercel-app.vercel.app
-VITE_API_URL=https://your-railway-api.up.railway.app/api
-DATABASE_PATH=/data/nextdoorlearn.db
-UPLOAD_DIR=/data/uploads
+DATABASE_URL=postgresql://user:password@host/database?sslmode=require
+VITE_API_URL=https://nextdoorlearn-backend.onrender.com/api
 ```
 
 See [PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md) before beta launch.
@@ -76,6 +75,6 @@ See [PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md) before beta launch.
 ## Notes
 
 - `node_modules`, local SQLite files, and uploaded avatars are intentionally ignored.
-- SQLite is acceptable for a small beta with a Railway volume, but PostgreSQL is the recommended next database step.
+- The backend uses SQLite when `DATABASE_URL` is absent and PostgreSQL when it is present.
+- The production schema is created automatically and safely with `CREATE TABLE IF NOT EXISTS` statements.
 - Local filesystem uploads should move to object storage before a larger public launch.
-

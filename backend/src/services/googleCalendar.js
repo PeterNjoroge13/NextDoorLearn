@@ -18,14 +18,14 @@ const getOAuthClient = () => {
 
 const hasGoogleConfig = () => !!getOAuthClient();
 
-const getGoogleIntegration = (userId) => db.prepare(`
+const getGoogleIntegration = async (userId) => await db.prepare(`
   SELECT *
   FROM user_google_integrations
   WHERE user_id = ? AND provider = ?
 `).get(userId, GOOGLE_PROVIDER);
 
-const upsertGoogleIntegration = (userId, payload = {}) => {
-  const existing = getGoogleIntegration(userId);
+const upsertGoogleIntegration = async (userId, payload = {}) => {
+  const existing = await getGoogleIntegration(userId);
 
   const updateData = {
     accessToken: payload.accessToken ?? existing?.access_token ?? null,
@@ -36,7 +36,7 @@ const upsertGoogleIntegration = (userId, payload = {}) => {
   };
 
   if (existing) {
-    db.prepare(`
+    await db.prepare(`
       UPDATE user_google_integrations
       SET access_token = ?, refresh_token = ?, token_expiry = ?, calendar_id = ?, sync_enabled = ?, updated_at = CURRENT_TIMESTAMP
       WHERE user_id = ? AND provider = ?
@@ -52,7 +52,7 @@ const upsertGoogleIntegration = (userId, payload = {}) => {
     return getGoogleIntegration(userId);
   }
 
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO user_google_integrations (
       user_id, provider, access_token, refresh_token, token_expiry, calendar_id, sync_enabled
     ) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -69,8 +69,8 @@ const upsertGoogleIntegration = (userId, payload = {}) => {
   return getGoogleIntegration(userId);
 };
 
-const disconnectGoogleIntegration = (userId) => {
-  db.prepare(`
+const disconnectGoogleIntegration = async (userId) => {
+  await db.prepare(`
     DELETE FROM user_google_integrations
     WHERE user_id = ? AND provider = ?
   `).run(userId, GOOGLE_PROVIDER);
@@ -105,7 +105,7 @@ const exchangeCodeForTokens = async (code) => {
 };
 
 const getAuthorizedCalendarClient = async (userId) => {
-  const integration = getGoogleIntegration(userId);
+  const integration = await getGoogleIntegration(userId);
   if (!integration || !integration.sync_enabled || !integration.access_token) {
     return null;
   }
@@ -121,9 +121,9 @@ const getAuthorizedCalendarClient = async (userId) => {
     expiry_date: integration.token_expiry ? new Date(integration.token_expiry).getTime() : undefined
   });
 
-  oauth2Client.on('tokens', (tokens) => {
+  oauth2Client.on('tokens', async (tokens) => {
     if (tokens.access_token || tokens.refresh_token) {
-      upsertGoogleIntegration(userId, {
+      await upsertGoogleIntegration(userId, {
         accessToken: tokens.access_token || integration.access_token,
         refreshToken: tokens.refresh_token || integration.refresh_token,
         tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : integration.token_expiry,
@@ -139,7 +139,11 @@ const getAuthorizedCalendarClient = async (userId) => {
   };
 };
 
-const toDateTime = (date, time) => `${date}T${time}:00`;
+const toDateTime = (date, time) => {
+  const datePart = date instanceof Date ? date.toISOString().slice(0, 10) : String(date).slice(0, 10);
+  const timePart = String(time).slice(0, 5);
+  return `${datePart}T${timePart}:00`;
+};
 
 const buildEventPayload = (session, timezone = null) => ({
   summary: session.title,
@@ -150,14 +154,14 @@ const buildEventPayload = (session, timezone = null) => ({
   end: { dateTime: toDateTime(session.scheduled_date, session.end_time), timeZone: timezone || 'UTC' }
 });
 
-const getSessionGoogleEvent = (sessionId, userId) => db.prepare(`
+const getSessionGoogleEvent = async (sessionId, userId) => await db.prepare(`
   SELECT event_id
   FROM session_google_events
   WHERE session_id = ? AND user_id = ? AND provider = ?
 `).get(sessionId, userId, GOOGLE_PROVIDER);
 
-const upsertSessionGoogleEvent = (sessionId, userId, eventId) => {
-  db.prepare(`
+const upsertSessionGoogleEvent = async (sessionId, userId, eventId) => {
+  await db.prepare(`
     INSERT INTO session_google_events (session_id, user_id, provider, event_id)
     VALUES (?, ?, ?, ?)
     ON CONFLICT(session_id, user_id, provider)
@@ -165,8 +169,8 @@ const upsertSessionGoogleEvent = (sessionId, userId, eventId) => {
   `).run(sessionId, userId, GOOGLE_PROVIDER, eventId);
 };
 
-const deleteSessionGoogleEvents = (sessionId) => {
-  db.prepare('DELETE FROM session_google_events WHERE session_id = ?').run(sessionId);
+const deleteSessionGoogleEvents = async (sessionId) => {
+  await db.prepare('DELETE FROM session_google_events WHERE session_id = ?').run(sessionId);
 };
 
 const syncSessionToGoogle = async (session, action = 'upsert') => {
@@ -186,10 +190,10 @@ const syncSessionToGoogle = async (session, action = 'upsert') => {
         continue;
       }
 
-      const timezoneRecord = db.prepare('SELECT timezone FROM users WHERE id = ?').get(participant.userId);
+      const timezoneRecord = await db.prepare('SELECT timezone FROM users WHERE id = ?').get(participant.userId);
       const eventPayload = buildEventPayload(session, timezoneRecord?.timezone || null);
       const calendarId = participant.client.integration.calendar_id || 'primary';
-      const existingEvent = getSessionGoogleEvent(session.id, participant.userId);
+      const existingEvent = await getSessionGoogleEvent(session.id, participant.userId);
 
       if (action === 'delete') {
         if (existingEvent?.event_id) {
@@ -213,16 +217,16 @@ const syncSessionToGoogle = async (session, action = 'upsert') => {
           requestBody: eventPayload
         });
         if (created?.data?.id) {
-          upsertSessionGoogleEvent(session.id, participant.userId, created.data.id);
+          await upsertSessionGoogleEvent(session.id, participant.userId, created.data.id);
           if (participant.userId === session.tutor_id) {
-            db.prepare('UPDATE sessions SET google_event_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+            await db.prepare('UPDATE sessions SET google_event_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
               .run(created.data.id, session.id);
           }
         }
       }
     }
     if (action === 'delete') {
-      deleteSessionGoogleEvents(session.id);
+      await deleteSessionGoogleEvents(session.id);
     }
   } catch (error) {
     console.error('Google Calendar sync warning:', error.message || error);

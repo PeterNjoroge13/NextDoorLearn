@@ -75,8 +75,8 @@ const normalizeSlots = (slots = [], timezone = null) => {
   return { slots: normalized };
 };
 
-const getAvailabilitySlots = (tutorId) => {
-  const tableSlots = db.prepare(`
+const getAvailabilitySlots = async (tutorId) => {
+  const tableSlots = await db.prepare(`
     SELECT day_of_week, start_time, end_time, timezone
     FROM tutor_availability_slots
     WHERE tutor_id = ? AND is_active = 1
@@ -86,13 +86,13 @@ const getAvailabilitySlots = (tutorId) => {
   if (tableSlots.length > 0) {
     return tableSlots.map((slot) => ({
       dayOfWeek: slot.day_of_week,
-      startTime: slot.start_time,
-      endTime: slot.end_time,
+      startTime: String(slot.start_time).slice(0, 5),
+      endTime: String(slot.end_time).slice(0, 5),
       timezone: slot.timezone || null
     }));
   }
 
-  const legacy = db.prepare('SELECT availability FROM tutor_profiles WHERE user_id = ?').get(tutorId);
+  const legacy = await db.prepare('SELECT availability FROM tutor_profiles WHERE user_id = ?').get(tutorId);
   if (!legacy || !legacy.availability) {
     return [];
   }
@@ -134,9 +134,9 @@ const getAvailabilitySlots = (tutorId) => {
   }
 };
 
-const isTimeRangeWithinAvailability = (tutorId, scheduledDate, startTime, endTime) => {
+const isTimeRangeWithinAvailability = async (tutorId, scheduledDate, startTime, endTime) => {
   const dayOfWeek = getDayOfWeekFromDate(scheduledDate);
-  const slots = getAvailabilitySlots(tutorId);
+  const slots = await getAvailabilitySlots(tutorId);
   const startMinutes = timeToMinutes(startTime);
   const endMinutes = timeToMinutes(endTime);
 

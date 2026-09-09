@@ -6,7 +6,7 @@ const { createNotification } = require('./notifications');
 const router = express.Router();
 
 // Create a review (students only)
-router.post('/', authenticateToken, (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const studentId = req.user.userId;
     
@@ -28,13 +28,13 @@ router.post('/', authenticateToken, (req, res) => {
     }
 
     // Check if tutor exists
-    const tutor = db.prepare('SELECT id, role FROM users WHERE id = ? AND role = ?').get(tutorId, 'tutor');
+    const tutor = await db.prepare('SELECT id, role FROM users WHERE id = ? AND role = ?').get(tutorId, 'tutor');
     if (!tutor) {
       return res.status(404).json({ error: 'Tutor not found' });
     }
 
     // Check if student has a connection with this tutor
-    const connection = db.prepare(`
+    const connection = await db.prepare(`
       SELECT id FROM connections 
       WHERE student_id = ? AND tutor_id = ? AND status = 'accepted'
     `).get(studentId, tutorId);
@@ -44,18 +44,18 @@ router.post('/', authenticateToken, (req, res) => {
     }
 
     // Check if review already exists
-    const existingReview = db.prepare(`
+    const existingReview = await db.prepare(`
       SELECT id FROM reviews WHERE tutor_id = ? AND student_id = ?
     `).get(tutorId, studentId);
 
     if (existingReview) {
       // Update existing review
-      const updateReview = db.prepare(`
+      const updateReview = await db.prepare(`
         UPDATE reviews 
         SET rating = ?, comment = ?, session_id = ?, updated_at = CURRENT_TIMESTAMP
         WHERE tutor_id = ? AND student_id = ?
       `);
-      updateReview.run(rating, comment || null, sessionId || null, tutorId, studentId);
+      await updateReview.run(rating, comment || null, sessionId || null, tutorId, studentId);
       
       return res.json({ 
         message: 'Review updated successfully',
@@ -71,15 +71,15 @@ router.post('/', authenticateToken, (req, res) => {
     }
 
     // Create new review
-    const insertReview = db.prepare(`
+    const insertReview = await db.prepare(`
       INSERT INTO reviews (tutor_id, student_id, rating, comment, session_id)
       VALUES (?, ?, ?, ?, ?)
     `);
-    const result = insertReview.run(tutorId, studentId, rating, comment || null, sessionId || null);
+    const result = await insertReview.run(tutorId, studentId, rating, comment || null, sessionId || null);
 
     // Notify tutor of new review
     const stars = '⭐'.repeat(rating);
-    createNotification(
+    await createNotification(
       tutorId,
       'review',
       'New review received!',
@@ -106,11 +106,11 @@ router.post('/', authenticateToken, (req, res) => {
 });
 
 // Get reviews for a tutor
-router.get('/tutor/:tutorId', (req, res) => {
+router.get('/tutor/:tutorId', async (req, res) => {
   try {
     const { tutorId } = req.params;
 
-    const reviews = db.prepare(`
+    const reviews = await db.prepare(`
       SELECT 
         r.id,
         r.rating,
@@ -135,11 +135,11 @@ router.get('/tutor/:tutorId', (req, res) => {
 });
 
 // Get average rating for a tutor
-router.get('/tutor/:tutorId/average', (req, res) => {
+router.get('/tutor/:tutorId/average', async (req, res) => {
   try {
     const { tutorId } = req.params;
 
-    const result = db.prepare(`
+    const result = await db.prepare(`
       SELECT 
         COALESCE(AVG(rating), 0) as averageRating,
         COUNT(*) as totalReviews
@@ -158,12 +158,12 @@ router.get('/tutor/:tutorId/average', (req, res) => {
 });
 
 // Get user's review for a tutor (if they've reviewed)
-router.get('/tutor/:tutorId/my-review', authenticateToken, (req, res) => {
+router.get('/tutor/:tutorId/my-review', authenticateToken, async (req, res) => {
   try {
     const { tutorId } = req.params;
     const studentId = req.user.userId;
 
-    const review = db.prepare(`
+    const review = await db.prepare(`
       SELECT * FROM reviews
       WHERE tutor_id = ? AND student_id = ?
     `).get(tutorId, studentId);
@@ -180,19 +180,19 @@ router.get('/tutor/:tutorId/my-review', authenticateToken, (req, res) => {
 });
 
 // Delete a review (student can delete their own review)
-router.delete('/:reviewId', authenticateToken, (req, res) => {
+router.delete('/:reviewId', authenticateToken, async (req, res) => {
   try {
     const { reviewId } = req.params;
     const userId = req.user.userId;
 
     // Check if review exists and belongs to user
-    const review = db.prepare('SELECT * FROM reviews WHERE id = ? AND student_id = ?').get(reviewId, userId);
+    const review = await db.prepare('SELECT * FROM reviews WHERE id = ? AND student_id = ?').get(reviewId, userId);
     
     if (!review) {
       return res.status(404).json({ error: 'Review not found or you do not have permission to delete it' });
     }
 
-    db.prepare('DELETE FROM reviews WHERE id = ?').run(reviewId);
+    await db.prepare('DELETE FROM reviews WHERE id = ?').run(reviewId);
 
     res.json({ message: 'Review deleted successfully' });
   } catch (error) {
@@ -202,4 +202,3 @@ router.delete('/:reviewId', authenticateToken, (req, res) => {
 });
 
 module.exports = router;
-

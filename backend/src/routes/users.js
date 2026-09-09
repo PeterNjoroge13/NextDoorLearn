@@ -8,11 +8,11 @@ const { isPositiveInteger } = require('../utils/validation');
 const router = express.Router();
 
 // Get user profile
-router.get('/profile', authenticateToken, (req, res) => {
+router.get('/profile', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     
-    const user = db.prepare(`
+    const user = await db.prepare(`
       SELECT id, email, role, name, bio, avatar_url, phone, location, timezone, 
              languages, website, linkedin, created_at 
       FROM users WHERE id = ?
@@ -25,7 +25,7 @@ router.get('/profile', authenticateToken, (req, res) => {
     // Get role-specific profile
     let profile = {};
     if (user.role === 'tutor') {
-      profile = db.prepare(`
+      profile = await db.prepare(`
         SELECT subjects, availability, hourly_rate, experience_years, 
                education, certifications, teaching_style, headline, motivation,
                tutoring_mode, service_area, max_students, availability_notes,
@@ -33,7 +33,7 @@ router.get('/profile', authenticateToken, (req, res) => {
         FROM tutor_profiles WHERE user_id = ?
       `).get(userId);
     } else {
-      profile = db.prepare(`
+      profile = await db.prepare(`
         SELECT grade_level, subjects_needed, school, learning_goals, preferred_schedule,
                learning_style, support_needs, budget_preference, tutoring_mode,
                accessibility_needs, guardian_name, guardian_contact, intake_completed_at
@@ -46,7 +46,7 @@ router.get('/profile', authenticateToken, (req, res) => {
       try { user.languages = JSON.parse(user.languages); } catch (e) { user.languages = []; }
     }
 
-    const googleIntegration = db.prepare(`
+    const googleIntegration = await db.prepare(`
       SELECT provider, sync_enabled, calendar_id, updated_at
       FROM user_google_integrations
       WHERE user_id = ? AND provider = 'google'
@@ -73,13 +73,13 @@ router.get('/profile', authenticateToken, (req, res) => {
 });
 
 // Update user profile
-router.put('/profile', authenticateToken, (req, res) => {
+router.put('/profile', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { name, bio, phone, location, timezone, languages, website, linkedin, profile } = req.body;
 
     // Update basic user info
-    const updateUser = db.prepare(`
+    const updateUser = await db.prepare(`
       UPDATE users SET 
         name = COALESCE(?, name),
         bio = COALESCE(?, bio),
@@ -92,7 +92,7 @@ router.put('/profile', authenticateToken, (req, res) => {
       WHERE id = ?
     `);
     
-    updateUser.run(
+    await updateUser.run(
       name || null,
       bio !== undefined ? bio : null,
       phone !== undefined ? phone : null,
@@ -112,7 +112,7 @@ router.put('/profile', authenticateToken, (req, res) => {
           teaching_style, headline, motivation, tutoring_mode, service_area, max_students,
           availability_notes, age_groups, public_profile_enabled
         } = profile;
-        const updateTutorProfile = db.prepare(`
+        const updateTutorProfile = await db.prepare(`
           UPDATE tutor_profiles SET 
             subjects = COALESCE(?, subjects),
             availability = COALESCE(?, availability),
@@ -131,7 +131,7 @@ router.put('/profile', authenticateToken, (req, res) => {
             public_profile_enabled = COALESCE(?, public_profile_enabled)
           WHERE user_id = ?
         `);
-        updateTutorProfile.run(
+        await updateTutorProfile.run(
           subjects ? JSON.stringify(subjects) : null,
           availability ? JSON.stringify(availability) : null,
           hourly_rate !== undefined ? hourly_rate : null,
@@ -155,7 +155,7 @@ router.put('/profile', authenticateToken, (req, res) => {
           learning_style, support_needs, budget_preference, tutoring_mode,
           accessibility_needs, guardian_name, guardian_contact, intake_completed
         } = profile;
-        const updateStudentProfile = db.prepare(`
+        const updateStudentProfile = await db.prepare(`
           UPDATE student_profiles SET 
             grade_level = COALESCE(?, grade_level),
             subjects_needed = COALESCE(?, subjects_needed),
@@ -172,7 +172,7 @@ router.put('/profile', authenticateToken, (req, res) => {
             intake_completed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE intake_completed_at END
           WHERE user_id = ?
         `);
-        updateStudentProfile.run(
+        await updateStudentProfile.run(
           grade_level !== undefined ? grade_level : null,
           subjects_needed ? JSON.stringify(subjects_needed) : null,
           school !== undefined ? school : null,
@@ -213,7 +213,7 @@ router.put('/change-password', authenticateToken, async (req, res) => {
     }
 
     // Get current user
-    const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
+    const user = await db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -229,8 +229,8 @@ router.put('/change-password', authenticateToken, async (req, res) => {
     const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
 
     // Update password
-    const updatePassword = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
-    updatePassword.run(newPasswordHash, userId);
+    const updatePassword = await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+    await updatePassword.run(newPasswordHash, userId);
 
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
@@ -240,9 +240,9 @@ router.put('/change-password', authenticateToken, async (req, res) => {
 });
 
 // Get all tutors
-router.get('/tutors', authenticateToken, (req, res) => {
+router.get('/tutors', authenticateToken, async (req, res) => {
   try {
-    const tutors = db.prepare(`
+    const tutors = await db.prepare(`
       SELECT 
         u.id, 
         u.name, 
@@ -274,7 +274,7 @@ router.get('/tutors', authenticateToken, (req, res) => {
     `).all();
 
     // Parse JSON fields and format ratings
-    const formattedTutors = tutors.map(tutor => {
+    const formattedTutors = await Promise.all(tutors.map(async (tutor) => {
       let subjects = [];
       let availability = {};
       let languages = [];
@@ -283,7 +283,7 @@ router.get('/tutors', authenticateToken, (req, res) => {
       try { availability = JSON.parse(tutor.availability); } catch (e) {}
       try { languages = tutor.languages ? JSON.parse(tutor.languages) : []; } catch (e) {}
       
-      const slotAvailability = getAvailabilitySlots(tutor.id);
+      const slotAvailability = await getAvailabilitySlots(tutor.id);
 
       return {
         ...tutor,
@@ -295,7 +295,7 @@ router.get('/tutors', authenticateToken, (req, res) => {
         averageRating: Math.round(tutor.averageRating * 10) / 10,
         totalReviews: tutor.totalReviews
       };
-    });
+    }));
 
     res.json(formattedTutors);
   } catch (error) {
@@ -305,7 +305,7 @@ router.get('/tutors', authenticateToken, (req, res) => {
 });
 
 // Get one tutor profile
-router.get('/tutors/:tutorId', authenticateToken, (req, res) => {
+router.get('/tutors/:tutorId', authenticateToken, async (req, res) => {
   try {
     const { tutorId } = req.params;
 
@@ -313,7 +313,7 @@ router.get('/tutors/:tutorId', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Valid tutor ID is required' });
     }
 
-    const tutor = db.prepare(`
+    const tutor = await db.prepare(`
       SELECT
         u.id,
         u.name,
@@ -351,7 +351,7 @@ router.get('/tutors/:tutorId', authenticateToken, (req, res) => {
       return res.status(404).json({ error: 'Tutor not found' });
     }
 
-    const reviews = db.prepare(`
+    const reviews = await db.prepare(`
       SELECT
         r.id,
         r.rating,
@@ -373,7 +373,7 @@ router.get('/tutors/:tutorId', authenticateToken, (req, res) => {
       certifications: safeJsonArray(tutor.certifications),
       age_groups: safeJsonArray(tutor.age_groups),
       public_profile_enabled: Boolean(tutor.public_profile_enabled),
-      availability: getAvailabilitySlots(tutor.id),
+      availability: await getAvailabilitySlots(tutor.id),
       averageRating: Math.round(tutor.averageRating * 10) / 10,
       totalReviews: tutor.totalReviews,
       reviews
@@ -385,12 +385,12 @@ router.get('/tutors/:tutorId', authenticateToken, (req, res) => {
 });
 
 // Public tutor pages are opt-in and intentionally exclude private contact details.
-router.get('/public/tutors/:tutorId', (req, res) => {
+router.get('/public/tutors/:tutorId', async (req, res) => {
   try {
     const { tutorId } = req.params;
     if (!isPositiveInteger(tutorId)) return res.status(400).json({ error: 'Valid tutor ID is required' });
 
-    const tutor = db.prepare(`
+    const tutor = await db.prepare(`
       SELECT u.id, u.name, u.bio, u.avatar_url, u.languages,
              tp.subjects, tp.hourly_rate, tp.experience_years, tp.education,
              tp.certifications, tp.teaching_style, tp.headline, tp.motivation,
@@ -406,11 +406,11 @@ router.get('/public/tutors/:tutorId', (req, res) => {
 
     if (!tutor) return res.status(404).json({ error: 'Public tutor profile not found' });
 
-    const reviews = db.prepare(`
+    const reviews = (await db.prepare(`
       SELECT id, rating, comment, created_at
       FROM reviews WHERE tutor_id = ? AND comment IS NOT NULL AND trim(comment) != ''
       ORDER BY created_at DESC LIMIT 6
-    `).all(tutorId).map((review) => ({ ...review, student_name: 'NextDoorLearn student' }));
+    `).all(tutorId)).map((review) => ({ ...review, student_name: 'NextDoorLearn student' }));
 
     res.json({
       ...tutor,
@@ -439,12 +439,12 @@ const safeJsonArray = (value) => {
 };
 
 // Get profile completion percentage
-router.get('/profile-completion', authenticateToken, (req, res) => {
+router.get('/profile-completion', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const role = req.user.role;
 
-    const user = db.prepare(`
+    const user = await db.prepare(`
       SELECT name, bio, avatar_url, phone, location, timezone, languages 
       FROM users WHERE id = ?
     `).get(userId);
@@ -465,7 +465,7 @@ router.get('/profile-completion', authenticateToken, (req, res) => {
     });
 
     if (role === 'tutor') {
-      profile = db.prepare(`
+      profile = await db.prepare(`
         SELECT subjects, hourly_rate, experience_years, education, teaching_style,
                headline, motivation, tutoring_mode, age_groups
         FROM tutor_profiles WHERE user_id = ?
@@ -488,7 +488,7 @@ router.get('/profile-completion', authenticateToken, (req, res) => {
         }
       });
     } else {
-      profile = db.prepare(`
+      profile = await db.prepare(`
         SELECT grade_level, subjects_needed, school, learning_goals, preferred_schedule,
                learning_style, support_needs, budget_preference, tutoring_mode
         FROM student_profiles WHERE user_id = ?

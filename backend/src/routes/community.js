@@ -12,7 +12,7 @@ const list = (value, maxItems = 12) => {
   return items.map((item) => sanitizeText(item, 80)).filter(Boolean).slice(0, maxItems);
 };
 
-router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'profilePicture'), (req, res) => {
+router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'profilePicture'), async (req, res) => {
   try {
     const name = sanitizeText(req.body.name, 120);
     const email = String(req.body.email || '').trim().toLowerCase();
@@ -33,7 +33,7 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
       return res.status(400).json({ error: 'Name, valid email, subjects, and motivation are required' });
     }
 
-    const existing = db.prepare(`
+    const existing = await db.prepare(`
       SELECT id FROM tutor_applications
       WHERE email = ? AND status IN ('pending', 'reviewing')
       ORDER BY created_at DESC LIMIT 1
@@ -46,7 +46,7 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
 
     const profilePictureUrl = `/uploads/tutor-applications/${req.file.filename}`;
 
-    const result = db.prepare(`
+    const result = await db.prepare(`
       INSERT INTO tutor_applications
         (name, email, phone, location, subjects, education, experience, motivation, availability, tutoring_mode, hourly_rate, profile_picture_url)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -76,7 +76,7 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
   }
 });
 
-router.post('/sponsor-inquiries', (req, res) => {
+router.post('/sponsor-inquiries', async (req, res) => {
   try {
     const name = sanitizeText(req.body.name, 120);
     const email = String(req.body.email || '').trim().toLowerCase();
@@ -86,7 +86,7 @@ router.post('/sponsor-inquiries', (req, res) => {
       return res.status(400).json({ error: 'Name, valid email, and sponsorship interest are required' });
     }
 
-    const result = db.prepare(`
+    const result = await db.prepare(`
       INSERT INTO sponsor_inquiries (name, email, organization, sponsor_type, message)
       VALUES (?, ?, ?, ?, ?)
     `).run(
@@ -107,10 +107,10 @@ router.post('/sponsor-inquiries', (req, res) => {
   }
 });
 
-router.get('/waitlist/me', authenticateToken, (req, res) => {
+router.get('/waitlist/me', authenticateToken, async (req, res) => {
   if (req.user.role !== 'student') return res.status(403).json({ error: 'Student access required' });
 
-  const entry = db.prepare(`
+  const entry = await db.prepare(`
     SELECT id, subjects, grade_level, budget_preference, preferred_schedule,
            tutoring_mode, learning_goals, status, created_at, updated_at
     FROM student_waitlist_entries WHERE student_id = ?
@@ -120,13 +120,13 @@ router.get('/waitlist/me', authenticateToken, (req, res) => {
   res.json({ ...entry, subjects: list(JSON.parse(entry.subjects || '[]')) });
 });
 
-router.put('/waitlist/me', authenticateToken, (req, res) => {
+router.put('/waitlist/me', authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== 'student') return res.status(403).json({ error: 'Student access required' });
     const subjects = list(req.body.subjects);
     if (subjects.length === 0) return res.status(400).json({ error: 'Choose at least one subject' });
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO student_waitlist_entries
         (student_id, subjects, grade_level, budget_preference, preferred_schedule, tutoring_mode, learning_goals)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -149,7 +149,7 @@ router.put('/waitlist/me', authenticateToken, (req, res) => {
       sanitizeText(req.body.learningGoals, 1500)
     );
 
-    const entry = db.prepare('SELECT id, status, created_at, updated_at FROM student_waitlist_entries WHERE student_id = ?').get(req.user.userId);
+    const entry = await db.prepare('SELECT id, status, created_at, updated_at FROM student_waitlist_entries WHERE student_id = ?').get(req.user.userId);
     res.json({ ...entry, subjects, message: 'You are on the tutor match waitlist.' });
   } catch (error) {
     console.error('Waitlist update error:', error);
@@ -157,9 +157,9 @@ router.put('/waitlist/me', authenticateToken, (req, res) => {
   }
 });
 
-router.delete('/waitlist/me', authenticateToken, (req, res) => {
+router.delete('/waitlist/me', authenticateToken, async (req, res) => {
   if (req.user.role !== 'student') return res.status(403).json({ error: 'Student access required' });
-  db.prepare("UPDATE student_waitlist_entries SET status = 'closed', updated_at = CURRENT_TIMESTAMP WHERE student_id = ?").run(req.user.userId);
+  await db.prepare("UPDATE student_waitlist_entries SET status = 'closed', updated_at = CURRENT_TIMESTAMP WHERE student_id = ?").run(req.user.userId);
   res.json({ message: 'You have left the waitlist.' });
 });
 

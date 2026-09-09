@@ -13,17 +13,18 @@ const publicUrl = () => process.env.FRONTEND_URL || 'http://localhost:5173';
 
 const createToken = () => crypto.randomBytes(32).toString('hex');
 
-const insertExpiringToken = (table, userId, hours = 2) => {
+const insertExpiringToken = async (table, userId, hours = 2) => {
   const token = createToken();
-  db.prepare(`
+  const expiresAt = new Date(Date.now() + Number(hours) * 60 * 60 * 1000).toISOString();
+  await db.prepare(`
     INSERT INTO ${table} (user_id, token, expires_at)
-    VALUES (?, ?, datetime('now', ?))
-  `).run(userId, token, `+${hours} hours`);
+    VALUES (?, ?, ?)
+  `).run(userId, token, expiresAt);
   return token;
 };
 
 const sendVerificationEmail = async (user) => {
-  const token = insertExpiringToken('email_verification_tokens', user.id, 48);
+  const token = await insertExpiringToken('email_verification_tokens', user.id, 48);
   const link = `${publicUrl()}/verify-email?token=${token}`;
   await sendEmail({
     to: user.email,
@@ -60,7 +61,7 @@ router.post('/register', async (req, res) => {
     }
 
     // Check if user already exists
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
+    const existingUser = await db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
     if (existingUser) {
       return res.status(400).json({ error: 'User with this email already exists' });
     }
@@ -70,27 +71,27 @@ router.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
     // Insert user
-    const insertUser = db.prepare(`
+    const insertUser = await db.prepare(`
       INSERT INTO users (email, password_hash, role, name, bio)
       VALUES (?, ?, ?, ?, ?)
     `);
     
-    const result = insertUser.run(normalizedEmail, passwordHash, role, displayName, safeBio);
+    const result = await insertUser.run(normalizedEmail, passwordHash, role, displayName, safeBio);
     const userId = result.lastInsertRowid;
 
     // Create profile based on role
     if (role === 'tutor') {
-      const insertTutorProfile = db.prepare(`
+      const insertTutorProfile = await db.prepare(`
         INSERT INTO tutor_profiles (user_id, subjects, availability, hourly_rate)
         VALUES (?, ?, ?, ?)
       `);
-      insertTutorProfile.run(userId, '[]', '{}', 0);
+      await insertTutorProfile.run(userId, '[]', '{}', 0);
     } else {
-      const insertStudentProfile = db.prepare(`
+      const insertStudentProfile = await db.prepare(`
         INSERT INTO student_profiles (user_id, grade_level, subjects_needed)
         VALUES (?, ?, ?)
       `);
-      insertStudentProfile.run(userId, '', '[]');
+      await insertStudentProfile.run(userId, '', '[]');
     }
 
     // Generate JWT token
@@ -132,7 +133,7 @@ router.post('/login', async (req, res) => {
     }
 
     // Find user
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
+    const user = await db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -148,8 +149,8 @@ router.post('/login', async (req, res) => {
     }
 
     // Update last_seen timestamp
-    const updateLastSeen = db.prepare('UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?');
-    updateLastSeen.run(user.id);
+    const updateLastSeen = await db.prepare('UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?');
+    await updateLastSeen.run(user.id);
 
     // Generate JWT token
     const token = jwt.sign(
@@ -184,11 +185,11 @@ router.post('/forgot-password', async (req, res) => {
       return res.status(400).json({ error: 'Enter a valid email address' });
     }
 
-    const user = db.prepare('SELECT id, email, name FROM users WHERE email = ?').get(normalizedEmail);
+    const user = await db.prepare('SELECT id, email, name FROM users WHERE email = ?').get(normalizedEmail);
     let resetToken;
 
     if (user) {
-      resetToken = insertExpiringToken('password_reset_tokens', user.id, 2);
+      resetToken = await insertExpiringToken('password_reset_tokens', user.id, 2);
       const link = `${publicUrl()}/reset-password?token=${resetToken}`;
       await sendEmail({
         to: user.email,
@@ -217,7 +218,7 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ error: 'Valid token and password of at least 6 characters are required' });
     }
 
-    const reset = db.prepare(`
+    const reset = await db.prepare(`
       SELECT * FROM password_reset_tokens
       WHERE token = ? AND used_at IS NULL AND expires_at > datetime('now')
     `).get(token);
@@ -227,8 +228,8 @@ router.post('/reset-password', async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, reset.user_id);
-    db.prepare('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(reset.id);
+    await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, reset.user_id);
+    await db.prepare('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(reset.id);
 
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
@@ -244,7 +245,7 @@ router.post('/verify-email', async (req, res) => {
       return res.status(400).json({ error: 'Verification token is required' });
     }
 
-    const verification = db.prepare(`
+    const verification = await db.prepare(`
       SELECT * FROM email_verification_tokens
       WHERE token = ? AND used_at IS NULL AND expires_at > datetime('now')
     `).get(token);
@@ -253,8 +254,8 @@ router.post('/verify-email', async (req, res) => {
       return res.status(400).json({ error: 'Verification token is invalid or expired' });
     }
 
-    db.prepare('UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = ?').run(verification.user_id);
-    db.prepare('UPDATE email_verification_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(verification.id);
+    await db.prepare('UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = ?').run(verification.user_id);
+    await db.prepare('UPDATE email_verification_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(verification.id);
 
     res.json({ message: 'Email verified successfully' });
   } catch (error) {
@@ -270,7 +271,7 @@ router.post('/resend-verification', async (req, res) => {
       return res.status(400).json({ error: 'Enter a valid email address' });
     }
 
-    const user = db.prepare('SELECT id, email, email_verified_at FROM users WHERE email = ?').get(normalizedEmail);
+    const user = await db.prepare('SELECT id, email, email_verified_at FROM users WHERE email = ?').get(normalizedEmail);
     let verificationToken;
     if (user && !user.email_verified_at) {
       verificationToken = await sendVerificationEmail(user);

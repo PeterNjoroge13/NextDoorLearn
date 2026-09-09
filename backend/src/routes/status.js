@@ -5,10 +5,10 @@ const db = require('../db/database');
 const router = express.Router();
 
 // Update user's online status
-router.post('/online', authenticateToken, (req, res) => {
+router.post('/online', authenticateToken, async (req, res) => {
   try {
-    const updateLastSeen = db.prepare('UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?');
-    updateLastSeen.run(req.user.userId);
+    const updateLastSeen = await db.prepare('UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?');
+    await updateLastSeen.run(req.user.userId);
     
     res.json({ message: 'Status updated to online' });
   } catch (error) {
@@ -18,10 +18,10 @@ router.post('/online', authenticateToken, (req, res) => {
 });
 
 // Get online users
-router.get('/online', authenticateToken, (req, res) => {
+router.get('/online', authenticateToken, async (req, res) => {
   try {
     // Get users who were active in the last 5 minutes
-    const onlineUsers = db.prepare(`
+    const onlineUsers = await db.prepare(`
       SELECT id, name, avatar_url, last_seen, role
       FROM users 
       WHERE last_seen > datetime('now', '-5 minutes')
@@ -37,11 +37,11 @@ router.get('/online', authenticateToken, (req, res) => {
 });
 
 // Get user status
-router.get('/user/:userId', authenticateToken, (req, res) => {
+router.get('/user/:userId', authenticateToken, async (req, res) => {
   try {
     const { userId } = req.params;
     
-    const user = db.prepare(`
+    const user = await db.prepare(`
       SELECT id, name, avatar_url, last_seen, role
       FROM users 
       WHERE id = ?

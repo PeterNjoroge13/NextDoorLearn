@@ -2,13 +2,13 @@
 
 ## Required Before Beta
 
-- Deploy backend on Railway.
+- Deploy backend on Render.
 - Deploy frontend on Vercel.
 - Set `VITE_API_URL` in Vercel.
-- Set `JWT_SECRET`, `FRONTEND_URL`, `DATABASE_PATH`, and `UPLOAD_DIR` in Railway.
-- Set `RESEND_API_KEY` and `EMAIL_FROM` in Railway for password reset and email verification.
-- Set `ADMIN_EMAILS` in Railway for moderation endpoints.
-- Attach a Railway volume if using SQLite for beta.
+- Create a Neon project and set its pooled connection string as `DATABASE_URL` in Render.
+- Set `JWT_SECRET`, `FRONTEND_URL`, `CORS_ORIGINS`, and `UPLOAD_DIR` in Render.
+- Set `RESEND_API_KEY` and `EMAIL_FROM` in Render for password reset and email verification.
+- Set `ADMIN_EMAILS` in Render for moderation endpoints.
 - Verify `https://your-api/api/health`.
 - Run `SMOKE_API_URL=https://your-api/api npm run smoke` from `backend`.
 - Register a student and tutor in production.
@@ -19,7 +19,6 @@
 
 ## Important Soon After Beta
 
-- Move SQLite to PostgreSQL.
 - Move avatar uploads to persistent object storage.
 - Decide whether to require email verification before messaging/scheduling.
 - Add Playwright UI smoke tests.

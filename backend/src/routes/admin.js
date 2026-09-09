@@ -7,9 +7,9 @@ const router = express.Router();
 
 router.use(authenticateToken, requireAdmin);
 
-router.get('/users', (req, res) => {
+router.get('/users', async (req, res) => {
   try {
-    const users = db.prepare(`
+    const users = await db.prepare(`
       SELECT id, email, role, name, status, email_verified_at, verified_at, created_at, last_seen
       FROM users
       ORDER BY created_at DESC
@@ -22,7 +22,7 @@ router.get('/users', (req, res) => {
   }
 });
 
-router.patch('/users/:id', (req, res) => {
+router.patch('/users/:id', async (req, res) => {
   try {
     const userId = req.params.id;
     const { status, verified } = req.body;
@@ -35,24 +35,24 @@ router.patch('/users/:id', (req, res) => {
       return res.status(400).json({ error: 'Status must be active or suspended' });
     }
 
-    const user = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
+    const user = await db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     if (status) {
-      db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, userId);
+      await db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, userId);
     }
 
     if (verified !== undefined) {
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET verified_at = ${verified ? 'CURRENT_TIMESTAMP' : 'NULL'}
         WHERE id = ?
       `).run(userId);
     }
 
-    const updated = db.prepare(`
+    const updated = await db.prepare(`
       SELECT id, email, role, name, status, email_verified_at, verified_at, created_at, last_seen
       FROM users WHERE id = ?
     `).get(userId);
@@ -64,9 +64,9 @@ router.patch('/users/:id', (req, res) => {
   }
 });
 
-router.get('/reports', (req, res) => {
+router.get('/reports', async (req, res) => {
   try {
-    const reports = db.prepare(`
+    const reports = await db.prepare(`
       SELECT r.*, reporter.email as reporter_email, reported.email as reported_email
       FROM user_reports r
       JOIN users reporter ON r.reporter_id = reporter.id
@@ -81,7 +81,7 @@ router.get('/reports', (req, res) => {
   }
 });
 
-router.patch('/reports/:id', (req, res) => {
+router.patch('/reports/:id', async (req, res) => {
   try {
     const reportId = req.params.id;
     const status = sanitizeText(req.body.status, 40);
@@ -94,13 +94,13 @@ router.patch('/reports/:id', (req, res) => {
       return res.status(400).json({ error: 'Invalid report status' });
     }
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE user_reports
       SET status = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(status, reportId);
 
-    const report = db.prepare('SELECT * FROM user_reports WHERE id = ?').get(reportId);
+    const report = await db.prepare('SELECT * FROM user_reports WHERE id = ?').get(reportId);
     if (!report) {
       return res.status(404).json({ error: 'Report not found' });
     }
@@ -112,13 +112,13 @@ router.patch('/reports/:id', (req, res) => {
   }
 });
 
-router.get('/tutor-applications', (req, res) => {
+router.get('/tutor-applications', async (req, res) => {
   try {
-    const applications = db.prepare(`
+    const applications = (await db.prepare(`
       SELECT id, name, email, phone, location, profile_picture_url, subjects, education, experience,
              motivation, availability, tutoring_mode, hourly_rate, status, created_at, updated_at
       FROM tutor_applications ORDER BY created_at DESC LIMIT 250
-    `).all().map((application) => ({
+    `).all()).map((application) => ({
       ...application,
       subjects: JSON.parse(application.subjects || '[]')
     }));
@@ -129,25 +129,25 @@ router.get('/tutor-applications', (req, res) => {
   }
 });
 
-router.patch('/tutor-applications/:id', (req, res) => {
+router.patch('/tutor-applications/:id', async (req, res) => {
   try {
     const applicationId = req.params.id;
     const status = sanitizeText(req.body.status, 40);
     if (!isPositiveInteger(applicationId)) return res.status(400).json({ error: 'Valid application ID is required' });
     if (!['pending', 'reviewing', 'approved', 'declined'].includes(status)) return res.status(400).json({ error: 'Invalid application status' });
 
-    const result = db.prepare('UPDATE tutor_applications SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, applicationId);
+    const result = await db.prepare('UPDATE tutor_applications SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, applicationId);
     if (!result.changes) return res.status(404).json({ error: 'Application not found' });
-    res.json(db.prepare('SELECT id, status, updated_at FROM tutor_applications WHERE id = ?').get(applicationId));
+    res.json(await db.prepare('SELECT id, status, updated_at FROM tutor_applications WHERE id = ?').get(applicationId));
   } catch (error) {
     console.error('Admin tutor application update error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-router.get('/sponsor-inquiries', (req, res) => {
+router.get('/sponsor-inquiries', async (req, res) => {
   try {
-    res.json(db.prepare(`
+    res.json(await db.prepare(`
       SELECT id, name, email, organization, sponsor_type, message, status, created_at
       FROM sponsor_inquiries ORDER BY created_at DESC LIMIT 250
     `).all());
@@ -157,30 +157,30 @@ router.get('/sponsor-inquiries', (req, res) => {
   }
 });
 
-router.patch('/sponsor-inquiries/:id', (req, res) => {
+router.patch('/sponsor-inquiries/:id', async (req, res) => {
   try {
     const inquiryId = req.params.id;
     const status = sanitizeText(req.body.status, 40);
     if (!isPositiveInteger(inquiryId)) return res.status(400).json({ error: 'Valid inquiry ID is required' });
     if (!['new', 'contacted', 'closed'].includes(status)) return res.status(400).json({ error: 'Invalid inquiry status' });
 
-    const result = db.prepare('UPDATE sponsor_inquiries SET status = ? WHERE id = ?').run(status, inquiryId);
+    const result = await db.prepare('UPDATE sponsor_inquiries SET status = ? WHERE id = ?').run(status, inquiryId);
     if (!result.changes) return res.status(404).json({ error: 'Inquiry not found' });
-    res.json(db.prepare('SELECT id, status FROM sponsor_inquiries WHERE id = ?').get(inquiryId));
+    res.json(await db.prepare('SELECT id, status FROM sponsor_inquiries WHERE id = ?').get(inquiryId));
   } catch (error) {
     console.error('Admin sponsor inquiry update error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-router.get('/waitlist', (req, res) => {
+router.get('/waitlist', async (req, res) => {
   try {
-    const entries = db.prepare(`
+    const entries = (await db.prepare(`
       SELECT w.*, u.name, u.email
       FROM student_waitlist_entries w JOIN users u ON u.id = w.student_id
       ORDER BY CASE w.status WHEN 'open' THEN 0 ELSE 1 END, w.updated_at DESC
       LIMIT 250
-    `).all().map((entry) => ({ ...entry, subjects: JSON.parse(entry.subjects || '[]') }));
+    `).all()).map((entry) => ({ ...entry, subjects: JSON.parse(entry.subjects || '[]') }));
     res.json(entries);
   } catch (error) {
     console.error('Admin waitlist error:', error);

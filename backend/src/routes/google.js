@@ -17,7 +17,7 @@ const buildCallbackUrl = (status = 'success') => {
   return `${frontendUrl}/profile?googleSync=${status}`;
 };
 
-router.get('/auth-url', authenticateToken, (req, res) => {
+router.get('/auth-url', authenticateToken, async (req, res) => {
   try {
     if (!hasGoogleConfig()) {
       return res.status(400).json({ error: 'Google OAuth is not configured on the server' });
@@ -50,7 +50,7 @@ router.get('/callback', async (req, res) => {
     }
 
     const tokenPayload = await exchangeCodeForTokens(code);
-    upsertGoogleIntegration(decoded.userId, {
+    await upsertGoogleIntegration(decoded.userId, {
       accessToken: tokenPayload.accessToken,
       refreshToken: tokenPayload.refreshToken,
       tokenExpiry: tokenPayload.tokenExpiry,
@@ -64,16 +64,16 @@ router.get('/callback', async (req, res) => {
   }
 });
 
-router.post('/sync-toggle', authenticateToken, (req, res) => {
+router.post('/sync-toggle', authenticateToken, async (req, res) => {
   try {
     const { enabled } = req.body;
-    const existing = getGoogleIntegration(req.user.userId);
+    const existing = await getGoogleIntegration(req.user.userId);
 
     if (!existing) {
       return res.status(404).json({ error: 'Google integration not connected' });
     }
 
-    const updated = upsertGoogleIntegration(req.user.userId, {
+    const updated = await upsertGoogleIntegration(req.user.userId, {
       syncEnabled: enabled ? 1 : 0
     });
 
@@ -91,9 +91,9 @@ router.post('/sync-toggle', authenticateToken, (req, res) => {
   }
 });
 
-router.post('/disconnect', authenticateToken, (req, res) => {
+router.post('/disconnect', authenticateToken, async (req, res) => {
   try {
-    disconnectGoogleIntegration(req.user.userId);
+    await disconnectGoogleIntegration(req.user.userId);
     res.json({ message: 'Google Calendar disconnected' });
   } catch (error) {
     console.error('Disconnect Google error:', error);
@@ -101,9 +101,9 @@ router.post('/disconnect', authenticateToken, (req, res) => {
   }
 });
 
-router.get('/status', authenticateToken, (req, res) => {
+router.get('/status', authenticateToken, async (req, res) => {
   try {
-    const integration = getGoogleIntegration(req.user.userId);
+    const integration = await getGoogleIntegration(req.user.userId);
     res.json({
       connected: Boolean(integration),
       integration: integration

@@ -5,7 +5,7 @@ const { authenticateToken } = require('../middleware/auth');
 const router = express.Router();
 
 // Get all notifications for user
-router.get('/', authenticateToken, (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { limit = 50, offset = 0, unread_only = false } = req.query;
@@ -18,9 +18,9 @@ router.get('/', authenticateToken, (req, res) => {
       LIMIT ? OFFSET ?
     `;
 
-    const notifications = db.prepare(query).all(userId, parseInt(limit), parseInt(offset));
+    const notifications = await db.prepare(query).all(userId, parseInt(limit), parseInt(offset));
     
-    const unreadCount = db.prepare(
+    const unreadCount = await db.prepare(
       'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0'
     ).get(userId);
 
@@ -35,10 +35,10 @@ router.get('/', authenticateToken, (req, res) => {
 });
 
 // Get unread count only
-router.get('/unread-count', authenticateToken, (req, res) => {
+router.get('/unread-count', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const result = db.prepare(
+    const result = await db.prepare(
       'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0'
     ).get(userId);
     
@@ -50,12 +50,12 @@ router.get('/unread-count', authenticateToken, (req, res) => {
 });
 
 // Mark notification as read
-router.patch('/:id/read', authenticateToken, (req, res) => {
+router.patch('/:id/read', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.userId;
 
-    const notification = db.prepare(
+    const notification = await db.prepare(
       'SELECT * FROM notifications WHERE id = ? AND user_id = ?'
     ).get(id, userId);
 
@@ -63,7 +63,7 @@ router.patch('/:id/read', authenticateToken, (req, res) => {
       return res.status(404).json({ error: 'Notification not found' });
     }
 
-    db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ?').run(id);
+    await db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ?').run(id);
 
     res.json({ message: 'Notification marked as read' });
   } catch (error) {
@@ -73,10 +73,10 @@ router.patch('/:id/read', authenticateToken, (req, res) => {
 });
 
 // Mark all notifications as read
-router.patch('/read-all', authenticateToken, (req, res) => {
+router.patch('/read-all', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(userId);
+    await db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(userId);
     res.json({ message: 'All notifications marked as read' });
   } catch (error) {
     console.error('Mark all read error:', error);
@@ -85,12 +85,12 @@ router.patch('/read-all', authenticateToken, (req, res) => {
 });
 
 // Delete a notification
-router.delete('/:id', authenticateToken, (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.userId;
 
-    const notification = db.prepare(
+    const notification = await db.prepare(
       'SELECT * FROM notifications WHERE id = ? AND user_id = ?'
     ).get(id, userId);
 
@@ -98,7 +98,7 @@ router.delete('/:id', authenticateToken, (req, res) => {
       return res.status(404).json({ error: 'Notification not found' });
     }
 
-    db.prepare('DELETE FROM notifications WHERE id = ?').run(id);
+    await db.prepare('DELETE FROM notifications WHERE id = ?').run(id);
 
     res.json({ message: 'Notification deleted' });
   } catch (error) {
@@ -108,10 +108,10 @@ router.delete('/:id', authenticateToken, (req, res) => {
 });
 
 // Delete all read notifications
-router.delete('/clear/read', authenticateToken, (req, res) => {
+router.delete('/clear/read', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    db.prepare('DELETE FROM notifications WHERE user_id = ? AND is_read = 1').run(userId);
+    await db.prepare('DELETE FROM notifications WHERE user_id = ? AND is_read = 1').run(userId);
     res.json({ message: 'Read notifications cleared' });
   } catch (error) {
     console.error('Clear read notifications error:', error);
@@ -120,13 +120,13 @@ router.delete('/clear/read', authenticateToken, (req, res) => {
 });
 
 // Helper function to create notifications (exported for use in other routes)
-const createNotification = (userId, type, title, message, link = null, relatedId = null) => {
+const createNotification = async (userId, type, title, message, link = null, relatedId = null) => {
   try {
-    const stmt = db.prepare(`
+    const stmt = await db.prepare(`
       INSERT INTO notifications (user_id, type, title, message, link, related_id)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
-    const result = stmt.run(userId, type, title, message, link, relatedId);
+    const result = await stmt.run(userId, type, title, message, link, relatedId);
     return result.lastInsertRowid;
   } catch (error) {
     console.error('Create notification error:', error);

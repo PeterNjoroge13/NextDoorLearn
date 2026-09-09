@@ -9,7 +9,7 @@ const { isPositiveInteger, isValidDate, isValidTime, sanitizeText } = require('.
 const router = express.Router();
 
 // Get all sessions for a user (tutor or student)
-router.get('/', authenticateToken, (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { status, month, year } = req.query;
@@ -43,7 +43,7 @@ router.get('/', authenticateToken, (req, res) => {
     
     query += ' ORDER BY s.scheduled_date DESC, s.start_time DESC';
     
-    const sessions = db.prepare(query).all(...params);
+    const sessions = await db.prepare(query).all(...params);
     res.json(sessions);
   } catch (error) {
     console.error('Get sessions error:', error);
@@ -52,12 +52,12 @@ router.get('/', authenticateToken, (req, res) => {
 });
 
 // Get upcoming sessions for a user
-router.get('/upcoming', authenticateToken, (req, res) => {
+router.get('/upcoming', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { limit = 5 } = req.query;
     
-    const sessions = db.prepare(`
+    const sessions = await db.prepare(`
       SELECT 
         s.*,
         u1.name as tutor_name,
@@ -80,7 +80,7 @@ router.get('/upcoming', authenticateToken, (req, res) => {
 });
 
 // Create a new session
-router.post('/', authenticateToken, (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const {
       connectionId,
@@ -106,7 +106,7 @@ router.post('/', authenticateToken, (req, res) => {
     const safeMeetingLink = sanitizeText(meetingLink, 500);
     
     // Verify the connection exists and user is part of it
-    const connection = db.prepare(`
+    const connection = await db.prepare(`
       SELECT * FROM connections 
       WHERE id = ? AND (student_id = ? OR tutor_id = ?) AND status = 'accepted'
     `).get(connectionId, userId, userId);
@@ -124,7 +124,7 @@ router.post('/', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'End time must be after start time' });
     }
 
-    const isInAvailability = isTimeRangeWithinAvailability(
+    const isInAvailability = await isTimeRangeWithinAvailability(
       connection.tutor_id,
       scheduledDate,
       startTime,
@@ -138,7 +138,7 @@ router.post('/', authenticateToken, (req, res) => {
     }
     
     // Check for time conflicts
-    const conflicts = db.prepare(`
+    const conflicts = await db.prepare(`
       SELECT id FROM sessions 
       WHERE (tutor_id = ? OR student_id = ?) 
         AND scheduled_date = ? 
@@ -162,14 +162,14 @@ router.post('/', authenticateToken, (req, res) => {
     }
     
     // Create the session
-    const insertSession = db.prepare(`
+    const insertSession = await db.prepare(`
       INSERT INTO sessions (
         connection_id, tutor_id, student_id, title, description, subject,
         scheduled_date, start_time, end_time, duration_minutes, meeting_link
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
-    const result = insertSession.run(
+    const result = await insertSession.run(
       connectionId,
       connection.tutor_id,
       connection.student_id,
@@ -184,7 +184,7 @@ router.post('/', authenticateToken, (req, res) => {
     );
     
     // Get the created session with user details
-    const newSession = db.prepare(`
+    const newSession = await db.prepare(`
       SELECT 
         s.*,
         u1.name as tutor_name,
@@ -199,7 +199,7 @@ router.post('/', authenticateToken, (req, res) => {
     const recipientId = userId === connection.tutor_id ? connection.student_id : connection.tutor_id;
     const creatorName = userId === connection.tutor_id ? newSession.tutor_name : newSession.student_name;
     
-    createNotification(
+    await createNotification(
       recipientId,
       'session_created',
       'New session scheduled',
@@ -208,7 +208,7 @@ router.post('/', authenticateToken, (req, res) => {
       result.lastInsertRowid
     );
 
-    syncSessionToGoogle(newSession, 'upsert');
+    await syncSessionToGoogle(newSession, 'upsert');
     
     res.status(201).json(newSession);
   } catch (error) {
@@ -218,7 +218,7 @@ router.post('/', authenticateToken, (req, res) => {
 });
 
 // Update session status
-router.patch('/:id/status', authenticateToken, (req, res) => {
+router.patch('/:id/status', authenticateToken, async (req, res) => {
   try {
     const sessionId = req.params.id;
     const { status, notes } = req.body;
@@ -233,7 +233,7 @@ router.patch('/:id/status', authenticateToken, (req, res) => {
     }
     
     // Verify user can update this session
-    const session = db.prepare(`
+    const session = await db.prepare(`
       SELECT * FROM sessions 
       WHERE id = ? AND (tutor_id = ? OR student_id = ?)
     `).get(sessionId, userId, userId);
@@ -243,16 +243,16 @@ router.patch('/:id/status', authenticateToken, (req, res) => {
     }
     
     // Update session
-    const updateSession = db.prepare(`
+    const updateSession = await db.prepare(`
       UPDATE sessions 
       SET status = ?, notes = ?, updated_at = CURRENT_TIMESTAMP 
       WHERE id = ?
     `);
     
-    updateSession.run(status, sanitizeText(notes, 2000) || session.notes, sessionId);
+    await updateSession.run(status, sanitizeText(notes, 2000) || session.notes, sessionId);
     
     // Get updated session
-    const updatedSession = db.prepare(`
+    const updatedSession = await db.prepare(`
       SELECT 
         s.*,
         u1.name as tutor_name,
@@ -274,7 +274,7 @@ router.patch('/:id/status', authenticateToken, (req, res) => {
       'scheduled': `The session "${session.title}" has been rescheduled`
     };
 
-    createNotification(
+    await createNotification(
       recipientId,
       'session_update',
       `Session ${status}`,
@@ -284,9 +284,9 @@ router.patch('/:id/status', authenticateToken, (req, res) => {
     );
 
     if (status === 'cancelled') {
-      syncSessionToGoogle(updatedSession, 'delete');
+      await syncSessionToGoogle(updatedSession, 'delete');
     } else {
-      syncSessionToGoogle(updatedSession, 'upsert');
+      await syncSessionToGoogle(updatedSession, 'upsert');
     }
     
     res.json(updatedSession);
@@ -297,13 +297,13 @@ router.patch('/:id/status', authenticateToken, (req, res) => {
 });
 
 // Delete a session
-router.delete('/:id', authenticateToken, (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const sessionId = req.params.id;
     const userId = req.user.userId;
     
     // Verify user can delete this session
-    const session = db.prepare(`
+    const session = await db.prepare(`
       SELECT * FROM sessions 
       WHERE id = ? AND (tutor_id = ? OR student_id = ?)
     `).get(sessionId, userId, userId);
@@ -318,10 +318,10 @@ router.delete('/:id', authenticateToken, (req, res) => {
     }
     
     // Delete session
-    const deleteSession = db.prepare('DELETE FROM sessions WHERE id = ?');
-    deleteSession.run(sessionId);
+    const deleteSession = await db.prepare('DELETE FROM sessions WHERE id = ?');
+    await deleteSession.run(sessionId);
 
-    syncSessionToGoogle(session, 'delete');
+    await syncSessionToGoogle(session, 'delete');
     
     res.json({ message: 'Session deleted successfully' });
   } catch (error) {
@@ -331,11 +331,11 @@ router.delete('/:id', authenticateToken, (req, res) => {
 });
 
 // Get session statistics
-router.get('/stats', authenticateToken, (req, res) => {
+router.get('/stats', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     
-    const stats = db.prepare(`
+    const stats = await db.prepare(`
       SELECT 
         COUNT(*) as total_sessions,
         SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) as scheduled_sessions,

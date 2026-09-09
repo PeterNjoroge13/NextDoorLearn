@@ -5,7 +5,7 @@ const { authenticateToken } = require('../middleware/auth');
 const router = express.Router();
 
 // Get connection requests for a tutor
-router.get('/', authenticateToken, (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
@@ -14,7 +14,7 @@ router.get('/', authenticateToken, (req, res) => {
     }
     
     // Get all pending connection requests for this tutor
-    const requests = db.prepare(`
+    const requests = await db.prepare(`
       SELECT 
         c.id,
         c.student_id,
@@ -43,7 +43,7 @@ router.get('/', authenticateToken, (req, res) => {
 });
 
 // Respond to a connection request
-router.post('/:id/respond', authenticateToken, (req, res) => {
+router.post('/:id/respond', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { action } = req.body; // 'accept' or 'reject'
@@ -54,7 +54,7 @@ router.post('/:id/respond', authenticateToken, (req, res) => {
     }
 
     // Check if the request exists and belongs to this tutor
-    const request = db.prepare(`
+    const request = await db.prepare(`
       SELECT * FROM connections 
       WHERE id = ? AND tutor_id = ? AND status = 'pending'
     `).get(id, userId);
@@ -65,13 +65,13 @@ router.post('/:id/respond', authenticateToken, (req, res) => {
 
     // Update the connection status
     const newStatus = action === 'accept' ? 'accepted' : 'rejected';
-    const updateConnection = db.prepare(`
+    const updateConnection = await db.prepare(`
       UPDATE connections 
       SET status = ? 
       WHERE id = ?
     `);
     
-    updateConnection.run(newStatus, id);
+    await updateConnection.run(newStatus, id);
 
     res.json({ 
       message: `Request ${action}ed successfully`,
@@ -84,11 +84,11 @@ router.post('/:id/respond', authenticateToken, (req, res) => {
 });
 
 // Get all connections (accepted requests) for a tutor
-router.get('/connections', authenticateToken, (req, res) => {
+router.get('/connections', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     
-    const connections = db.prepare(`
+    const connections = await db.prepare(`
       SELECT 
         c.id,
         c.status,

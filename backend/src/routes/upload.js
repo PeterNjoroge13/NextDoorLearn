@@ -20,9 +20,9 @@ router.post('/avatar', authenticateToken, handleSingleImage(upload, 'avatar'), a
     }
 
     const avatarUrl = `/uploads/avatars/${req.file.filename}`;
-    const previous = db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.userId);
-    const updateUser = db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?');
-    updateUser.run(avatarUrl, req.user.userId);
+    const previous = await db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.userId);
+    const updateUser = await db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?');
+    await updateUser.run(avatarUrl, req.user.userId);
 
     if (previous?.avatar_url?.startsWith('/uploads/avatars/')) {
       removeUploadedFile(path.join(uploadRoot, previous.avatar_url.replace(/^\/uploads\//, '')));
@@ -43,7 +43,7 @@ router.post('/avatar', authenticateToken, handleSingleImage(upload, 'avatar'), a
 router.delete('/avatar', authenticateToken, async (req, res) => {
   try {
     // Get current avatar URL from database
-    const user = db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.userId);
+    const user = await db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.userId);
     
     if (user && user.avatar_url) {
       // Remove the file from filesystem
@@ -51,8 +51,8 @@ router.delete('/avatar', authenticateToken, async (req, res) => {
       removeUploadedFile(filePath);
       
       // Update database to remove avatar URL
-      const updateUser = db.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?');
-      updateUser.run(req.user.userId);
+      const updateUser = await db.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?');
+      await updateUser.run(req.user.userId);
     }
 
     res.json({ message: 'Avatar removed successfully' });

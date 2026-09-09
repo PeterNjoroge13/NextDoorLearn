@@ -1,80 +1,70 @@
 # NextDoorLearn Deployment Guide
 
-This branch is set up for a low-cost beta deployment:
+The production stack is:
 
 - Frontend: Vercel
-- Backend API: Railway
-- Current database: SQLite for beta/local use
-- Recommended production database next: Railway PostgreSQL
+- Backend API: Render
+- Database: Neon PostgreSQL free plan
 
-## 1. Deploy The Backend On Railway
+Local development continues to use SQLite unless `DATABASE_URL` is set.
 
-1. Push this branch to GitHub.
-2. In Railway, create a new project from the GitHub repo.
-3. Use the root repo with the included `railway.json`, or set the service root to `backend`.
-4. Confirm Railway uses:
-   - Build command: `cd backend && npm install`
-   - Start command: `cd backend && npm start`
-5. Set these backend environment variables:
+## 1. Create The Neon Database
 
-```env
-NODE_ENV=production
-PORT=3001
-JWT_SECRET=use-a-long-random-secret
-DATABASE_PATH=/data/nextdoorlearn.db
-UPLOAD_DIR=/data/uploads
-FRONTEND_URL=https://your-vercel-app.vercel.app
-CORS_ORIGINS=https://your-custom-domain.com
-RATE_LIMIT_MAX=300
-AUTH_RATE_LIMIT_MAX=30
-ADMIN_EMAILS=admin@example.com
-RESEND_API_KEY=your-resend-api-key
-EMAIL_FROM=NextDoorLearn <no-reply@your-domain.com>
-```
+1. Create a free project at [Neon](https://console.neon.tech/).
+2. Copy the pooled PostgreSQL connection string from the project dashboard.
+3. Keep the connection string private. It contains the database password.
 
-Optional Google Calendar variables:
+No SQL import is required. The backend creates every required table and index when it starts.
 
-```env
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=https://your-railway-api.up.railway.app/api/google/callback
-```
-
-After deploy, verify:
-
-```bash
-curl https://your-railway-api.up.railway.app/api/health
-```
-
-Expected response includes `"status":"ok"` and `"database":"ok"`.
-
-You can also run the backend smoke workflow against the deployed API:
+To test a Neon connection locally:
 
 ```bash
 cd backend
-SMOKE_API_URL=https://your-railway-api.up.railway.app/api npm run smoke
+DATABASE_URL='your-neon-pooled-connection-string' npm run db:check
 ```
 
-## 2. Deploy The Frontend On Vercel
+Expected output starts with `Database ready (postgres)`.
 
-1. Import the GitHub repo in Vercel.
-2. Set the project root directory to `frontend`.
-3. Use:
-   - Build command: `npm run build`
-   - Output directory: `dist`
-4. Set this frontend environment variable:
+## 2. Connect Render To Neon
+
+Open the `nextdoorlearn-backend` service in Render, then add this environment variable:
 
 ```env
-VITE_API_URL=https://your-railway-api.up.railway.app/api
+DATABASE_URL=your-neon-pooled-connection-string
 ```
 
-5. Deploy.
-6. Add the final Vercel URL to Railway as `FRONTEND_URL`.
-7. Redeploy the Railway backend after changing CORS variables.
+Keep the existing variables, including `JWT_SECRET`, `FRONTEND_URL`, `CORS_ORIGINS`, and `UPLOAD_DIR`. Trigger a deploy after saving the variable. The API automatically selects PostgreSQL whenever `DATABASE_URL` exists.
 
-## 3. Local Development
+Verify the deployment:
 
-Backend:
+```bash
+curl https://nextdoorlearn-backend.onrender.com/api/health
+```
+
+The response should contain `"status":"ok"` and `"database":"ok"`.
+
+Then run the complete API workflow:
+
+```bash
+cd backend
+SMOKE_API_URL=https://nextdoorlearn-backend.onrender.com/api npm run smoke
+```
+
+The smoke test creates disposable student and tutor accounts and exercises authentication, profiles, applications, waitlisting, connections, scheduling, progress, notifications, and messaging.
+
+## 3. Vercel Frontend
+
+The Vercel project should use:
+
+```env
+VITE_API_URL=https://nextdoorlearn-backend.onrender.com/api
+```
+
+Its root directory is `frontend`, build command is `npm run build`, and output directory is `dist`.
+
+## 4. Local Development
+
+Backend with SQLite:
 
 ```bash
 cd backend
@@ -87,39 +77,15 @@ Frontend:
 
 ```bash
 cd frontend
+cp .env.example .env
 npm install
 npm run dev
 ```
 
-Local URLs:
+Local URLs are `http://localhost:5173` for the frontend and `http://localhost:3001/api/health` for backend health.
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:3001`
-- Health check: `http://localhost:3001/api/health`
+## 5. Remaining Storage Work
 
-## 4. Production Notes
+Neon makes accounts and application data persistent. Uploaded profile pictures still use Render's temporary filesystem and can disappear during a restart or deploy. Move uploads to Cloudinary, Amazon S3, or another object store before relying on them in production.
 
-- `backend/node_modules`, `backend/uploads`, and local SQLite database files are intentionally ignored by Git.
-- For a Railway SQLite beta, attach a persistent volume and set `DATABASE_PATH=/data/nextdoorlearn.db` and `UPLOAD_DIR=/data/uploads`.
-- Local avatar uploads work for development, but Railway filesystem storage is not the right long-term upload solution.
-- Before a public launch, move uploads to Cloudinary, Supabase Storage, or another persistent object store.
-- SQLite can work for a tiny beta, but Railway PostgreSQL is the recommended next database step.
-- Keep `JWT_SECRET` private and long.
-- Keep `FRONTEND_URL` and `CORS_ORIGINS` aligned with the deployed frontend domains.
-
-## 5. Smoke Test Checklist
-
-After both services deploy:
-
-1. Visit the Vercel frontend.
-2. Register a student.
-3. Register a tutor.
-4. Complete tutor subjects/profile.
-5. Student browses tutors.
-6. Student sends a connection request.
-7. Tutor accepts the request.
-8. Student and tutor exchange messages.
-9. A session is scheduled.
-10. Refresh nested routes like `/dashboard`, `/tutors`, and `/profile`.
-
-The automated backend smoke test covers health, student/tutor registration, tutor browse, connection request acceptance, and messaging.
+Also configure `RESEND_API_KEY` and `EMAIL_FROM` before requiring email verification or password-reset email delivery.
