@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, CalendarClock, CalendarDays, Check, CheckCircle2, Clock3, GraduationCap, HeartHandshake, Inbox, Sparkles, Users, X } from 'lucide-react';
+import { ArrowRight, CalendarClock, CalendarDays, Check, CheckCircle2, Clock3, GraduationCap, HeartHandshake, Inbox, Sparkles, Target, Users, X } from 'lucide-react';
 import api from '../services/api';
 import { Avatar, EmptyState } from '../components/AppShell';
 import { DashboardSection, PeopleList, ProfileProgress, SessionList, StatTile } from '../components/dashboard/DashboardUi';
@@ -128,6 +128,7 @@ const TutorDashboard = ({ user, data, updateRequest }) => {
       </section>
 
       <section className="dashboard-impact-band"><div><span><HeartHandshake size={22} /></span><div><strong>{hoursTaught} hours given</strong><p>Every completed session helps make support more reachable.</p></div></div><Link className="dashboard-text-link" to="/sessions">See your session history <ArrowRight size={16} /></Link></section>
+      {data.connections.length ? <section className="dashboard-impact-band"><div><span><Target size={22} /></span><div><strong>Teach toward what matters</strong><p>Review student-created goals before your next session.</p></div></div><Link className="dashboard-text-link" to="/progress">View student progress <ArrowRight size={16} /></Link></section> : null}
     </main>
   );
 };

@@ -6,6 +6,8 @@ const databasePath = process.env.DATABASE_PATH || path.join(__dirname, 'nextdoor
 fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 
 const db = new Database(databasePath);
+db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
 
 // Create tables
 db.exec(`
@@ -252,6 +254,30 @@ db.exec(`
     FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS learning_goals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    subject TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    target_date DATE,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'completed')),
+    progress_percent INTEGER NOT NULL DEFAULT 0 CHECK (progress_percent >= 0 AND progress_percent <= 100),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES users (id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS goal_milestones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    goal_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    is_completed INTEGER NOT NULL DEFAULT 0,
+    completed_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (goal_id) REFERENCES learning_goals (id) ON DELETE CASCADE
+  );
 `);
 
 db.exec(`
@@ -266,6 +292,12 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_favorites_student
   ON favorites (student_id, tutor_id);
+
+  CREATE INDEX IF NOT EXISTS idx_learning_goals_student_status
+  ON learning_goals (student_id, status, updated_at);
+
+  CREATE INDEX IF NOT EXISTS idx_goal_milestones_goal
+  ON goal_milestones (goal_id, created_at);
 `);
 
 // Run migrations to add new columns to existing tables

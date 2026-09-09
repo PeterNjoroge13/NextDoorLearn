@@ -18,6 +18,7 @@ const Sessions = () => {
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [actionError, setActionError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [view, setView] = useState('calendar');
   const [filters, setFilters] = useState({ status: '', month: new Date().getMonth() + 1, year: new Date().getFullYear() });
@@ -41,9 +42,11 @@ const Sessions = () => {
       ]);
       if (sessionsResponse.error) {
         setError(sessionsResponse.error);
+      } else if (connectionsResponse.error) {
+        setError(connectionsResponse.error);
       } else {
         setSessions(Array.isArray(sessionsResponse) ? sessionsResponse : []);
-        setConnections(Array.isArray(connectionsResponse) ? connectionsResponse : []);
+        setConnections((Array.isArray(connectionsResponse) ? connectionsResponse : []).filter((connection) => connection.status === 'accepted'));
         setError('');
       }
     } catch {
@@ -59,39 +62,56 @@ const Sessions = () => {
 
   const handleCreateSession = async (event) => {
     event.preventDefault();
-    const token = localStorage.getItem('token');
-    const response = await api.createSession(formData, token);
-    if (response.error) {
-      setError(response.error);
-    } else {
-      setSessions((current) => [response, ...current]);
-      setShowCreateModal(false);
-      setFormData({
-        connectionId: '',
-        title: '',
-        description: '',
-        subject: '',
-        scheduledDate: '',
-        startTime: '',
-        endTime: '',
-        meetingLink: '',
-      });
+    try {
+      const token = localStorage.getItem('token');
+      const response = await api.createSession(formData, token);
+      if (response.error) {
+        setActionError(response.error);
+      } else {
+        setSessions((current) => [response, ...current]);
+        setActionError('');
+        setShowCreateModal(false);
+        setFormData({
+          connectionId: '',
+          title: '',
+          description: '',
+          subject: '',
+          scheduledDate: '',
+          startTime: '',
+          endTime: '',
+          meetingLink: '',
+        });
+      }
+    } catch {
+      setActionError('The session could not be scheduled. Please try again.');
     }
   };
 
   const handleUpdateStatus = async (sessionId, status) => {
-    const token = localStorage.getItem('token');
-    const response = await api.updateSessionStatus(sessionId, status, '', token);
-    if (!response.error) {
-      setSessions((current) => current.map((session) => (session.id === sessionId ? response : session)));
+    try {
+      const token = localStorage.getItem('token');
+      const response = await api.updateSessionStatus(sessionId, status, '', token);
+      if (response.error) setActionError(response.error);
+      else {
+        setActionError('');
+        setSessions((current) => current.map((session) => (session.id === sessionId ? response : session)));
+      }
+    } catch {
+      setActionError('The session status could not be updated.');
     }
   };
 
   const handleDeleteSession = async (sessionId) => {
-    const token = localStorage.getItem('token');
-    const response = await api.deleteSession(sessionId, token);
-    if (!response.error) {
-      setSessions((current) => current.filter((session) => session.id !== sessionId));
+    try {
+      const token = localStorage.getItem('token');
+      const response = await api.deleteSession(sessionId, token);
+      if (response.error) setActionError(response.error);
+      else {
+        setActionError('');
+        setSessions((current) => current.filter((session) => session.id !== sessionId));
+      }
+    } catch {
+      setActionError('The session could not be deleted.');
     }
   };
 
@@ -135,6 +155,8 @@ const Sessions = () => {
             New session
           </button>
         </section>
+
+        {actionError ? <div className="alert alert-error" role="alert">{actionError}<button type="button" onClick={() => setActionError('')} aria-label="Dismiss error">Dismiss</button></div> : null}
 
         <section className="card calendar-toolbar">
           <div className="calendar-navigation">
@@ -204,10 +226,12 @@ const Sessions = () => {
                         Cancel
                       </button>
                     ) : null}
-                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleDeleteSession(session.id)}>
-                      <Trash2 size={16} />
-                      Delete
-                    </button>
+                    {session.status === 'scheduled' ? (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleDeleteSession(session.id)}>
+                        <Trash2 size={16} />
+                        Delete
+                      </button>
+                    ) : null}
                     {session.meeting_link ? (
                       <a className="btn btn-primary btn-sm" href={session.meeting_link} target="_blank" rel="noreferrer">
                         Join meeting

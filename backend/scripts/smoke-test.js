@@ -18,6 +18,22 @@ const request = async (path, options = {}) => {
   return body;
 };
 
+const expectFailure = async (path, expectedStatus, options = {}) => {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+      ...(options.headers || {})
+    }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (response.status !== expectedStatus || !body.error) {
+    throw new Error(`${options.method || 'GET'} ${path} expected ${expectedStatus}, received ${response.status} ${JSON.stringify(body)}`);
+  }
+  return body;
+};
+
 const testImage = () => new Blob([
   Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
 ], { type: 'image/png' });
@@ -94,6 +110,51 @@ const main = async () => {
         teaching_style: 'Patient and practical'
       }
     })
+  });
+
+  const learningGoal = await request('/progress/goals', {
+    method: 'POST',
+    token: student.token,
+    body: JSON.stringify({
+      subject: 'Math',
+      title: 'Solve derivatives independently',
+      description: 'Build confidence before the next exam.',
+      targetDate: '2030-05-20'
+    })
+  });
+
+  if (!learningGoal.id || learningGoal.progress_percent !== 0) {
+    throw new Error('Learning goal was not created with expected defaults');
+  }
+
+  await expectFailure(`/progress/goals?studentId=${student.user.id}`, 403, {
+    token: tutor.token
+  });
+
+  const firstMilestone = await request(`/progress/goals/${learningGoal.id}/milestones`, {
+    method: 'POST',
+    token: student.token,
+    body: JSON.stringify({ title: 'Review the power rule' })
+  });
+  await request(`/progress/goals/${learningGoal.id}/milestones`, {
+    method: 'POST',
+    token: student.token,
+    body: JSON.stringify({ title: 'Complete a practice set' })
+  });
+  const goalAtHalf = await request(`/progress/milestones/${firstMilestone.id}`, {
+    method: 'PATCH',
+    token: student.token,
+    body: JSON.stringify({ isCompleted: true })
+  });
+
+  if (goalAtHalf.progress_percent !== 50 || goalAtHalf.milestones.filter((item) => item.is_completed).length !== 1) {
+    throw new Error('Milestone completion did not derive 50 percent goal progress');
+  }
+
+  await expectFailure('/progress/goals', 403, {
+    method: 'POST',
+    token: tutor.token,
+    body: JSON.stringify({ subject: 'Math', title: 'Tutor-owned goal' })
   });
 
   const tutors = await request('/users/tutors', { token: student.token });
@@ -239,6 +300,55 @@ const main = async () => {
     token: tutor.token,
     body: JSON.stringify({ action: 'accept' })
   });
+
+  const tutorGoalView = await request(`/progress/goals?studentId=${student.user.id}`, {
+    token: tutor.token
+  });
+  if (!tutorGoalView.goals.some((goal) => goal.id === learningGoal.id)) {
+    throw new Error('Connected tutor could not view student learning goals');
+  }
+
+  const future = new Date();
+  future.setDate(future.getDate() + 7);
+  const scheduledDate = future.toISOString().slice(0, 10);
+  const dayOfWeek = new Date(`${scheduledDate}T12:00:00`).getDay();
+  await request('/availability/me', {
+    method: 'PUT',
+    token: tutor.token,
+    body: JSON.stringify({
+      timezone: 'America/New_York',
+      slots: [{ dayOfWeek, startTime: '09:00', endTime: '12:00' }]
+    })
+  });
+
+  const session = await request('/sessions', {
+    method: 'POST',
+    token: student.token,
+    body: JSON.stringify({
+      connectionId: connection.connectionId,
+      title: 'Derivative practice',
+      subject: 'Math',
+      scheduledDate,
+      startTime: '10:00',
+      endTime: '11:00'
+    })
+  });
+  if (!session.id || session.duration_minutes !== 60) throw new Error('Tutoring session was not scheduled');
+
+  const upcomingSessions = await request('/sessions/upcoming?limit=5', { token: student.token });
+  if (!upcomingSessions.some((item) => item.id === session.id)) throw new Error('Scheduled session was missing from upcoming sessions');
+
+  const completedSession = await request(`/sessions/${session.id}/status`, {
+    method: 'PATCH',
+    token: tutor.token,
+    body: JSON.stringify({ status: 'completed', notes: 'Strong work on the power rule.' })
+  });
+  if (completedSession.status !== 'completed') throw new Error('Session status was not updated');
+
+  const notifications = await request('/notifications?limit=20', { token: student.token });
+  if (!notifications.notifications.some((item) => item.type === 'session_update')) {
+    throw new Error('Session update notification was not created');
+  }
 
   await request('/messages/send', {
     method: 'POST',

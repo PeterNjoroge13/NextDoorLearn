@@ -14,6 +14,7 @@ import {
   Settings,
   UserRoundCheck,
   ClipboardCheck,
+  Target,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
@@ -31,13 +32,15 @@ const studentNavItems = [
   { to: '/tutors', label: 'Find tutors', icon: Search },
   { to: '/messages', label: 'Messages', icon: MessageCircle },
   { to: '/sessions', label: 'Calendar', icon: CalendarDays },
-  { to: '/profile', label: 'My learning', icon: Settings },
+  { to: '/progress', label: 'My progress', icon: Target },
+  { to: '/profile', label: 'Profile', icon: Settings },
 ];
 
 const tutorNavItems = [
   { to: '/dashboard', label: 'Home', icon: Home },
   { to: '/requests', label: 'Requests', icon: Inbox },
   { to: '/messages', label: 'Students', icon: UserRoundCheck },
+  { to: '/progress', label: 'Progress', icon: Target },
   { to: '/sessions', label: 'Calendar', icon: CalendarDays },
   { to: '/profile?tab=availability', label: 'Availability', icon: CalendarClock },
   { to: '/profile', label: 'Profile', icon: Settings, end: true },

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Flag, Send, MessageCircle, Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -17,6 +17,9 @@ const Messages = () => {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
   const [reportUser, setReportUser] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sendError, setSendError] = useState('');
+  const [threadError, setThreadError] = useState('');
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -48,10 +51,21 @@ const Messages = () => {
   useEffect(() => {
     if (!selectedConversation) return undefined;
 
+    setMessages([]);
+    setThreadError('');
+
     const fetchMessages = async () => {
-      const token = localStorage.getItem('token');
-      const response = await api.getMessages(selectedConversation.connection_id, token);
-      if (!response.error) setMessages(Array.isArray(response) ? response : []);
+      try {
+        const token = localStorage.getItem('token');
+        const response = await api.getMessages(selectedConversation.connection_id, token);
+        if (response.error) setThreadError(response.error);
+        else {
+          setMessages(Array.isArray(response) ? response : []);
+          setThreadError('');
+        }
+      } catch {
+        setThreadError('This conversation could not be refreshed.');
+      }
     };
 
     fetchMessages();
@@ -64,6 +78,7 @@ const Messages = () => {
     if (!newMessage.trim() || !selectedConversation) return;
 
     setSending(true);
+    setSendError('');
     try {
       const token = localStorage.getItem('token');
       const response = await api.sendMessage(selectedConversation.connection_id, newMessage.trim(), token);
@@ -71,7 +86,9 @@ const Messages = () => {
         setNewMessage('');
         const updatedMessages = await api.getMessages(selectedConversation.connection_id, token);
         if (!updatedMessages.error) setMessages(Array.isArray(updatedMessages) ? updatedMessages : []);
-      }
+      } else setSendError(response.error);
+    } catch {
+      setSendError('Your message was not sent. Check your connection and try again.');
     } finally {
       setSending(false);
     }
@@ -84,6 +101,16 @@ const Messages = () => {
     id: conversation?.other_user_id,
     name: getConversationName(conversation),
   });
+
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filteredConversations = useMemo(() => conversations.filter((conversation) => {
+    if (!normalizedSearch) return true;
+    const searchable = `${getConversationName(conversation)} ${conversation.last_message || ''}`.toLowerCase();
+    return searchable.includes(normalizedSearch);
+  }), [conversations, normalizedSearch]);
+  const filteredMessages = useMemo(() => messages.filter((message) => (
+    !normalizedSearch || String(message.content || '').toLowerCase().includes(normalizedSearch)
+  )), [messages, normalizedSearch]);
 
   if (loading) return <LoadingState label="Opening conversations..." />;
   if (error) return <ErrorState message={error} />;
@@ -111,7 +138,12 @@ const Messages = () => {
         ) : (
           <section className="card message-layout">
             <aside className="conversation-list" aria-label="Conversations">
-              {conversations.map((conversation) => {
+              <div className="conversation-search">
+                <Search size={17} aria-hidden="true" />
+                <label className="sr-only" htmlFor="message-search">Search conversations and messages</label>
+                <input id="message-search" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search messages" />
+              </div>
+              {filteredConversations.map((conversation) => {
                 const active = selectedConversation?.connection_id === conversation.connection_id;
                 const name = getConversationName(conversation);
                 return (
@@ -131,6 +163,7 @@ const Messages = () => {
                   </button>
                 );
               })}
+              {!filteredConversations.length ? <p className="conversation-search-empty">No conversations match “{searchQuery}”.</p> : null}
             </aside>
 
             <div className="thread">
@@ -155,8 +188,10 @@ const Messages = () => {
               </header>
 
               <div className="message-scroll">
-                {messages.length ? (
-                  messages.map((message) => {
+                {threadError ? (
+                  <div className="alert alert-error" role="alert">{threadError}</div>
+                ) : filteredMessages.length ? (
+                  filteredMessages.map((message) => {
                     const mine = message.sender_id === user?.id;
                     return (
                       <div className={`bubble${mine ? ' mine' : ''}`} key={message.id}>
@@ -165,6 +200,8 @@ const Messages = () => {
                       </div>
                     );
                   })
+                ) : normalizedSearch && messages.length ? (
+                  <EmptyState icon={Search} title="No messages match">Try a different word or clear your search.</EmptyState>
                 ) : (
                   <EmptyState icon={MessageCircle} title="Start the thread">
                     Send a quick note to coordinate what comes next.
@@ -173,18 +210,22 @@ const Messages = () => {
                 <div ref={messagesEndRef} />
               </div>
 
-              <form className="composer" onSubmit={handleSendMessage}>
-                <input
-                  value={newMessage}
-                  onChange={(event) => setNewMessage(event.target.value)}
-                  placeholder="Write a message..."
-                  aria-label="New message"
-                />
-                <button className="btn btn-primary" type="submit" disabled={sending || !newMessage.trim()}>
-                  <Send size={18} />
-                  Send
-                </button>
-              </form>
+              <div className="composer-wrap">
+                {sendError ? <div className="composer-error" role="alert">{sendError}</div> : null}
+                <form className="composer" onSubmit={handleSendMessage}>
+                  <input
+                    value={newMessage}
+                    onChange={(event) => { setNewMessage(event.target.value); setSendError(''); }}
+                    placeholder="Write a message..."
+                    aria-label="New message"
+                    maxLength={2000}
+                  />
+                  <button className="btn btn-primary" type="submit" disabled={sending || !newMessage.trim()}>
+                    <Send size={18} />
+                    {sending ? 'Sending...' : 'Send'}
+                  </button>
+                </form>
+              </div>
             </div>
           </section>
         )}

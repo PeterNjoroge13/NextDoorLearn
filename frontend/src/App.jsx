@@ -18,6 +18,7 @@ import TutorApplication from './pages/TutorApplication';
 import StudentIntake from './pages/StudentIntake';
 import Donate from './pages/Donate';
 import PublicTutorProfile from './pages/PublicTutorProfile';
+import LearningProgress from './pages/LearningProgress';
 
 const LoadingScreen = () => (
   <div className="loading-wrap">
@@ -139,6 +140,14 @@ function App() {
                   <Sessions />
                 </ProtectedRoute>
               } 
+            />
+            <Route
+              path="/progress"
+              element={
+                <ProtectedRoute>
+                  <LearningProgress />
+                </ProtectedRoute>
+              }
             />
             <Route
               path="/admin"

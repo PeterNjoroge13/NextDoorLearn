@@ -70,7 +70,7 @@ const StudentDashboard = ({ user, data }) => {
         <DashboardSection title="Your learning plan" copy="A clear view of what you are working toward." className="dashboard-goals-panel">
           <div className="dashboard-goal-block"><span className="dashboard-goal-icon"><Target size={20} /></span><div><strong>Current goal</strong><p>{studentProfile.learning_goals || 'Add a goal so tutors know what progress looks like for you.'}</p></div></div>
           <div className="dashboard-goal-block"><span className="dashboard-goal-icon"><BookOpenCheck size={20} /></span><div><strong>Focus subjects</strong><div className="chip-row">{neededSubjects.map((subject) => <span className="badge badge-primary" key={subject}>{subject}</span>)}{!neededSubjects.length ? <span className="muted">No subjects added yet</span> : null}</div></div></div>
-          <Link className="btn btn-ghost w-full" to="/profile">Update learning plan <ArrowRight size={16} /></Link>
+          <Link className="btn btn-ghost w-full" to="/progress">Track your progress <ArrowRight size={16} /></Link>
         </DashboardSection>
       </section>
 
@@ -117,7 +117,7 @@ const StudentDashboard = ({ user, data }) => {
           <div className="dashboard-action-list">
             <Link to="/tutors"><span><Search size={19} /></span><div><strong>Find a tutor</strong><small>Compare subjects, rates, and teaching styles.</small></div><ArrowRight size={17} /></Link>
             <Link to="/sessions"><span><CalendarDays size={19} /></span><div><strong>Plan a session</strong><small>Schedule time with a connected tutor.</small></div><ArrowRight size={17} /></Link>
-            <Link to="/profile"><span><CheckCircle2 size={19} /></span><div><strong>Clarify your goals</strong><small>Help tutors understand what you need.</small></div><ArrowRight size={17} /></Link>
+            <Link to="/progress"><span><CheckCircle2 size={19} /></span><div><strong>Track your goals</strong><small>Turn a big outcome into achievable steps.</small></div><ArrowRight size={17} /></Link>
           </div>
         </DashboardSection>
       </section>

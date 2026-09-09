@@ -348,6 +348,68 @@ const api = {
     return response.json();
   },
 
+  // Learning progress endpoints
+  getLearningGoals: async (token, studentId) => {
+    const params = new URLSearchParams();
+    if (studentId) params.set('studentId', studentId);
+    const response = await fetch(`${API_BASE_URL}/progress/goals${params.size ? `?${params}` : ''}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
+  createLearningGoal: async (goal, token) => {
+    const response = await fetch(`${API_BASE_URL}/progress/goals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(goal),
+    });
+    return response.json();
+  },
+
+  updateLearningGoal: async (goalId, updates, token) => {
+    const response = await fetch(`${API_BASE_URL}/progress/goals/${goalId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(updates),
+    });
+    return response.json();
+  },
+
+  deleteLearningGoal: async (goalId, token) => {
+    const response = await fetch(`${API_BASE_URL}/progress/goals/${goalId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
+  addGoalMilestone: async (goalId, title, token) => {
+    const response = await fetch(`${API_BASE_URL}/progress/goals/${goalId}/milestones`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ title }),
+    });
+    return response.json();
+  },
+
+  updateGoalMilestone: async (milestoneId, updates, token) => {
+    const response = await fetch(`${API_BASE_URL}/progress/milestones/${milestoneId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(updates),
+    });
+    return response.json();
+  },
+
+  deleteGoalMilestone: async (milestoneId, token) => {
+    const response = await fetch(`${API_BASE_URL}/progress/milestones/${milestoneId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
   getUserStatus: async (userId, token) => {
     const response = await fetch(`${API_BASE_URL}/status/user/${userId}`, {
       headers: {
