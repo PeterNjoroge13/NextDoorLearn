@@ -7,9 +7,21 @@ types.setTypeParser(1700, (value) => Number(value));
 
 const connectionString = process.env.DATABASE_URL;
 const isLocal = /localhost|127\.0\.0\.1/.test(connectionString || '');
+const useSsl = !isLocal && process.env.DATABASE_SSL !== 'false';
+
+const normalizedConnectionString = (() => {
+  if (!useSsl) return connectionString;
+  const url = new URL(connectionString);
+  const sslMode = url.searchParams.get('sslmode');
+  if (!sslMode || ['prefer', 'require', 'verify-ca'].includes(sslMode)) {
+    url.searchParams.set('sslmode', 'verify-full');
+  }
+  return url.toString();
+})();
+
 const pool = new Pool({
-  connectionString,
-  ssl: isLocal || process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
+  connectionString: normalizedConnectionString,
+  ssl: useSsl ? { rejectUnauthorized: true } : false,
   max: Number(process.env.DATABASE_POOL_MAX || 10),
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
