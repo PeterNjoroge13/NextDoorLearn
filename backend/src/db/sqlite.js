@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
+const { runMigrations } = require('./migrations');
 
 const databasePath = process.env.DATABASE_PATH || path.join(__dirname, 'nextdoorlearn.db');
 fs.mkdirSync(path.dirname(databasePath), { recursive: true });
@@ -357,7 +358,7 @@ migrations.forEach(({ table, column, type }) => {
 
 const closeSqlite = db.close.bind(db);
 db.dialect = 'sqlite';
-db.initialize = async () => {};
+db.initialize = async () => runMigrations(db);
 db.withTransaction = async (callback) => {
   db.exec('BEGIN');
   try {

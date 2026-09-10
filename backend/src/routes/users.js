@@ -208,8 +208,8 @@ router.put('/change-password', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Current password and new password are required' });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
     }
 
     // Get current user
@@ -266,12 +266,17 @@ router.get('/tutors', authenticateToken, async (req, res) => {
       FROM users u
       JOIN tutor_profiles tp ON u.id = tp.user_id
       LEFT JOIN reviews r ON u.id = r.tutor_id
-      WHERE u.role = 'tutor'
+      WHERE u.role = 'tutor' AND u.status = 'active' AND u.verified_at IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM user_blocks b
+          WHERE (b.blocker_id = ? AND b.blocked_user_id = u.id)
+             OR (b.blocker_id = u.id AND b.blocked_user_id = ?)
+        )
       GROUP BY u.id, u.name, u.bio, u.avatar_url, u.location, u.languages,
                tp.subjects, tp.availability, tp.hourly_rate, tp.experience_years, 
                tp.education, tp.teaching_style, tp.headline, tp.tutoring_mode,
                tp.service_area, tp.age_groups, tp.public_profile_enabled
-    `).all();
+    `).all(req.user.userId, req.user.userId);
 
     // Parse JSON fields and format ratings
     const formattedTutors = await Promise.all(tutors.map(async (tutor) => {
@@ -343,9 +348,14 @@ router.get('/tutors/:tutorId', authenticateToken, async (req, res) => {
       FROM users u
       JOIN tutor_profiles tp ON u.id = tp.user_id
       LEFT JOIN reviews r ON u.id = r.tutor_id
-      WHERE u.id = ? AND u.role = 'tutor'
+      WHERE u.id = ? AND u.role = 'tutor' AND u.status = 'active' AND u.verified_at IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM user_blocks b
+          WHERE (b.blocker_id = ? AND b.blocked_user_id = u.id)
+             OR (b.blocker_id = u.id AND b.blocked_user_id = ?)
+        )
       GROUP BY u.id, tp.id
-    `).get(tutorId);
+    `).get(tutorId, req.user.userId, req.user.userId);
 
     if (!tutor) {
       return res.status(404).json({ error: 'Tutor not found' });
@@ -399,7 +409,7 @@ router.get('/public/tutors/:tutorId', async (req, res) => {
       FROM users u
       JOIN tutor_profiles tp ON u.id = tp.user_id
       LEFT JOIN reviews r ON u.id = r.tutor_id
-      WHERE u.id = ? AND u.role = 'tutor' AND u.status = 'active'
+      WHERE u.id = ? AND u.role = 'tutor' AND u.status = 'active' AND u.verified_at IS NOT NULL
         AND tp.public_profile_enabled = 1
       GROUP BY u.id, tp.id
     `).get(tutorId);

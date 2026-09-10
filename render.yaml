@@ -26,3 +26,15 @@ services:
         value: 300
       - key: AUTH_RATE_LIMIT_MAX
         value: 30
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: RESEND_WEBHOOK_SECRET
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: JOB_SECRET
+        generateValue: true
+      - key: REQUIRE_EMAIL_VERIFICATION
+        value: false

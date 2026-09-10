@@ -23,32 +23,49 @@ const authenticateToken = async (req, res, next) => {
   }
 
   try {
-    const currentUser = await db.prepare('SELECT status FROM users WHERE id = ?').get(user.userId);
+    const currentUser = await db.prepare('SELECT id, email, role, name, status, email_verified_at, verified_at FROM users WHERE id = ?').get(user.userId);
     if (!currentUser) {
       return res.status(403).json({ error: 'Invalid user' });
     }
-    if (currentUser.status === 'suspended') {
-      return res.status(403).json({ error: 'Account is suspended' });
+    if (currentUser.status !== 'active') {
+      return res.status(403).json({ error: `Account is ${currentUser.status || 'unavailable'}` });
     }
 
-    req.user = user;
+    req.user = { ...user, ...currentUser, userId: currentUser.id };
     next();
   } catch (error) {
     next(error);
   }
 };
 
-const requireAdmin = (req, res, next) => {
+const requireAdmin = async (req, res, next) => {
   const adminEmails = (process.env.ADMIN_EMAILS || '')
     .split(',')
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
 
-  if (!adminEmails.includes(String(req.user.email || '').toLowerCase())) {
-    return res.status(403).json({ error: 'Admin access required' });
+  try {
+    const configured = adminEmails.includes(String(req.user.email || '').toLowerCase());
+    if (configured) {
+      await db.prepare(`
+        INSERT INTO admin_memberships (user_id, permission_level) VALUES (?, 'owner')
+        ON CONFLICT(user_id) DO NOTHING
+      `).run(req.user.userId);
+    }
+    const membership = await db.prepare('SELECT permission_level FROM admin_memberships WHERE user_id = ?').get(req.user.userId);
+    if (!membership) return res.status(403).json({ error: 'Admin access required' });
+    req.user.adminPermission = membership.permission_level;
+    next();
+  } catch (error) {
+    next(error);
   }
+};
 
+const requireVerifiedEmail = (req, res, next) => {
+  if (process.env.REQUIRE_EMAIL_VERIFICATION === 'true' && !req.user.email_verified_at) {
+    return res.status(403).json({ error: 'Verify your email before using this feature', code: 'EMAIL_VERIFICATION_REQUIRED' });
+  }
   next();
 };
 
-module.exports = { authenticateToken, requireAdmin, JWT_SECRET };
+module.exports = { authenticateToken, requireAdmin, requireVerifiedEmail, JWT_SECRET };

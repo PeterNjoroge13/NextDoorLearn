@@ -1,13 +1,15 @@
 const express = require('express');
 const db = require('../db/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireVerifiedEmail } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
 const { isPositiveInteger, sanitizeText } = require('../utils/validation');
+const { usersAreBlocked } = require('../services/safety');
 
 const router = express.Router();
+router.use(authenticateToken, requireVerifiedEmail);
 
 // Send message
-router.post('/send', authenticateToken, async (req, res) => {
+router.post('/send', async (req, res) => {
   try {
     const { connectionId, content } = req.body;
     const senderId = req.user.userId;
@@ -29,6 +31,9 @@ router.post('/send', authenticateToken, async (req, res) => {
 
     if (!connection) {
       return res.status(403).json({ error: 'You are not authorized to send messages in this connection' });
+    }
+    if (await usersAreBlocked(connection.student_id, connection.tutor_id)) {
+      return res.status(403).json({ error: 'Messaging is unavailable for this connection' });
     }
 
     // Insert message
@@ -64,7 +69,7 @@ router.post('/send', authenticateToken, async (req, res) => {
 });
 
 // Get message statistics for a user
-router.get('/stats', authenticateToken, async (req, res) => {
+router.get('/stats', async (req, res) => {
   try {
     const userId = req.user.userId;
 
@@ -107,7 +112,7 @@ router.get('/stats', authenticateToken, async (req, res) => {
 });
 
 // Get messages for a connection
-router.get('/:connectionId', authenticateToken, async (req, res) => {
+router.get('/:connectionId', async (req, res) => {
   try {
     const { connectionId } = req.params;
     const userId = req.user.userId;
@@ -118,12 +123,15 @@ router.get('/:connectionId', authenticateToken, async (req, res) => {
 
     // Verify user is part of this connection
     const connection = await db.prepare(`
-      SELECT id FROM connections
+      SELECT id, student_id, tutor_id FROM connections
       WHERE id = ? AND (student_id = ? OR tutor_id = ?) AND status = 'accepted'
     `).get(connectionId, userId, userId);
 
     if (!connection) {
       return res.status(403).json({ error: 'You are not authorized to view messages in this connection' });
+    }
+    if (await usersAreBlocked(connection.student_id, connection.tutor_id)) {
+      return res.status(403).json({ error: 'Messaging is unavailable for this connection' });
     }
 
     // Get messages with read status
@@ -151,7 +159,7 @@ router.get('/:connectionId', authenticateToken, async (req, res) => {
 });
 
 // Get all conversations for user
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const userId = req.user.userId;
     let conversations;
@@ -164,6 +172,9 @@ router.get('/', authenticateToken, async (req, res) => {
         FROM connections c
         JOIN users u ON c.tutor_id = u.id
         WHERE c.student_id = ? AND c.status = 'accepted'
+          AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE
+            (b.blocker_id = c.student_id AND b.blocked_user_id = c.tutor_id) OR
+            (b.blocker_id = c.tutor_id AND b.blocked_user_id = c.student_id))
         ORDER BY last_message_time DESC
       `).all(userId);
     } else {
@@ -174,6 +185,9 @@ router.get('/', authenticateToken, async (req, res) => {
         FROM connections c
         JOIN users u ON c.student_id = u.id
         WHERE c.tutor_id = ? AND c.status = 'accepted'
+          AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE
+            (b.blocker_id = c.student_id AND b.blocked_user_id = c.tutor_id) OR
+            (b.blocker_id = c.tutor_id AND b.blocked_user_id = c.student_id))
         ORDER BY last_message_time DESC
       `).all(userId);
     }

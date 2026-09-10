@@ -73,6 +73,20 @@ const api = {
     return response.json();
   },
 
+  getTutorActivation: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/auth/tutor-activation?token=${encodeURIComponent(token || '')}`);
+    return response.json();
+  },
+
+  activateTutor: async (token, password) => {
+    const response = await fetch(`${API_BASE_URL}/auth/tutor-activation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, password }),
+    });
+    return response.json();
+  },
+
   // User endpoints
   getProfile: async (token) => {
     const response = await fetch(`${API_BASE_URL}/users/profile`, {
@@ -118,6 +132,13 @@ const api = {
 
   getTutors: async (token) => {
     const response = await fetch(`${API_BASE_URL}/users/tutors`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
+  getRecommendations: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/recommendations`, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     return response.json();
@@ -684,6 +705,11 @@ const api = {
   },
 
   // Admin endpoints
+  getAdminOverview: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/overview`, { headers: { 'Authorization': `Bearer ${token}` } });
+    return response.json();
+  },
+
   getAdminUsers: async (token) => {
     const response = await fetch(`${API_BASE_URL}/admin/users`, {
       headers: {
@@ -726,13 +752,30 @@ const api = {
     return response.json();
   },
 
+  applyAdminModeration: async (reportId, action, reason, token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/reports/${reportId}/actions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action, reason }),
+    });
+    return response.json();
+  },
+
+  applyAdminModeration: async (reportId, action, reason, token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/reports/${reportId}/actions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action, reason }),
+    });
+    return response.json();
+  },
+
   getAdminTutorApplications: async (token) => {
     const response = await fetch(`${API_BASE_URL}/admin/tutor-applications`, { headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();
   },
 
-  updateAdminTutorApplication: async (applicationId, status, token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/tutor-applications/${applicationId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ status }) });
+  updateAdminTutorApplication: async (applicationId, updates, token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/tutor-applications/${applicationId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(typeof updates === 'string' ? { status: updates } : updates) });
     return response.json();
   },
 
@@ -748,6 +791,41 @@ const api = {
 
   getAdminWaitlist: async (token) => {
     const response = await fetch(`${API_BASE_URL}/admin/waitlist`, { headers: { 'Authorization': `Bearer ${token}` } });
+    return response.json();
+  },
+
+  getAdminAuditLog: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/audit-log`, { headers: { 'Authorization': `Bearer ${token}` } });
+    return response.json();
+  },
+
+  getAdminEmailOutbox: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/email-outbox`, { headers: { 'Authorization': `Bearer ${token}` } });
+    return response.json();
+  },
+
+  processAdminEmailOutbox: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/email-outbox/process`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+    return response.json();
+  },
+
+  getBlockedUsers: async (token) => {
+    const response = await fetch(`${API_BASE_URL}/blocks`, { headers: { 'Authorization': `Bearer ${token}` } });
+    return response.json();
+  },
+
+  blockUser: async (userId, reason, token) => {
+    const response = await fetch(`${API_BASE_URL}/blocks/${userId}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ reason }) });
+    return response.json();
+  },
+
+  unblockUser: async (userId, token) => {
+    const response = await fetch(`${API_BASE_URL}/blocks/${userId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+    return response.json();
+  },
+
+  respondToSessionRequest: async (sessionId, decision, token) => {
+    const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/confirmation`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ decision }) });
     return response.json();
   },
 };

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookOpen,
@@ -9,6 +9,7 @@ import {
   Inbox,
   LogOut,
   MessageCircle,
+  MailCheck,
   Search,
   ShieldCheck,
   Settings,
@@ -19,6 +20,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
 import { getApiAssetUrl, initials } from '../utils/format';
+import api from '../services/api';
 
 export const Avatar = ({ name, src, size = 38 }) => (
   <span className="avatar" style={{ width: size, height: size }}>
@@ -47,6 +49,7 @@ const tutorNavItems = [
 ];
 
 const isAdminUser = (user) => {
+  if (user?.isAdmin) return true;
   const adminEmails = (import.meta.env.VITE_ADMIN_EMAILS || '')
     .split(',')
     .map((email) => email.trim().toLowerCase())
@@ -58,6 +61,7 @@ const AppShell = ({ children }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [verificationMessage, setVerificationMessage] = useState('');
   const navItems = [...(user?.role === 'tutor' ? tutorNavItems : studentNavItems)];
 
   if (isAdminUser(user)) {
@@ -67,6 +71,11 @@ const AppShell = ({ children }) => {
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
+  };
+
+  const resendVerification = async () => {
+    const response = await api.resendVerification(user.email);
+    setVerificationMessage(response.error || response.message || 'Verification email queued.');
   };
 
   return (
@@ -117,6 +126,13 @@ const AppShell = ({ children }) => {
           </div>
         </div>
       </header>
+      {user?.emailVerified === false ? (
+        <div className="alert" style={{ margin: '12px auto 0', maxWidth: 1180 }}>
+          <MailCheck size={18} />
+          <span>{verificationMessage || 'Verify your email to unlock messaging and session requests.'}</span>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={resendVerification}>Resend email</button>
+        </div>
+      ) : null}
       {children}
     </div>
   );

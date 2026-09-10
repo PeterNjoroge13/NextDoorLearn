@@ -1,15 +1,18 @@
 const express = require('express');
 const db = require('../db/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireVerifiedEmail } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
 const { isTimeRangeWithinAvailability } = require('../utils/availability');
 const { syncSessionToGoogle } = require('../services/googleCalendar');
+const { usersAreBlocked } = require('../services/safety');
+const { scheduleSessionReminders } = require('../services/reminders');
 const { isPositiveInteger, isValidDate, isValidTime, sanitizeText } = require('../utils/validation');
 
 const router = express.Router();
+router.use(authenticateToken, requireVerifiedEmail);
 
 // Get all sessions for a user (tutor or student)
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const userId = req.user.userId;
     const { status, month, year } = req.query;
@@ -52,7 +55,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // Get upcoming sessions for a user
-router.get('/upcoming', authenticateToken, async (req, res) => {
+router.get('/upcoming', async (req, res) => {
   try {
     const userId = req.user.userId;
     const { limit = 5 } = req.query;
@@ -67,6 +70,7 @@ router.get('/upcoming', authenticateToken, async (req, res) => {
       JOIN users u2 ON s.student_id = u2.id
       WHERE (s.tutor_id = ? OR s.student_id = ?)
         AND s.status = 'scheduled'
+        AND s.confirmation_status = 'confirmed'
         AND (s.scheduled_date > date('now') OR (s.scheduled_date = date('now') AND s.start_time > time('now')))
       ORDER BY s.scheduled_date ASC, s.start_time ASC
       LIMIT ?
@@ -80,7 +84,7 @@ router.get('/upcoming', authenticateToken, async (req, res) => {
 });
 
 // Create a new session
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const {
       connectionId,
@@ -114,6 +118,9 @@ router.post('/', authenticateToken, async (req, res) => {
     if (!connection) {
       return res.status(404).json({ error: 'Connection not found or not accepted' });
     }
+    if (await usersAreBlocked(connection.student_id, connection.tutor_id)) {
+      return res.status(403).json({ error: 'Scheduling is unavailable for this connection' });
+    }
     
     // Calculate duration
     const start = new Date(`2000-01-01T${startTime}`);
@@ -137,51 +144,30 @@ router.post('/', authenticateToken, async (req, res) => {
       });
     }
     
-    // Check for time conflicts
-    const conflicts = await db.prepare(`
-      SELECT id FROM sessions 
-      WHERE (tutor_id = ? OR student_id = ?) 
-        AND scheduled_date = ? 
-        AND status = 'scheduled'
-        AND (
-          (start_time <= ? AND end_time > ?) OR
-          (start_time < ? AND end_time >= ?) OR
-          (start_time >= ? AND end_time <= ?)
-        )
-    `).all(
-      connection.tutor_id,
-      connection.student_id,
-      scheduledDate,
-      startTime, startTime,
-      endTime, endTime,
-      startTime, endTime
-    );
-    
-    if (conflicts.length > 0) {
-      return res.status(400).json({ error: 'Time conflict: Another session is scheduled at this time' });
-    }
-    
-    // Create the session
-    const insertSession = await db.prepare(`
-      INSERT INTO sessions (
-        connection_id, tutor_id, student_id, title, description, subject,
-        scheduled_date, start_time, end_time, duration_minutes, meeting_link
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = await insertSession.run(
-      connectionId,
-      connection.tutor_id,
-      connection.student_id,
-      safeTitle,
-      safeDescription,
-      safeSubject,
-      scheduledDate,
-      startTime,
-      endTime,
-      durationMinutes,
-      safeMeetingLink
-    );
+    const confirmationStatus = userId === connection.tutor_id ? 'confirmed' : 'pending';
+    const result = await db.withTransaction(async (transaction) => {
+      if (transaction.dialect === 'postgres') {
+        await transaction.prepare('SELECT pg_advisory_xact_lock(?)').get(Number(connection.tutor_id));
+      }
+      const conflict = await transaction.prepare(`
+        SELECT id FROM sessions
+        WHERE (tutor_id = ? OR student_id = ?) AND scheduled_date = ? AND status = 'scheduled'
+          AND start_time < ? AND end_time > ?
+        LIMIT 1
+      `).get(connection.tutor_id, connection.student_id, scheduledDate, endTime, startTime);
+      if (conflict) throw Object.assign(new Error('Time conflict: Another session is scheduled at this time'), { statusCode: 409 });
+      return transaction.prepare(`
+        INSERT INTO sessions (
+          connection_id, tutor_id, student_id, title, description, subject,
+          scheduled_date, start_time, end_time, duration_minutes, meeting_link,
+          requested_by, confirmation_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        connectionId, connection.tutor_id, connection.student_id, safeTitle, safeDescription,
+        safeSubject, scheduledDate, startTime, endTime, durationMinutes, safeMeetingLink,
+        userId, confirmationStatus
+      );
+    });
     
     // Get the created session with user details
     const newSession = await db.prepare(`
@@ -195,6 +181,8 @@ router.post('/', authenticateToken, async (req, res) => {
       WHERE s.id = ?
     `).get(result.lastInsertRowid);
 
+    await scheduleSessionReminders(newSession).catch((error) => console.error('Unable to schedule session reminders:', error));
+
     // Notify the other participant
     const recipientId = userId === connection.tutor_id ? connection.student_id : connection.tutor_id;
     const creatorName = userId === connection.tutor_id ? newSession.tutor_name : newSession.student_name;
@@ -202,23 +190,58 @@ router.post('/', authenticateToken, async (req, res) => {
     await createNotification(
       recipientId,
       'session_created',
-      'New session scheduled',
-      `${creatorName} scheduled a session: "${safeTitle}" on ${scheduledDate} at ${startTime}`,
+      confirmationStatus === 'pending' ? 'New session request' : 'New session scheduled',
+      `${creatorName} ${confirmationStatus === 'pending' ? 'requested' : 'scheduled'} a session: "${safeTitle}" on ${scheduledDate} at ${startTime}`,
       '/sessions',
       result.lastInsertRowid
     );
 
-    await syncSessionToGoogle(newSession, 'upsert');
+    if (confirmationStatus === 'confirmed') await syncSessionToGoogle(newSession, 'upsert');
     
     res.status(201).json(newSession);
   } catch (error) {
     console.error('Create session error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Internal server error' });
+  }
+});
+
+router.patch('/:id/confirmation', async (req, res) => {
+  try {
+    const sessionId = req.params.id;
+    const decision = sanitizeText(req.body.decision, 20);
+    if (!isPositiveInteger(sessionId) || !['confirmed', 'declined'].includes(decision)) {
+      return res.status(400).json({ error: 'A valid session and decision are required' });
+    }
+    const session = await db.prepare(`
+      SELECT s.*, student.name AS student_name, tutor.name AS tutor_name
+      FROM sessions s JOIN users student ON student.id = s.student_id JOIN users tutor ON tutor.id = s.tutor_id
+      WHERE s.id = ? AND s.tutor_id = ? AND s.confirmation_status = 'pending'
+    `).get(sessionId, req.user.userId);
+    if (!session) return res.status(404).json({ error: 'Pending session request not found' });
+    await db.prepare(`
+      UPDATE sessions SET confirmation_status = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).run(decision, decision === 'declined' ? 'cancelled' : 'scheduled', sessionId);
+    if (decision === 'declined') {
+      await db.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
+    } else {
+      await syncSessionToGoogle({ ...session, confirmation_status: decision }, 'upsert');
+    }
+    await createNotification(
+      session.student_id,
+      'session_confirmation',
+      decision === 'confirmed' ? 'Session confirmed' : 'Session declined',
+      `${session.tutor_name} ${decision} your session request for "${session.title}".`,
+      '/sessions', sessionId
+    );
+    res.json(await db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId));
+  } catch (error) {
+    console.error('Session confirmation error:', error);
+    res.status(500).json({ error: 'Unable to update session request' });
   }
 });
 
 // Update session status
-router.patch('/:id/status', authenticateToken, async (req, res) => {
+router.patch('/:id/status', async (req, res) => {
   try {
     const sessionId = req.params.id;
     const { status, notes } = req.body;
@@ -240,6 +263,9 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
     
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
+    }
+    if (session.confirmation_status === 'pending' && status !== 'cancelled') {
+      return res.status(409).json({ error: 'The tutor must confirm this session request first' });
     }
     
     // Update session
@@ -284,6 +310,7 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
     );
 
     if (status === 'cancelled') {
+      await db.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
       await syncSessionToGoogle(updatedSession, 'delete');
     } else {
       await syncSessionToGoogle(updatedSession, 'upsert');
@@ -297,7 +324,7 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
 });
 
 // Delete a session
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const sessionId = req.params.id;
     const userId = req.user.userId;
@@ -331,7 +358,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 });
 
 // Get session statistics
-router.get('/stats', authenticateToken, async (req, res) => {
+router.get('/stats', async (req, res) => {
   try {
     const userId = req.user.userId;
     

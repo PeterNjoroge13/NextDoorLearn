@@ -166,6 +166,7 @@ const Login = ({ initialMode = 'login' }) => {
                 value={formData.password}
                 onChange={handleChange}
                 required
+                minLength={isLogin ? undefined : 8}
               />
             </div>
 

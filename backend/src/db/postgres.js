@@ -1,5 +1,6 @@
 const { Pool, types } = require('pg');
 const schema = require('./postgresSchema');
+const { runMigrations } = require('./migrations');
 
 // Keep PostgreSQL response shapes aligned with better-sqlite3.
 types.setTypeParser(20, (value) => Number(value));
@@ -80,12 +81,17 @@ const db = {
   },
   async initialize() {
     await pool.query(schema);
+    await runMigrations(db);
   },
   async withTransaction(callback) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const transactionDb = { prepare: (sql) => statement(sql, client) };
+      const transactionDb = {
+        dialect: 'postgres',
+        prepare: (sql) => statement(sql, client),
+        exec: (sql) => client.query(sql),
+      };
       const result = await callback(transactionDb);
       await client.query('COMMIT');
       return result;

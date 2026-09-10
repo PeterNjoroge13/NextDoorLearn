@@ -25,6 +25,14 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Reported user not found' });
     }
 
+    const duplicate = await db.prepare(`
+      SELECT id FROM user_reports
+      WHERE reporter_id = ? AND reported_user_id = ? AND status IN ('open', 'reviewing')
+        AND created_at > datetime('now', '-5 minutes')
+      LIMIT 1
+    `).get(reporterId, reportedUserId);
+    if (duplicate) return res.status(409).json({ error: 'You already submitted a recent report about this user' });
+
     const result = await db.prepare(`
       INSERT INTO user_reports (reporter_id, reported_user_id, reason, details)
       VALUES (?, ?, ?, ?)

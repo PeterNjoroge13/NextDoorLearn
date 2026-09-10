@@ -24,6 +24,10 @@ const adminRoutes = require('./routes/admin');
 const favoriteRoutes = require('./routes/favorites');
 const communityRoutes = require('./routes/community');
 const progressRoutes = require('./routes/progress');
+const blockRoutes = require('./routes/blocks');
+const recommendationRoutes = require('./routes/recommendations');
+const jobRoutes = require('./routes/jobs');
+const resendWebhookRoutes = require('./routes/resendWebhook');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -89,6 +93,7 @@ app.use(cors({
   },
   credentials: true
 }));
+app.use('/api/webhooks/resend', resendWebhookRoutes);
 app.use(express.json({ limit: '1mb' }));
 
 const apiLimiter = rateLimit({
@@ -129,6 +134,9 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/community', communityRoutes);
 app.use('/api/progress', progressRoutes);
+app.use('/api/blocks', blockRoutes);
+app.use('/api/recommendations', recommendationRoutes);
+app.use('/api/jobs', jobRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {

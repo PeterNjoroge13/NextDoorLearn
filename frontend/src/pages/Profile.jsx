@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { CalendarClock, Camera, ClipboardCheck, ExternalLink, Globe2, Lock, Save, Settings, Trash2, UserRound } from 'lucide-react';
+import { CalendarClock, Camera, ClipboardCheck, ExternalLink, Globe2, Lock, Save, Settings, Trash2, UserRound, UserX } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import AppShell, { Avatar, ErrorState, LoadingState } from '../components/AppShell';
@@ -22,6 +22,7 @@ const Profile = () => {
   const [activeTab, setActiveTab] = useState(requestedTab === 'availability' && user?.role === 'tutor' ? 'availability' : 'profile');
   const [completion, setCompletion] = useState(0);
   const [availabilitySlots, setAvailabilitySlots] = useState([]);
+  const [blockedUsers, setBlockedUsers] = useState([]);
   const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [formData, setFormData] = useState({
     name: '',
@@ -118,6 +119,8 @@ const Profile = () => {
 
         const completionResponse = await api.getProfileCompletion(token);
         if (!completionResponse.error) setCompletion(completionResponse.percentage || 0);
+        const blockedResponse = await api.getBlockedUsers(token);
+        if (Array.isArray(blockedResponse)) setBlockedUsers(blockedResponse);
 
         if (user?.role === 'tutor') {
           const availabilityResponse = await api.getMyAvailability(token);
@@ -231,6 +234,13 @@ const Profile = () => {
     const response = await api.changePassword(passwordData.currentPassword, passwordData.newPassword, token);
     setMessage(response.error || 'Password updated.');
     if (!response.error) setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  };
+
+  const handleUnblock = async (blockedUserId) => {
+    const response = await api.unblockUser(blockedUserId, localStorage.getItem('token'));
+    if (response.error) return setError(response.error);
+    setBlockedUsers((current) => current.filter((item) => Number(item.blocked_user_id) !== Number(blockedUserId)));
+    setMessage('User unblocked.');
   };
 
   const handleAvatarUpload = async (event) => {
@@ -519,6 +529,7 @@ const Profile = () => {
             ) : null}
 
             {activeTab === 'security' ? (
+              <div className="form-grid">
               <form className="form-grid" onSubmit={handlePassword}>
                 <div className="field">
                   <label>Current password</label>
@@ -527,15 +538,20 @@ const Profile = () => {
                 <div className="grid grid-2">
                   <div className="field">
                     <label>New password</label>
-                    <input type="password" value={passwordData.newPassword} onChange={(event) => setPasswordData((current) => ({ ...current, newPassword: event.target.value }))} required />
+                    <input type="password" minLength={8} value={passwordData.newPassword} onChange={(event) => setPasswordData((current) => ({ ...current, newPassword: event.target.value }))} required />
                   </div>
                   <div className="field">
                     <label>Confirm new password</label>
-                    <input type="password" value={passwordData.confirmPassword} onChange={(event) => setPasswordData((current) => ({ ...current, confirmPassword: event.target.value }))} required />
+                    <input type="password" minLength={8} value={passwordData.confirmPassword} onChange={(event) => setPasswordData((current) => ({ ...current, confirmPassword: event.target.value }))} required />
                   </div>
                 </div>
                 <button className="btn btn-primary" type="submit">Update password</button>
               </form>
+              <div className="section-head compact"><div><h2>Blocked users</h2><p>Blocked people cannot find, message, or schedule with you.</p></div><UserX size={22} /></div>
+              {blockedUsers.length ? <div className="list">{blockedUsers.map((blocked) => (
+                <div className="list-item" key={blocked.id}><div><strong>{blocked.name}</strong><p className="muted">{blocked.role}</p></div><button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUnblock(blocked.blocked_user_id)}>Unblock</button></div>
+              ))}</div> : <p className="muted">You have not blocked anyone.</p>}
+              </div>
             ) : null}
           </div>
         </section>

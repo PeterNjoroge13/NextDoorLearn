@@ -1,11 +1,13 @@
 const express = require('express');
 const db = require('../db/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireVerifiedEmail } = require('../middleware/auth');
+const { usersAreBlocked } = require('../services/safety');
 
 const router = express.Router();
+router.use(authenticateToken, requireVerifiedEmail);
 
 // Get connection requests for a tutor
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const userId = req.user.userId;
 
@@ -32,6 +34,9 @@ router.get('/', authenticateToken, async (req, res) => {
       JOIN users u ON c.student_id = u.id
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
       WHERE c.tutor_id = ?
+        AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE
+          (b.blocker_id = c.student_id AND b.blocked_user_id = c.tutor_id) OR
+          (b.blocker_id = c.tutor_id AND b.blocked_user_id = c.student_id))
       ORDER BY CASE c.status WHEN 'pending' THEN 0 WHEN 'accepted' THEN 1 ELSE 2 END, c.created_at DESC
     `).all(userId);
 
@@ -43,7 +48,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // Respond to a connection request
-router.post('/:id/respond', authenticateToken, async (req, res) => {
+router.post('/:id/respond', async (req, res) => {
   try {
     const { id } = req.params;
     const { action } = req.body; // 'accept' or 'reject'
@@ -61,6 +66,9 @@ router.post('/:id/respond', authenticateToken, async (req, res) => {
 
     if (!request) {
       return res.status(404).json({ error: 'Request not found or already processed' });
+    }
+    if (await usersAreBlocked(request.student_id, request.tutor_id)) {
+      return res.status(403).json({ error: 'This connection is unavailable' });
     }
 
     // Update the connection status
@@ -84,7 +92,7 @@ router.post('/:id/respond', authenticateToken, async (req, res) => {
 });
 
 // Get all connections (accepted requests) for a tutor
-router.get('/connections', authenticateToken, async (req, res) => {
+router.get('/connections', async (req, res) => {
   try {
     const userId = req.user.userId;
     
@@ -103,6 +111,9 @@ router.get('/connections', authenticateToken, async (req, res) => {
       JOIN users u ON c.student_id = u.id
       LEFT JOIN student_profiles sp ON u.id = sp.user_id
       WHERE c.tutor_id = ? AND c.status = 'accepted'
+        AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE
+          (b.blocker_id = c.student_id AND b.blocked_user_id = c.tutor_id) OR
+          (b.blocker_id = c.tutor_id AND b.blocked_user_id = c.student_id))
       ORDER BY c.created_at DESC
     `).all(userId);
 

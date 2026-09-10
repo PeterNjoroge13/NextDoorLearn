@@ -5,13 +5,6 @@ import { Avatar, EmptyState } from '../components/AppShell';
 import { DashboardSection, PeopleList, ProfileProgress, SessionList, StatTile } from '../components/dashboard/DashboardUi';
 import { parseList } from '../utils/format';
 
-const recommendationScore = (tutor, neededSubjects) => {
-  const tutorSubjects = parseList(tutor.subjects).map((subject) => subject.toLowerCase());
-  const matches = neededSubjects.filter((subject) => tutorSubjects.includes(subject.toLowerCase())).length;
-  const rating = Number(tutor.averageRating || tutor.average_rating || 0);
-  return matches * 10 + rating + (Number(tutor.hourly_rate || 0) === 0 ? 2 : 0);
-};
-
 const StudentDashboard = ({ user, data }) => {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
@@ -24,8 +17,7 @@ const StudentDashboard = ({ user, data }) => {
   const savedIds = useMemo(() => new Set(data.favorites.map((favorite) => Number(favorite.id))), [data.favorites]);
   const recommendedTutors = useMemo(() => data.tutors
     .filter((tutor) => !connectedTutorIds.has(Number(tutor.id)))
-    .sort((a, b) => recommendationScore(b, neededSubjects) - recommendationScore(a, neededSubjects))
-    .slice(0, 3), [data.tutors, neededSubjects, connectedTutorIds]);
+    .slice(0, 3), [data.tutors, connectedTutorIds]);
   const supportPeople = data.conversations.length ? data.conversations : activeConnections;
   const firstName = user?.name?.split(' ')[0] || 'there';
 
@@ -84,7 +76,11 @@ const StudentDashboard = ({ user, data }) => {
                 <article className="dashboard-tutor" key={tutor.id}>
                   <div className="dashboard-tutor-head"><Avatar name={tutor.name} src={tutor.avatar_url} size={50} /><div><h3>{tutor.name}</h3><span>{tutor.location || 'Remote tutoring'}</span></div><span className="dashboard-rating"><Star size={14} />{rating ? rating.toFixed(1) : 'New'}</span></div>
                   <p>{tutor.bio || tutor.teaching_style || 'Ready to help students build skill and confidence.'}</p>
-                  <div className="chip-row">{subjects.slice(0, 3).map((subject) => <span className="badge" key={subject}>{subject}</span>)}</div>
+                  <div className="chip-row">
+                    {tutor.matchScore ? <span className="badge badge-primary">{tutor.matchScore}% match</span> : null}
+                    {subjects.slice(0, 2).map((subject) => <span className="badge" key={subject}>{subject}</span>)}
+                  </div>
+                  {tutor.matchReasons?.length ? <p className="muted">{tutor.matchReasons.join(' · ')}</p> : null}
                   <div className="dashboard-tutor-footer"><strong>{Number(tutor.hourly_rate || 0) === 0 ? 'Free' : `$${tutor.hourly_rate}/hr`}</strong><Link className="btn btn-primary btn-sm" to={`/tutors/${tutor.id}`}>View tutor</Link></div>
                   {savedIds.has(Number(tutor.id)) ? <span className="dashboard-saved-label"><Bookmark size={14} />Saved</span> : null}
                 </article>

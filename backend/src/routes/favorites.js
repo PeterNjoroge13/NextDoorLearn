@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { isPositiveInteger } = require('../utils/validation');
+const { usersAreBlocked } = require('../services/safety');
 
 const router = express.Router();
 
@@ -32,7 +33,10 @@ router.get('/', authenticateToken, async (req, res) => {
       JOIN users u ON f.tutor_id = u.id
       JOIN tutor_profiles tp ON u.id = tp.user_id
       LEFT JOIN reviews r ON u.id = r.tutor_id
-      WHERE f.student_id = ? AND u.role = 'tutor'
+      WHERE f.student_id = ? AND u.role = 'tutor' AND u.status = 'active' AND u.verified_at IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE
+          (b.blocker_id = f.student_id AND b.blocked_user_id = f.tutor_id) OR
+          (b.blocker_id = f.tutor_id AND b.blocked_user_id = f.student_id))
       GROUP BY f.id, u.id, tp.id
       ORDER BY f.created_at DESC
     `).all(req.user.userId);
@@ -60,9 +64,12 @@ router.post('/:tutorId', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Valid tutor ID is required' });
     }
 
-    const tutor = await db.prepare("SELECT id FROM users WHERE id = ? AND role = 'tutor'").get(tutorId);
+    const tutor = await db.prepare("SELECT id FROM users WHERE id = ? AND role = 'tutor' AND status = 'active' AND verified_at IS NOT NULL").get(tutorId);
     if (!tutor) {
       return res.status(404).json({ error: 'Tutor not found' });
+    }
+    if (await usersAreBlocked(req.user.userId, tutorId)) {
+      return res.status(403).json({ error: 'This tutor is unavailable' });
     }
 
     await db.prepare(`

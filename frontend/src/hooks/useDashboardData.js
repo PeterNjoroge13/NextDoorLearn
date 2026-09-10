@@ -60,7 +60,7 @@ const useDashboardData = (role) => {
       const roleResults = await Promise.allSettled(
         role === 'tutor'
           ? [api.getRequests(token), api.getMyAvailability(token)]
-          : [api.getFavorites(token), api.getTutors(token)]
+          : [api.getFavorites(token), api.getRecommendations(token)]
       );
       const rawSessionStats = valueOr(sharedResults[6], {});
 
@@ -79,7 +79,7 @@ const useDashboardData = (role) => {
           totalMinutesTaught: rawSessionStats.total_minutes_taught || 0,
         },
         favorites: role === 'student' ? valueOr(roleResults[0], []) : [],
-        tutors: role === 'student' ? valueOr(roleResults[1], []) : [],
+        tutors: role === 'student' ? valueOr(roleResults[1], {}).recommendations || [] : [],
         requests: role === 'tutor' ? valueOr(roleResults[0], []) : [],
         availability: role === 'tutor' ? valueOr(roleResults[1], {}).slots || [] : [],
       });

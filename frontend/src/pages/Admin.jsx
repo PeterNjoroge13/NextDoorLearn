@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ClipboardList, HandCoins, ShieldCheck, UserCheck, Users } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, ClipboardList, HandCoins, Mail, RefreshCw, ShieldCheck, UserCheck, Users } from 'lucide-react';
 import api from '../services/api';
 import AppShell, { Avatar, EmptyState, ErrorState, LoadingState } from '../components/AppShell';
 
 const reportStatuses = ['open', 'reviewing', 'resolved', 'dismissed'];
-const applicationStatuses = ['pending', 'reviewing', 'approved', 'declined'];
 const inquiryStatuses = ['new', 'contacted', 'closed'];
 
 const Admin = () => {
@@ -13,6 +12,11 @@ const Admin = () => {
   const [applications, setApplications] = useState([]);
   const [inquiries, setInquiries] = useState([]);
   const [waitlist, setWaitlist] = useState([]);
+  const [overview, setOverview] = useState(null);
+  const [auditLog, setAuditLog] = useState([]);
+  const [emailDelivery, setEmailDelivery] = useState({ providerConfigured: false, emails: [] });
+  const [reviewDrafts, setReviewDrafts] = useState({});
+  const [moderationDrafts, setModerationDrafts] = useState({});
   const [activeTab, setActiveTab] = useState('reports');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -21,16 +25,19 @@ const Admin = () => {
   const fetchAdminData = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const [usersResponse, reportsResponse, applicationsResponse, inquiriesResponse, waitlistResponse] = await Promise.all([
+      const [overviewResponse, usersResponse, reportsResponse, applicationsResponse, inquiriesResponse, waitlistResponse, auditResponse, emailResponse] = await Promise.all([
+        api.getAdminOverview(token),
         api.getAdminUsers(token),
         api.getAdminReports(token),
         api.getAdminTutorApplications(token),
         api.getAdminSponsorInquiries(token),
         api.getAdminWaitlist(token),
+        api.getAdminAuditLog(token),
+        api.getAdminEmailOutbox(token),
       ]);
 
-      if (usersResponse.error || reportsResponse.error || applicationsResponse.error || inquiriesResponse.error || waitlistResponse.error) {
-        setError(usersResponse.error || reportsResponse.error || applicationsResponse.error || inquiriesResponse.error || waitlistResponse.error);
+      if (overviewResponse.error || usersResponse.error || reportsResponse.error || applicationsResponse.error || inquiriesResponse.error || waitlistResponse.error || auditResponse.error || emailResponse.error) {
+        setError(overviewResponse.error || usersResponse.error || reportsResponse.error || applicationsResponse.error || inquiriesResponse.error || waitlistResponse.error || auditResponse.error || emailResponse.error);
         return;
       }
 
@@ -39,6 +46,9 @@ const Admin = () => {
       setApplications(Array.isArray(applicationsResponse) ? applicationsResponse : []);
       setInquiries(Array.isArray(inquiriesResponse) ? inquiriesResponse : []);
       setWaitlist(Array.isArray(waitlistResponse) ? waitlistResponse : []);
+      setOverview(overviewResponse);
+      setAuditLog(Array.isArray(auditResponse) ? auditResponse : []);
+      setEmailDelivery(emailResponse?.emails ? emailResponse : { providerConfigured: false, emails: [] });
       setError('');
     } catch {
       setError('Admin data could not be loaded.');
@@ -80,11 +90,45 @@ const Admin = () => {
     showToast('Report updated.');
   };
 
+  const handleModerationAction = async (reportId, action) => {
+    const reason = reviewDrafts[`report-${reportId}`]?.reason || '';
+    if (!reason.trim()) return showToast('Add a moderation reason before applying an action.');
+    const response = await api.applyAdminModeration(reportId, action, reason, localStorage.getItem('token'));
+    if (response.error) return showToast(response.error);
+    setReports((current) => current.map((report) => report.id === reportId ? { ...report, status: response.reportStatus } : report));
+    showToast(`Moderation action ${action} recorded.`);
+  };
+
+  const handleModerationAction = async (reportId, action) => {
+    const reason = moderationDrafts[reportId] || '';
+    if (!reason.trim()) return showToast('Add a moderation reason before taking action.');
+    const response = await api.applyAdminModeration(reportId, action, reason, localStorage.getItem('token'));
+    if (response.error) return showToast(response.error);
+    setReports((current) => current.map((report) => report.id === reportId ? { ...report, status: response.reportStatus } : report));
+    showToast(`Moderation action ${action} recorded.`);
+  };
+
   const handleUpdateApplication = async (applicationId, status) => {
-    const response = await api.updateAdminTutorApplication(applicationId, status, localStorage.getItem('token'));
+    const draft = reviewDrafts[applicationId] || {};
+    const response = await api.updateAdminTutorApplication(applicationId, {
+      status,
+      reason: draft.reason || '',
+      internalNotes: draft.internalNotes || '',
+    }, localStorage.getItem('token'));
     if (response.error) return showToast(response.error);
     setApplications((current) => current.map((item) => item.id === response.id ? { ...item, ...response } : item));
-    showToast('Application updated.');
+    showToast(status === 'approved' ? 'Tutor approved and activation invitation queued.' : 'Application updated.');
+  };
+
+  const updateReviewDraft = (applicationId, field, value) => {
+    setReviewDrafts((current) => ({ ...current, [applicationId]: { ...current[applicationId], [field]: value } }));
+  };
+
+  const handleProcessEmail = async () => {
+    const response = await api.processAdminEmailOutbox(localStorage.getItem('token'));
+    if (response.error) return showToast(response.error);
+    showToast(`Processed ${response.processed} queued email${response.processed === 1 ? '' : 's'}.`);
+    fetchAdminData();
   };
 
   const handleUpdateInquiry = async (inquiryId, status) => {
@@ -98,8 +142,8 @@ const Admin = () => {
     openReports: reports.filter((report) => ['open', 'reviewing'].includes(report.status)).length,
     suspendedUsers: users.filter((user) => user.status === 'suspended').length,
     verifiedTutors: users.filter((user) => user.role === 'tutor' && user.verified_at).length,
-    pendingApplications: applications.filter((application) => ['pending', 'reviewing'].includes(application.status)).length,
-  }), [applications, reports, users]);
+    pendingApplications: overview?.applications?.awaiting_review ?? applications.filter((application) => ['pending', 'reviewing'].includes(application.status)).length,
+  }), [applications, overview, reports, users]);
 
   if (loading) return <LoadingState label="Opening admin console..." />;
   if (error) return <ErrorState title="Admin access unavailable" message={error} />;
@@ -160,6 +204,12 @@ const Admin = () => {
             <button className={`tab${activeTab === 'users' ? ' active' : ''}`} type="button" onClick={() => setActiveTab('users')}>
               Users
             </button>
+            <button className={`tab${activeTab === 'delivery' ? ' active' : ''}`} type="button" onClick={() => setActiveTab('delivery')}>
+              Email delivery
+            </button>
+            <button className={`tab${activeTab === 'audit' ? ' active' : ''}`} type="button" onClick={() => setActiveTab('audit')}>
+              Audit log
+            </button>
           </div>
 
           {activeTab === 'applications' ? (
@@ -169,7 +219,9 @@ const Admin = () => {
                   <article className="card card-pad admin-row" key={application.id}>
                     <div>
                       <div className="button-row">
-                        <span className={`badge ${application.status === 'approved' ? 'badge-success' : application.status === 'declined' ? 'badge-error' : 'badge-warning'}`}>{application.status}</span>
+                        <span className={`badge ${application.review_state === 'approved' ? 'badge-success' : application.review_state === 'declined' ? 'badge-error' : 'badge-warning'}`}>{(application.review_state || application.status).replaceAll('_', ' ')}</span>
+                        {application.activation_status === 'invited' ? <span className="badge badge-blue"><Mail size={14} />Invitation sent</span> : null}
+                        {application.activation_status === 'activated' ? <span className="badge badge-success"><UserCheck size={14} />Activated</span> : null}
                         {application.subjects.map((subject) => <span className="badge" key={subject}>{subject}</span>)}
                       </div>
                       <div className="admin-applicant">
@@ -182,9 +234,20 @@ const Admin = () => {
                       <p className="muted">Availability: {application.availability || 'Not provided'} · {Number(application.hourly_rate || 0) === 0 ? 'Volunteer' : `$${application.hourly_rate}/hr`}</p>
                     </div>
                     <div className="admin-actions">
-                      <select value={application.status} onChange={(event) => handleUpdateApplication(application.id, event.target.value)}>
-                        {applicationStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
-                      </select>
+                      <label className="field">
+                        <span>Applicant-facing note</span>
+                        <textarea rows="3" value={reviewDrafts[application.id]?.reason || ''} onChange={(event) => updateReviewDraft(application.id, 'reason', event.target.value)} placeholder="Decision context or information needed" />
+                      </label>
+                      <label className="field">
+                        <span>Private admin notes</span>
+                        <textarea rows="3" value={reviewDrafts[application.id]?.internalNotes || ''} onChange={(event) => updateReviewDraft(application.id, 'internalNotes', event.target.value)} placeholder="Internal review notes" />
+                      </label>
+                      <div className="button-row">
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUpdateApplication(application.id, 'reviewing')}>Reviewing</button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUpdateApplication(application.id, 'needs_information')}>Request info</button>
+                        {application.activation_status !== 'activated' ? <button className="btn btn-primary btn-sm" type="button" onClick={() => handleUpdateApplication(application.id, 'approved')}>{application.activation_status === 'invited' ? 'Resend invite' : 'Approve'}</button> : null}
+                        <button className="btn btn-danger btn-sm" type="button" onClick={() => handleUpdateApplication(application.id, 'declined')}>Decline</button>
+                      </div>
                     </div>
                   </article>
                 ))}
@@ -216,6 +279,23 @@ const Admin = () => {
                           <option key={status} value={status}>{status}</option>
                         ))}
                       </select>
+                      <label className="field">
+                        <span>Required action reason</span>
+                        <textarea rows="3" value={reviewDrafts[`report-${report.id}`]?.reason || ''} onChange={(event) => updateReviewDraft(`report-${report.id}`, 'reason', event.target.value)} placeholder="What was reviewed and why this action is appropriate" />
+                      </label>
+                      <div className="button-row">
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'warn')}>Warn</button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'suspend')}>Suspend</button>
+                        <button className="btn btn-danger btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'ban')}>Ban</button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'dismiss')}>Dismiss</button>
+                      </div>
+                      <label className="field"><span>Moderation reason</span><textarea rows="3" value={moderationDrafts[report.id] || ''} onChange={(event) => setModerationDrafts((current) => ({ ...current, [report.id]: event.target.value }))} placeholder="Required for account action" /></label>
+                      <div className="button-row">
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'warn')}>Warn</button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'suspend')}>Suspend</button>
+                        <button className="btn btn-danger btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'ban')}>Ban</button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'dismiss')}>Dismiss</button>
+                      </div>
                     </div>
                   </article>
                 ))}
@@ -225,6 +305,28 @@ const Admin = () => {
                 Safety reports submitted by users will appear here.
               </EmptyState>
             )
+          ) : activeTab === 'delivery' ? (
+            <div>
+              <div className="section-head" style={{ marginBottom: 16 }}>
+                <div>
+                  <span className={`badge ${emailDelivery.providerConfigured ? 'badge-success' : 'badge-warning'}`}>
+                    <Mail size={14} />{emailDelivery.providerConfigured ? 'Email provider connected' : 'Waiting for email provider configuration'}
+                  </span>
+                </div>
+                <button className="btn btn-primary btn-sm" type="button" onClick={handleProcessEmail}><RefreshCw size={16} />Retry queued mail</button>
+              </div>
+              {emailDelivery.emails.length ? <div className="admin-list">{emailDelivery.emails.map((email) => (
+                <article className="card card-pad admin-row" key={email.id}>
+                  <div><div className="button-row"><span className={`badge ${email.status === 'sent' ? 'badge-success' : email.last_error ? 'badge-error' : 'badge-warning'}`}>{email.status}</span><span className="badge">{email.template.replaceAll('_', ' ')}</span></div><h2>{email.subject}</h2><p className="muted">{email.recipient} · {email.attempts} attempt{email.attempts === 1 ? '' : 's'}</p>{email.last_error ? <p className="page-copy">{email.last_error}</p> : null}</div>
+                </article>
+              ))}</div> : <EmptyState icon={Mail} title="No transactional email yet">Verification, activation, and reminder deliveries will appear here.</EmptyState>}
+            </div>
+          ) : activeTab === 'audit' ? (
+            auditLog.length ? <div className="admin-list">{auditLog.map((entry) => (
+              <article className="card card-pad admin-row" key={entry.id}>
+                <div><div className="button-row"><span className="badge badge-blue"><Activity size={14} />{entry.action.replaceAll('.', ' ')}</span><span className="badge">{entry.target_type} #{entry.target_id || 'system'}</span></div><h2>{entry.admin_name}</h2><p className="muted">{entry.admin_email} · {new Date(entry.created_at).toLocaleString()}</p>{entry.details?.reason ? <p className="page-copy">{entry.details.reason}</p> : null}</div>
+              </article>
+            ))}</div> : <EmptyState icon={Activity} title="No administrative actions">Sensitive account and application decisions will be recorded here.</EmptyState>
           ) : (
             <div className="admin-list">
               {users.map((account) => (

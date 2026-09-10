@@ -3,6 +3,8 @@ const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { isValidEmail, sanitizeText } = require('../utils/validation');
 const { createImageUpload, handleSingleImage, isSupportedImage, removeUploadedFile } = require('../utils/imageUpload');
+const { queueEmail } = require('../services/email');
+const emailTemplates = require('../services/emailTemplates');
 
 const router = express.Router();
 const applicationPhotoUpload = createImageUpload({ directory: 'tutor-applications', prefix: 'tutor-application', maxSizeMb: 5 });
@@ -65,8 +67,18 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
       profilePictureUrl
     );
 
+    const applicationId = Number(result.lastInsertRowid);
+    const content = emailTemplates.tutorApplicationReceived(name, process.env.FRONTEND_URL || 'http://localhost:5173');
+    await queueEmail({
+      to: email,
+      template: 'tutor_application_received',
+      subject: 'We received your NextDoorLearn tutor application',
+      ...content,
+      idempotencyKey: `tutor_application_received_${applicationId}`
+    });
+
     res.status(201).json({
-      applicationId: Number(result.lastInsertRowid),
+      applicationId,
       message: 'Application received. We will contact you after it is reviewed.'
     });
   } catch (error) {

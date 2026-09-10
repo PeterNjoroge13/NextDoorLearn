@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Bookmark,
@@ -12,6 +12,7 @@ import {
   MessageCircle,
   Star,
   Users,
+  UserX,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -24,6 +25,7 @@ const dayLabels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 const TutorProfile = () => {
   const { tutorId } = useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [tutor, setTutor] = useState(null);
   const [favorite, setFavorite] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
@@ -88,6 +90,13 @@ const TutorProfile = () => {
       setFavorite((current) => !current);
       showToast(favorite ? 'Removed from saved tutors.' : 'Saved to your tutor shortlist.');
     }
+  };
+
+  const handleBlock = async () => {
+    if (!window.confirm(`Block ${tutor.name}? You will no longer be able to find, message, or schedule with each other.`)) return;
+    const response = await api.blockUser(tutor.id, 'Blocked from tutor profile', localStorage.getItem('token'));
+    if (response.error) return showToast(response.error);
+    navigate('/tutors', { replace: true });
   };
 
   if (loading) return <LoadingState label="Opening tutor profile..." />;
@@ -160,6 +169,10 @@ const TutorProfile = () => {
             <button className="btn btn-ghost w-full" type="button" onClick={() => setReportUser({ id: tutor.id, name: tutor.name })}>
               <Flag size={18} />
               Report profile
+            </button>
+            <button className="btn btn-ghost w-full" type="button" onClick={handleBlock}>
+              <UserX size={18} />
+              Block tutor
             </button>
             {tutor.public_profile_enabled ? (
               <a className="btn btn-ghost w-full" href={`/community/tutors/${tutor.id}`} target="_blank" rel="noreferrer">

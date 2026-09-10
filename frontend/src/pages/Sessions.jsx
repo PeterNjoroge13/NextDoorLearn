@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, List, Plus, Trash2, X } from 'lucide-react';
 import api from '../services/api';
 import AppShell, { EmptyState, ErrorState, LoadingState } from '../components/AppShell';
+import { useAuth } from '../context/AuthContext';
 
 const statusClass = {
   scheduled: 'badge-primary',
@@ -14,6 +15,7 @@ const dateKey = (year, month, day) => `${year}-${String(month).padStart(2, '0')}
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const Sessions = () => {
+  const { user } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -115,6 +117,16 @@ const Sessions = () => {
     }
   };
 
+  const handleConfirmation = async (sessionId, decision) => {
+    try {
+      const response = await api.respondToSessionRequest(sessionId, decision, localStorage.getItem('token'));
+      if (response.error) setActionError(response.error);
+      else setSessions((current) => current.map((session) => session.id === sessionId ? { ...session, ...response } : session));
+    } catch {
+      setActionError('The session request could not be updated.');
+    }
+  };
+
   const calendarDays = useMemo(() => {
     const year = Number(filters.year);
     const month = Number(filters.month);
@@ -211,10 +223,19 @@ const Sessions = () => {
                         {session.description ? <p className="page-copy">{session.description}</p> : null}
                       </div>
                     </div>
-                    <span className={`badge ${statusClass[session.status] || 'badge'}`}>{session.status}</span>
+                    <div className="button-row">
+                      {session.confirmation_status === 'pending' ? <span className="badge badge-warning">Awaiting tutor confirmation</span> : null}
+                      <span className={`badge ${statusClass[session.status] || 'badge'}`}>{session.status}</span>
+                    </div>
                   </div>
                   <div className="button-row" style={{ marginTop: 18 }}>
-                    {session.status !== 'completed' ? (
+                    {user?.role === 'tutor' && session.confirmation_status === 'pending' ? (
+                      <>
+                        <button className="btn btn-primary btn-sm" type="button" onClick={() => handleConfirmation(session.id, 'confirmed')}><CheckCircle2 size={16} />Confirm</button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleConfirmation(session.id, 'declined')}><X size={16} />Decline</button>
+                      </>
+                    ) : null}
+                    {session.status !== 'completed' && session.confirmation_status !== 'pending' ? (
                       <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUpdateStatus(session.id, 'completed')}>
                         <CheckCircle2 size={16} />
                         Mark complete

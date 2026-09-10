@@ -1,0 +1,23 @@
+name: Process reminders
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process scheduled reminders and queued email
+        env:
+          JOB_URL: ${{ secrets.NEXTDOORLEARN_JOB_URL }}
+          JOB_SECRET: ${{ secrets.NEXTDOORLEARN_JOB_SECRET }}
+        run: |
+          if [ -z "$JOB_URL" ] || [ -z "$JOB_SECRET" ]; then
+            echo "Reminder processing is waiting for repository secrets."
+            exit 0
+          fi
+          curl --fail --silent --show-error --retry 3 \
+            -X POST "$JOB_URL" \
+            -H "x-job-secret: $JOB_SECRET"

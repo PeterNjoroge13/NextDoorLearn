@@ -332,6 +332,13 @@ const main = async () => {
     })
   });
   if (!session.id || session.duration_minutes !== 60) throw new Error('Tutoring session was not scheduled');
+  if (session.confirmation_status === 'pending') {
+    await request(`/sessions/${session.id}/confirmation`, {
+      method: 'PATCH',
+      token: tutor.token,
+      body: JSON.stringify({ decision: 'confirmed' })
+    });
+  }
 
   const upcomingSessions = await request('/sessions/upcoming?limit=5', { token: student.token });
   if (!upcomingSessions.some((item) => item.id === session.id)) throw new Error('Scheduled session was missing from upcoming sessions');

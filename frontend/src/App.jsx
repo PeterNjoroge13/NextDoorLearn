@@ -19,6 +19,7 @@ import StudentIntake from './pages/StudentIntake';
 import Donate from './pages/Donate';
 import PublicTutorProfile from './pages/PublicTutorProfile';
 import LearningProgress from './pages/LearningProgress';
+import TutorActivation from './pages/TutorActivation';
 
 const LoadingScreen = () => (
   <div className="loading-wrap">
@@ -57,6 +58,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/apply/tutor" element={<TutorApplication />} />
+            <Route path="/activate-tutor" element={<TutorActivation />} />
             <Route path="/donate" element={<Donate />} />
             <Route path="/community/tutors/:tutorId" element={<PublicTutorProfile />} />
             <Route 

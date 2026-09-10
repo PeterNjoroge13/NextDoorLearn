@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { BookOpen, KeyRound, MailCheck } from 'lucide-react';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const AuthUtilityPage = ({ mode }) => {
   const [params] = useSearchParams();
@@ -11,6 +12,7 @@ const AuthUtilityPage = ({ mode }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(mode === 'verify');
   const token = params.get('token') || '';
+  const { user, updateUser } = useAuth();
 
   useEffect(() => {
     const verify = async () => {
@@ -22,11 +24,14 @@ const AuthUtilityPage = ({ mode }) => {
       }
       const response = await api.verifyEmail(token);
       if (response.error) setError(response.error);
-      else setMessage(response.message || 'Email verified.');
+      else {
+        setMessage(response.message || 'Email verified.');
+        updateUser({ emailVerified: true });
+      }
       setLoading(false);
     };
     verify();
-  }, [mode, token]);
+  }, [mode, token, updateUser]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -68,7 +73,7 @@ const AuthUtilityPage = ({ mode }) => {
 
         {mode === 'verify' ? (
           <div className="button-row" style={{ marginTop: 24 }}>
-            <Link className="btn btn-primary" to="/login">Back to sign in</Link>
+            <Link className="btn btn-primary" to={user ? '/dashboard' : '/login'}>{user ? 'Continue to dashboard' : 'Back to sign in'}</Link>
           </div>
         ) : (
           <form className="form-grid" onSubmit={handleSubmit} style={{ marginTop: 24 }}>
@@ -80,7 +85,7 @@ const AuthUtilityPage = ({ mode }) => {
             ) : (
               <div className="field">
                 <label>New password</label>
-                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} />
+                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} />
               </div>
             )}
             <button className="btn btn-primary" type="submit" disabled={loading || (!isForgot && !token)}>
