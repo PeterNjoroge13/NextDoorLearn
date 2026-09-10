@@ -91,15 +91,6 @@ const Admin = () => {
   };
 
   const handleModerationAction = async (reportId, action) => {
-    const reason = reviewDrafts[`report-${reportId}`]?.reason || '';
-    if (!reason.trim()) return showToast('Add a moderation reason before applying an action.');
-    const response = await api.applyAdminModeration(reportId, action, reason, localStorage.getItem('token'));
-    if (response.error) return showToast(response.error);
-    setReports((current) => current.map((report) => report.id === reportId ? { ...report, status: response.reportStatus } : report));
-    showToast(`Moderation action ${action} recorded.`);
-  };
-
-  const handleModerationAction = async (reportId, action) => {
     const reason = moderationDrafts[reportId] || '';
     if (!reason.trim()) return showToast('Add a moderation reason before taking action.');
     const response = await api.applyAdminModeration(reportId, action, reason, localStorage.getItem('token'));
@@ -279,16 +270,6 @@ const Admin = () => {
                           <option key={status} value={status}>{status}</option>
                         ))}
                       </select>
-                      <label className="field">
-                        <span>Required action reason</span>
-                        <textarea rows="3" value={reviewDrafts[`report-${report.id}`]?.reason || ''} onChange={(event) => updateReviewDraft(`report-${report.id}`, 'reason', event.target.value)} placeholder="What was reviewed and why this action is appropriate" />
-                      </label>
-                      <div className="button-row">
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'warn')}>Warn</button>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'suspend')}>Suspend</button>
-                        <button className="btn btn-danger btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'ban')}>Ban</button>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'dismiss')}>Dismiss</button>
-                      </div>
                       <label className="field"><span>Moderation reason</span><textarea rows="3" value={moderationDrafts[report.id] || ''} onChange={(event) => setModerationDrafts((current) => ({ ...current, [report.id]: event.target.value }))} placeholder="Required for account action" /></label>
                       <div className="button-row">
                         <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleModerationAction(report.id, 'warn')}>Warn</button>

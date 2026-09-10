@@ -761,14 +761,6 @@ const api = {
     return response.json();
   },
 
-  applyAdminModeration: async (reportId, action, reason, token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/reports/${reportId}/actions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action, reason }),
-    });
-    return response.json();
-  },
-
   getAdminTutorApplications: async (token) => {
     const response = await fetch(`${API_BASE_URL}/admin/tutor-applications`, { headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();
