@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, List, Plus, Trash2, X } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, FileText, List, Plus, Star, UserX, X } from 'lucide-react';
 import api from '../services/api';
 import AppShell, { EmptyState, ErrorState, LoadingState } from '../components/AppShell';
 import { useAuth } from '../context/AuthContext';
@@ -13,6 +13,7 @@ const statusClass = {
 
 const dateKey = (year, month, day) => `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const sessionHasStarted = (session) => !session.starts_at || new Date(session.starts_at).getTime() <= Date.now() + 5 * 60 * 1000;
 
 const Sessions = () => {
   const { user } = useAuth();
@@ -22,6 +23,13 @@ const Sessions = () => {
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [outcomeSession, setOutcomeSession] = useState(null);
+  const [reviewSession, setReviewSession] = useState(null);
+  const [outcomeForm, setOutcomeForm] = useState({
+    attendance: 'completed', tutorSummary: '', skillsPracticed: '', nextSteps: '',
+    studentReflection: '', confidenceBefore: 3, confidenceAfter: 3,
+  });
+  const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
   const [view, setView] = useState('calendar');
   const [filters, setFilters] = useState({ status: '', month: new Date().getMonth() + 1, year: new Date().getFullYear() });
   const [formData, setFormData] = useState({
@@ -103,20 +111,6 @@ const Sessions = () => {
     }
   };
 
-  const handleDeleteSession = async (sessionId) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await api.deleteSession(sessionId, token);
-      if (response.error) setActionError(response.error);
-      else {
-        setActionError('');
-        setSessions((current) => current.filter((session) => session.id !== sessionId));
-      }
-    } catch {
-      setActionError('The session could not be deleted.');
-    }
-  };
-
   const handleConfirmation = async (sessionId, decision) => {
     try {
       const response = await api.respondToSessionRequest(sessionId, decision, localStorage.getItem('token'));
@@ -124,6 +118,72 @@ const Sessions = () => {
       else setSessions((current) => current.map((session) => session.id === sessionId ? { ...session, ...response } : session));
     } catch {
       setActionError('The session request could not be updated.');
+    }
+  };
+
+  const openOutcome = (session, attendance = 'completed') => {
+    setOutcomeSession(session);
+    setOutcomeForm({
+      attendance,
+      tutorSummary: session.tutor_summary || '',
+      skillsPracticed: session.skills_practiced || '',
+      nextSteps: session.next_steps || '',
+      studentReflection: session.student_reflection || '',
+      confidenceBefore: Number(session.confidence_before || 3),
+      confidenceAfter: Number(session.confidence_after || 3),
+    });
+    setActionError('');
+  };
+
+  const handleSaveOutcome = async (event) => {
+    event.preventDefault();
+    const payload = user?.role === 'tutor'
+      ? {
+          attendance: outcomeForm.attendance,
+          tutorSummary: outcomeForm.tutorSummary,
+          skillsPracticed: outcomeForm.skillsPracticed,
+          nextSteps: outcomeForm.nextSteps,
+        }
+      : {
+          studentReflection: outcomeForm.studentReflection,
+          confidenceBefore: Number(outcomeForm.confidenceBefore),
+          confidenceAfter: Number(outcomeForm.confidenceAfter),
+        };
+    try {
+      const response = await api.updateSessionOutcome(outcomeSession.id, payload, localStorage.getItem('token'));
+      if (response.error) return setActionError(response.error);
+      setSessions((current) => current.map((session) => session.id === outcomeSession.id ? { ...session, ...response } : session));
+      setActionError('');
+      setOutcomeSession(null);
+    } catch {
+      setActionError('The session outcome could not be saved.');
+    }
+  };
+
+  const openReview = (session) => {
+    setReviewSession(session);
+    setReviewForm({ rating: Number(session.review_rating || 5), comment: session.review_comment || '' });
+    setActionError('');
+  };
+
+  const handleSaveReview = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await api.createReview(
+        reviewSession.tutor_id,
+        Number(reviewForm.rating),
+        reviewForm.comment,
+        reviewSession.id,
+        localStorage.getItem('token')
+      );
+      if (response.error) return setActionError(response.error);
+      setSessions((current) => current.map((session) => Number(session.tutor_id) === Number(reviewSession.tutor_id)
+        ? { ...session, review_id: response.review.id, review_rating: response.review.rating, review_comment: response.review.comment }
+        : session));
+      setActionError('');
+      setReviewSession(null);
+    } catch {
+      setActionError('Your review could not be saved.');
     }
   };
 
@@ -221,6 +281,7 @@ const Sessions = () => {
                           {session.scheduled_date} from {session.start_time} to {session.end_time}
                         </p>
                         {session.description ? <p className="page-copy">{session.description}</p> : null}
+                        <p className="muted">{user?.role === 'tutor' ? `Student: ${session.student_name}` : `Tutor: ${session.tutor_name}`}</p>
                       </div>
                     </div>
                     <div className="button-row">
@@ -228,6 +289,14 @@ const Sessions = () => {
                       <span className={`badge ${statusClass[session.status] || 'badge'}`}>{session.status}</span>
                     </div>
                   </div>
+                  {session.status === 'completed' && (session.tutor_summary || session.skills_practiced || session.next_steps) ? (
+                    <div className="session-outcome-summary">
+                      <div><FileText size={18} /><span><strong>Session summary</strong><p>{session.tutor_summary || 'Summary not added.'}</p></span></div>
+                      {session.skills_practiced ? <div><CheckCircle2 size={18} /><span><strong>Skills practiced</strong><p>{session.skills_practiced}</p></span></div> : null}
+                      {session.next_steps ? <div><ChevronRight size={18} /><span><strong>Next steps</strong><p>{session.next_steps}</p></span></div> : null}
+                      {user?.role === 'student' && session.student_reflection ? <div><Star size={18} /><span><strong>Your private reflection</strong><p>{session.student_reflection}</p></span></div> : null}
+                    </div>
+                  ) : null}
                   <div className="button-row" style={{ marginTop: 18 }}>
                     {user?.role === 'tutor' && session.confirmation_status === 'pending' ? (
                       <>
@@ -235,25 +304,28 @@ const Sessions = () => {
                         <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleConfirmation(session.id, 'declined')}><X size={16} />Decline</button>
                       </>
                     ) : null}
-                    {session.status !== 'completed' && session.confirmation_status !== 'pending' ? (
-                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUpdateStatus(session.id, 'completed')}>
-                        <CheckCircle2 size={16} />
-                        Mark complete
-                      </button>
+                    {user?.role === 'tutor' && session.status === 'scheduled' && session.confirmation_status === 'confirmed' ? (
+                      <button className="btn btn-primary btn-sm" type="button" onClick={() => openOutcome(session)} disabled={!sessionHasStarted(session)} title={sessionHasStarted(session) ? 'Record session outcome' : 'Available when the session begins'}><FileText size={16} />Record outcome</button>
                     ) : null}
-                    {session.status !== 'cancelled' ? (
+                    {user?.role === 'tutor' && session.status === 'scheduled' && session.confirmation_status === 'confirmed' ? (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => openOutcome(session, 'no_show')} disabled={!sessionHasStarted(session)} title={sessionHasStarted(session) ? 'Record a no-show' : 'Available when the session begins'}><UserX size={16} />No-show</button>
+                    ) : null}
+                    {user?.role === 'tutor' && session.status === 'completed' ? (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => openOutcome(session)}><FileText size={16} />Edit notes</button>
+                    ) : null}
+                    {user?.role === 'student' && session.status === 'completed' ? (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => openOutcome(session)}><FileText size={16} />{session.student_reflection ? 'Edit reflection' : 'Add reflection'}</button>
+                    ) : null}
+                    {user?.role === 'student' && session.status === 'completed' ? (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => openReview(session)}><Star size={16} />{session.review_id ? `Update review (${session.review_rating}/5)` : 'Review tutor'}</button>
+                    ) : null}
+                    {session.status === 'scheduled' ? (
                       <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUpdateStatus(session.id, 'cancelled')}>
                         <X size={16} />
                         Cancel
                       </button>
                     ) : null}
-                    {session.status === 'scheduled' ? (
-                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleDeleteSession(session.id)}>
-                        <Trash2 size={16} />
-                        Delete
-                      </button>
-                    ) : null}
-                    {session.meeting_link ? (
+                    {session.meeting_link && session.status === 'scheduled' && session.confirmation_status === 'confirmed' ? (
                       <a className="btn btn-primary btn-sm" href={session.meeting_link} target="_blank" rel="noreferrer">
                         Join meeting
                       </a>
@@ -334,6 +406,54 @@ const Sessions = () => {
                 <button className="btn btn-primary" type="submit">Create session</button>
                 <button className="btn btn-ghost" type="button" onClick={() => setShowCreateModal(false)}>Cancel</button>
               </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {outcomeSession ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="outcome-title">
+          <div className="modal">
+            <div className="modal-head">
+              <div><span className="eyebrow">Learning outcome</span><h2 id="outcome-title">{user?.role === 'tutor' ? 'Record what happened' : 'Reflect on your session'}</h2><p className="muted">{outcomeSession.title}</p></div>
+              <button className="icon-button" type="button" onClick={() => setOutcomeSession(null)} aria-label="Close outcome form"><X size={18} /></button>
+            </div>
+            <form className="modal-body form-grid" onSubmit={handleSaveOutcome}>
+              {user?.role === 'tutor' ? (
+                <>
+                  <div className="field"><label htmlFor="session-attendance">Attendance</label><select id="session-attendance" value={outcomeForm.attendance} onChange={(event) => setOutcomeForm((current) => ({ ...current, attendance: event.target.value }))}><option value="completed">Session completed</option><option value="no_show">Student did not attend</option></select></div>
+                  {outcomeForm.attendance === 'completed' ? <>
+                    <div className="field"><label htmlFor="tutor-summary">Session summary</label><textarea id="tutor-summary" value={outcomeForm.tutorSummary} onChange={(event) => setOutcomeForm((current) => ({ ...current, tutorSummary: event.target.value }))} placeholder="What did you cover and how did the session go?" maxLength="2000" /></div>
+                    <div className="field"><label htmlFor="skills-practiced">Skills practiced</label><input id="skills-practiced" value={outcomeForm.skillsPracticed} onChange={(event) => setOutcomeForm((current) => ({ ...current, skillsPracticed: event.target.value }))} placeholder="Factoring, essay structure, debugging loops" maxLength="800" /></div>
+                    <div className="field"><label htmlFor="next-steps">Next steps</label><textarea id="next-steps" value={outcomeForm.nextSteps} onChange={(event) => setOutcomeForm((current) => ({ ...current, nextSteps: event.target.value }))} placeholder="A focused practice task or goal for next time" maxLength="1200" /></div>
+                  </> : <div className="alert alert-warning">This records attendance and closes the session without adding learning notes.</div>}
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-2">
+                    <div className="field"><label htmlFor="confidence-before">Confidence before</label><select id="confidence-before" value={outcomeForm.confidenceBefore} onChange={(event) => setOutcomeForm((current) => ({ ...current, confidenceBefore: event.target.value }))}>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value} / 5</option>)}</select></div>
+                    <div className="field"><label htmlFor="confidence-after">Confidence after</label><select id="confidence-after" value={outcomeForm.confidenceAfter} onChange={(event) => setOutcomeForm((current) => ({ ...current, confidenceAfter: event.target.value }))}>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value} / 5</option>)}</select></div>
+                  </div>
+                  <div className="field"><label htmlFor="student-reflection">Private reflection</label><textarea id="student-reflection" value={outcomeForm.studentReflection} onChange={(event) => setOutcomeForm((current) => ({ ...current, studentReflection: event.target.value }))} placeholder="What makes more sense now, and what still feels difficult?" maxLength="1600" required /></div>
+                  <p className="muted">Your reflection is private to your account. Your tutor only sees the notes they shared.</p>
+                </>
+              )}
+              {actionError ? <div className="alert alert-error" role="alert">{actionError}</div> : null}
+              <div className="button-row"><button className="btn btn-primary" type="submit">Save outcome</button><button className="btn btn-ghost" type="button" onClick={() => setOutcomeSession(null)}>Cancel</button></div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {reviewSession ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="review-title">
+          <div className="modal">
+            <div className="modal-head"><div><span className="eyebrow">Student feedback</span><h2 id="review-title">Review {reviewSession.tutor_name}</h2><p className="muted">Share feedback after your completed session.</p></div><button className="icon-button" type="button" onClick={() => setReviewSession(null)} aria-label="Close review form"><X size={18} /></button></div>
+            <form className="modal-body form-grid" onSubmit={handleSaveReview}>
+              <div className="field"><label>Your rating</label><div className="session-rating" role="radiogroup" aria-label="Tutor rating">{[1, 2, 3, 4, 5].map((value) => <button type="button" role="radio" aria-checked={reviewForm.rating === value} className={reviewForm.rating >= value ? 'active' : ''} onClick={() => setReviewForm((current) => ({ ...current, rating: value }))} key={value} aria-label={`${value} star${value === 1 ? '' : 's'}`}><Star size={24} fill={reviewForm.rating >= value ? 'currentColor' : 'none'} /></button>)}</div></div>
+              <div className="field"><label htmlFor="review-comment">What should future students know?</label><textarea id="review-comment" value={reviewForm.comment} onChange={(event) => setReviewForm((current) => ({ ...current, comment: event.target.value }))} placeholder="Describe what felt helpful, patient, or clear." maxLength="1200" /></div>
+              {actionError ? <div className="alert alert-error" role="alert">{actionError}</div> : null}
+              <div className="button-row"><button className="btn btn-primary" type="submit">Save review</button><button className="btn btn-ghost" type="button" onClick={() => setReviewSession(null)}>Cancel</button></div>
             </form>
           </div>
         </div>

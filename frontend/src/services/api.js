@@ -488,6 +488,18 @@ const api = {
     return response.json();
   },
 
+  updateSessionOutcome: async (sessionId, outcome, token) => {
+    const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/outcome`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(outcome),
+    });
+    return response.json();
+  },
+
   deleteSession: async (sessionId, token) => {
     const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}`, {
       method: 'DELETE',

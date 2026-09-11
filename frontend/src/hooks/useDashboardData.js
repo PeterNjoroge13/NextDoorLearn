@@ -7,6 +7,9 @@ const emptySessionStats = {
   completedSessions: 0,
   cancelledSessions: 0,
   totalMinutesTaught: 0,
+  outcomesRecorded: 0,
+  reflectionsCompleted: 0,
+  averageConfidenceGain: 0,
 };
 
 const valueOr = (result, fallback) => {
@@ -77,6 +80,9 @@ const useDashboardData = (role) => {
           completedSessions: rawSessionStats.completed_sessions || 0,
           cancelledSessions: rawSessionStats.cancelled_sessions || 0,
           totalMinutesTaught: rawSessionStats.total_minutes_taught || 0,
+          outcomesRecorded: rawSessionStats.outcomes_recorded || 0,
+          reflectionsCompleted: rawSessionStats.reflections_completed || 0,
+          averageConfidenceGain: rawSessionStats.average_confidence_gain || 0,
         },
         favorites: role === 'student' ? valueOr(roleResults[0], []) : [],
         tutors: role === 'student' ? valueOr(roleResults[1], {}).recommendations || [] : [],

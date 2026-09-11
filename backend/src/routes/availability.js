@@ -56,6 +56,10 @@ router.put('/me', authenticateToken, async (req, res) => {
 
     await replaceAvailability(normalizedSlots);
 
+    if (timezone) {
+      await db.prepare('UPDATE users SET timezone = ? WHERE id = ?').run(String(timezone).slice(0, 80), userId);
+    }
+
     const freshSlots = await getAvailabilitySlots(userId);
     res.json({ message: 'Availability updated successfully', slots: freshSlots });
   } catch (error) {

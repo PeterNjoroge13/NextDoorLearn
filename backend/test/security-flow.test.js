@@ -54,7 +54,7 @@ const imageBlob = () => new Blob([
   Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
 ], { type: 'image/png' });
 
-test('approved applications activate one secure tutor account and obey blocks', async () => {
+test('secure tutor activation, matching, session outcomes, reviews, and blocking work end to end', async () => {
   await waitForServer();
   const adminResponse = await request('/auth/register', {
     method: 'POST',
@@ -124,7 +124,7 @@ test('approved applications activate one secure tutor account and obey blocks', 
   const dayOfWeek = new Date(`${scheduledDate}T12:00:00`).getDay();
   const availability = await request('/availability/me', {
     method: 'PUT', token: activated.body.token,
-    body: { timezone: 'America/New_York', slots: [{ dayOfWeek, startTime: '09:00', endTime: '12:00' }] }
+    body: { timezone: 'UTC', slots: [{ dayOfWeek, startTime: '00:00', endTime: '12:00' }] }
   });
   assert.equal(availability.status, 200);
   const session = await request('/sessions', {
@@ -141,6 +141,72 @@ test('approved applications activate one secure tutor account and obey blocks', 
   assert.equal(confirmed.status, 200);
   const afterConfirmation = await request('/sessions/upcoming', { token: adminResponse.body.token });
   assert.ok(afterConfirmation.body.some((item) => item.id === session.body.id));
+
+  const earlyOutcome = await request(`/sessions/${session.body.id}/outcome`, {
+    method: 'PATCH', token: activated.body.token,
+    body: { attendance: 'completed', tutorSummary: 'Too early' }
+  });
+  assert.equal(earlyOutcome.status, 409);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const completedSession = await request('/sessions', {
+    method: 'POST', token: activated.body.token,
+    body: { connectionId: connection.body.connectionId, title: 'Completed algebra review', subject: 'Math', scheduledDate: today, startTime: '00:00', endTime: '00:30' }
+  });
+  assert.equal(completedSession.status, 201);
+  assert.equal(completedSession.body.confirmation_status, 'confirmed');
+
+  const studentCannotComplete = await request(`/sessions/${completedSession.body.id}/outcome`, {
+    method: 'PATCH', token: adminResponse.body.token,
+    body: { attendance: 'completed', tutorSummary: 'Student should not write this' }
+  });
+  assert.equal(studentCannotComplete.status, 409);
+
+  const tutorOutcome = await request(`/sessions/${completedSession.body.id}/outcome`, {
+    method: 'PATCH', token: activated.body.token,
+    body: {
+      attendance: 'completed',
+      tutorSummary: 'Practiced solving two-step equations.',
+      skillsPracticed: 'Isolating variables',
+      nextSteps: 'Complete five practice problems before the next session.'
+    }
+  });
+  assert.equal(tutorOutcome.status, 200);
+  assert.equal(tutorOutcome.body.status, 'completed');
+  assert.equal(tutorOutcome.body.student_reflection, undefined);
+
+  const reflection = await request(`/sessions/${completedSession.body.id}/outcome`, {
+    method: 'PATCH', token: adminResponse.body.token,
+    body: { studentReflection: 'I can see why each inverse operation works now.', confidenceBefore: 2, confidenceAfter: 4 }
+  });
+  assert.equal(reflection.status, 200);
+  assert.equal(reflection.body.student_reflection, 'I can see why each inverse operation works now.');
+
+  const tutorView = await request(`/sessions/${completedSession.body.id}/outcome`, { token: activated.body.token });
+  assert.equal(tutorView.status, 200);
+  assert.equal(tutorView.body.student_reflection, undefined);
+
+  const incompleteReview = await request('/reviews', {
+    method: 'POST', token: adminResponse.body.token,
+    body: { tutorId: activated.body.user.id, sessionId: session.body.id, rating: 5, comment: 'Not eligible yet' }
+  });
+  assert.equal(incompleteReview.status, 403);
+
+  const review = await request('/reviews', {
+    method: 'POST', token: adminResponse.body.token,
+    body: { tutorId: activated.body.user.id, sessionId: completedSession.body.id, rating: 5, comment: 'Patient, clear, and encouraging.' }
+  });
+  assert.equal(review.status, 201);
+  const publicReviews = await request(`/reviews/tutor/${activated.body.user.id}`);
+  assert.equal(publicReviews.status, 200);
+  assert.equal(publicReviews.body[0].student_name, 'NextDoorLearn student');
+  assert.equal(publicReviews.body[0].student_id, undefined);
+  const sessionStats = await request('/sessions/stats', { token: activated.body.token });
+  assert.equal(sessionStats.status, 200);
+  assert.equal(sessionStats.body.completed_sessions, 1);
+  assert.equal(sessionStats.body.outcomes_recorded, 1);
+  assert.equal(sessionStats.body.reflections_completed, 1);
+  assert.equal(sessionStats.body.average_confidence_gain, 2);
 
   const outbox = await request('/admin/email-outbox', { token: adminResponse.body.token });
   assert.equal(outbox.status, 200);

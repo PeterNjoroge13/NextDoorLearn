@@ -144,6 +144,36 @@ const migrations = [
         WHERE role = 'tutor' AND verified_at IS NULL
       `);
     }
+  },
+  {
+    version: '004_session_learning_outcomes',
+    async up(db) {
+      const id = db.dialect === 'postgres' ? 'BIGSERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+      const userId = db.dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
+      const timestamp = db.dialect === 'postgres' ? 'TIMESTAMPTZ' : 'DATETIME';
+
+      await addColumn(db, 'sessions', 'completed_at', timestamp);
+      await addColumn(db, 'sessions', 'completed_by', `${userId} REFERENCES users(id) ON DELETE SET NULL`);
+
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS session_outcomes (
+          id ${id},
+          session_id ${userId} NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+          tutor_summary TEXT,
+          skills_practiced TEXT,
+          next_steps TEXT,
+          student_reflection TEXT,
+          confidence_before INTEGER CHECK (confidence_before BETWEEN 1 AND 5),
+          confidence_after INTEGER CHECK (confidence_after BETWEEN 1 AND 5),
+          tutor_submitted_at ${timestamp},
+          student_submitted_at ${timestamp},
+          created_at ${timestamp} DEFAULT CURRENT_TIMESTAMP,
+          updated_at ${timestamp} DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_session_outcomes_session ON session_outcomes(session_id);
+      `);
+    }
   }
 ];
 

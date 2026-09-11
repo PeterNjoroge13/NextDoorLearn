@@ -2,6 +2,8 @@ const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
+const { usersAreBlocked } = require('../services/safety');
+const { isPositiveInteger, sanitizeText } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -15,11 +17,14 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Only students can create reviews' });
     }
 
-    const { tutorId, rating, comment, sessionId } = req.body;
+    const tutorId = Number(req.body.tutorId);
+    const rating = Number(req.body.rating);
+    const sessionId = Number(req.body.sessionId);
+    const comment = sanitizeText(req.body.comment, 1200);
 
     // Validate required fields
-    if (!tutorId || !rating) {
-      return res.status(400).json({ error: 'Tutor ID and rating are required' });
+    if (!isPositiveInteger(tutorId) || !isPositiveInteger(sessionId) || !Number.isInteger(rating)) {
+      return res.status(400).json({ error: 'A completed session, tutor, and whole-number rating are required' });
     }
 
     // Validate rating range
@@ -33,6 +38,10 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Tutor not found' });
     }
 
+    if (await usersAreBlocked(studentId, tutorId)) {
+      return res.status(403).json({ error: 'Reviews are unavailable for this connection' });
+    }
+
     // Check if student has a connection with this tutor
     const connection = await db.prepare(`
       SELECT id FROM connections 
@@ -41,6 +50,15 @@ router.post('/', authenticateToken, async (req, res) => {
 
     if (!connection) {
       return res.status(403).json({ error: 'You must be connected with this tutor to leave a review' });
+    }
+
+    const completedSession = await db.prepare(`
+      SELECT id FROM sessions
+      WHERE id = ? AND student_id = ? AND tutor_id = ? AND connection_id = ? AND status = 'completed'
+    `).get(sessionId, studentId, tutorId, connection.id);
+
+    if (!completedSession) {
+      return res.status(403).json({ error: 'You can review a tutor after completing a session together' });
     }
 
     // Check if review already exists
@@ -55,7 +73,7 @@ router.post('/', authenticateToken, async (req, res) => {
         SET rating = ?, comment = ?, session_id = ?, updated_at = CURRENT_TIMESTAMP
         WHERE tutor_id = ? AND student_id = ?
       `);
-      await updateReview.run(rating, comment || null, sessionId || null, tutorId, studentId);
+      await updateReview.run(rating, comment || null, sessionId, tutorId, studentId);
       
       return res.json({ 
         message: 'Review updated successfully',
@@ -75,7 +93,7 @@ router.post('/', authenticateToken, async (req, res) => {
       INSERT INTO reviews (tutor_id, student_id, rating, comment, session_id)
       VALUES (?, ?, ?, ?, ?)
     `);
-    const result = await insertReview.run(tutorId, studentId, rating, comment || null, sessionId || null);
+    const result = await insertReview.run(tutorId, studentId, rating, comment || null, sessionId);
 
     // Notify tutor of new review
     const stars = '⭐'.repeat(rating);
@@ -118,11 +136,9 @@ router.get('/tutor/:tutorId', async (req, res) => {
         r.session_id,
         r.created_at,
         r.updated_at,
-        u.id as student_id,
-        u.name as student_name,
-        u.avatar_url as student_avatar
+        'NextDoorLearn student' as student_name,
+        NULL as student_avatar
       FROM reviews r
-      JOIN users u ON r.student_id = u.id
       WHERE r.tutor_id = ?
       ORDER BY r.created_at DESC
     `).all(tutorId);

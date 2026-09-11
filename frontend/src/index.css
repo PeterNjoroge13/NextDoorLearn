@@ -2284,6 +2284,51 @@ textarea:focus {
 .calendar-event.badge-warning { border-left-color: var(--gold); background: var(--gold-soft); color: var(--gold); }
 .calendar-more { border: 0; background: transparent; color: var(--brand-strong); padding: 3px; text-align: left; font-size: .7rem; font-weight: 800; }
 
+.session-outcome-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.session-outcome-summary > div {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+}
+
+.session-outcome-summary svg { margin-top: 2px; color: var(--brand); }
+.session-outcome-summary strong { display: block; margin-bottom: 3px; font-size: .8rem; }
+.session-outcome-summary p { margin: 0; color: var(--muted); font-size: .87rem; line-height: 1.5; }
+
+.session-rating {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 48px;
+}
+
+.session-rating button {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--line-strong);
+}
+
+.session-rating button:hover,
+.session-rating button:focus-visible { background: var(--gold-soft); color: var(--gold); }
+.session-rating button.active { color: var(--gold); }
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

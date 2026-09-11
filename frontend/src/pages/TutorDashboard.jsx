@@ -72,7 +72,7 @@ const TutorDashboard = ({ user, data, updateRequest }) => {
 
       <section className="dashboard-stats" aria-label="Teaching impact">
         <StatTile icon={Users} value={data.messageStats.peopleHelped || data.connections.length} label="Students supported" detail={`${data.connections.length} active connection${data.connections.length === 1 ? '' : 's'}`} />
-        <StatTile icon={CheckCircle2} value={data.sessionStats.completedSessions} label="Sessions completed" detail={`${hoursTaught} volunteer hour${hoursTaught === 1 ? '' : 's'}`} tone="blue" />
+        <StatTile icon={CheckCircle2} value={data.sessionStats.completedSessions} label="Sessions completed" detail={`${data.sessionStats.outcomesRecorded} documented · ${hoursTaught} hour${hoursTaught === 1 ? '' : 's'}`} tone="blue" />
         <StatTile icon={CalendarDays} value={data.sessionStats.scheduledSessions} label="Sessions ahead" detail="Your upcoming commitment" tone="gold" />
         <StatTile icon={Inbox} value={pendingRequests.length} label="Requests waiting" detail={pendingRequests.length ? 'Students need a response' : 'Your queue is clear'} tone="coral" />
       </section>

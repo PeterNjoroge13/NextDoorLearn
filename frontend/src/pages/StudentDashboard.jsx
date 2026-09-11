@@ -50,7 +50,7 @@ const StudentDashboard = ({ user, data }) => {
 
       <section className="dashboard-stats" aria-label="Learning overview">
         <StatTile icon={Users} value={activeConnections.length} label="Tutors in your circle" detail={`${pendingConnections.length} request${pendingConnections.length === 1 ? '' : 's'} pending`} />
-        <StatTile icon={CalendarDays} value={data.sessionStats.scheduledSessions} label="Sessions ahead" detail={`${data.sessionStats.completedSessions} completed`} tone="blue" />
+        <StatTile icon={CalendarDays} value={data.sessionStats.scheduledSessions} label="Sessions ahead" detail={`${data.sessionStats.completedSessions} completed · ${data.sessionStats.reflectionsCompleted} reflected`} tone="blue" />
         <StatTile icon={Bookmark} value={data.favorites.length} label="Saved tutors" detail="Your personal shortlist" tone="gold" />
         <StatTile icon={MessageCircle} value={data.messageStats.messagesSent || 0} label="Messages sent" detail="Keep the conversation moving" tone="coral" />
       </section>
