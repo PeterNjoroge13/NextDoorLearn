@@ -798,6 +798,20 @@ const api = {
     return response.json();
   },
 
+  getAdminWaitlistRecommendations: async (entryId, token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/waitlist/${entryId}/recommendations`, { headers: { 'Authorization': `Bearer ${token}` } });
+    return response.json();
+  },
+
+  applyAdminWaitlistAction: async (entryId, action, details, token) => {
+    const response = await fetch(`${API_BASE_URL}/admin/waitlist/${entryId}/actions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action, ...details }),
+    });
+    return response.json();
+  },
+
   getAdminAuditLog: async (token) => {
     const response = await fetch(`${API_BASE_URL}/admin/audit-log`, { headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();

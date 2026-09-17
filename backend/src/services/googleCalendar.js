@@ -1,8 +1,8 @@
-const { google } = require('googleapis');
 const db = require('../db/database');
 
 const GOOGLE_PROVIDER = 'google';
 const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/calendar.events', 'openid', 'email', 'profile'];
+const getGoogleApi = () => require('googleapis').google;
 
 const getOAuthClient = () => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -13,6 +13,7 @@ const getOAuthClient = () => {
     return null;
   }
 
+  const google = getGoogleApi();
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 };
 
@@ -133,6 +134,7 @@ const getAuthorizedCalendarClient = async (userId) => {
     }
   });
 
+  const google = getGoogleApi();
   return {
     integration,
     calendar: google.calendar({ version: 'v3', auth: oauth2Client })

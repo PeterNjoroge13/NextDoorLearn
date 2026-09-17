@@ -110,11 +110,61 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
 
   const unblocked = await request(`/blocks/${activated.body.user.id}`, { method: 'DELETE', token: adminResponse.body.token });
   assert.equal(unblocked.status, 200);
-  const connection = await request('/connections/request', {
-    method: 'POST', token: adminResponse.body.token, body: { tutorId: activated.body.user.id }
+
+  const joinedWaitlist = await request('/community/waitlist/me', {
+    method: 'PUT', token: adminResponse.body.token,
+    body: {
+      subjects: ['Math'], gradeLevel: 'College', budgetPreference: 'Free or volunteer',
+      tutoringMode: 'online', preferredSchedule: 'Weekends', learningGoals: 'Build confidence in algebra.'
+    }
   });
-  assert.equal(connection.status, 201);
-  const accepted = await request(`/requests/${connection.body.connectionId}/respond`, {
+  assert.equal(joinedWaitlist.status, 200);
+  const waitlist = await request('/admin/waitlist', { token: adminResponse.body.token });
+  assert.equal(waitlist.status, 200);
+  const waitlistEntry = waitlist.body.find((entry) => entry.email === 'admin@example.com');
+  assert.ok(waitlistEntry);
+  const waitlistRecommendations = await request(`/admin/waitlist/${waitlistEntry.id}/recommendations`, { token: adminResponse.body.token });
+  assert.equal(waitlistRecommendations.status, 200);
+  assert.ok(waitlistRecommendations.body.recommendations.some((tutor) => tutor.id === activated.body.user.id));
+  const contacted = await request(`/admin/waitlist/${waitlistEntry.id}/actions`, {
+    method: 'POST', token: adminResponse.body.token,
+    body: { action: 'contacted', adminNotes: 'Student confirmed weekend availability.' }
+  });
+  assert.equal(contacted.status, 200);
+  assert.ok(contacted.body.contacted_at);
+  const matched = await request(`/admin/waitlist/${waitlistEntry.id}/actions`, {
+    method: 'POST', token: adminResponse.body.token,
+    body: { action: 'match', tutorId: activated.body.user.id, adminNotes: 'Strong subject and affordability fit.' }
+  });
+  assert.equal(matched.status, 200);
+  assert.equal(matched.body.status, 'matched');
+  assert.equal(matched.body.matched_tutor_name, 'Approved Tutor');
+  const savedNotes = await request(`/admin/waitlist/${waitlistEntry.id}/actions`, {
+    method: 'POST', token: adminResponse.body.token,
+    body: { action: 'notes', adminNotes: 'Tutor invitation sent; monitor acceptance.' }
+  });
+  assert.equal(savedNotes.status, 200);
+  assert.equal(savedNotes.body.admin_notes, 'Tutor invitation sent; monitor acceptance.');
+  const reopened = await request(`/admin/waitlist/${waitlistEntry.id}/actions`, {
+    method: 'POST', token: adminResponse.body.token,
+    body: { action: 'reopen', adminNotes: 'Retry the match after confirming availability.' }
+  });
+  assert.equal(reopened.status, 200);
+  assert.equal(reopened.body.status, 'open');
+  const recommendationsAfterReopen = await request(`/admin/waitlist/${waitlistEntry.id}/recommendations`, { token: adminResponse.body.token });
+  assert.ok(recommendationsAfterReopen.body.recommendations.some((tutor) => tutor.id === activated.body.user.id));
+  const rematched = await request(`/admin/waitlist/${waitlistEntry.id}/actions`, {
+    method: 'POST', token: adminResponse.body.token,
+    body: { action: 'match', tutorId: activated.body.user.id, adminNotes: 'Availability reconfirmed.' }
+  });
+  assert.equal(rematched.status, 200);
+  const studentWaitlist = await request('/community/waitlist/me', { token: adminResponse.body.token });
+  assert.equal(studentWaitlist.body.matched_tutor_name, 'Approved Tutor');
+  const tutorRequests = await request('/requests', { token: activated.body.token });
+  const matchedRequest = tutorRequests.body.find((item) => item.student_email === 'admin@example.com');
+  assert.ok(matchedRequest);
+  const connectionId = matchedRequest.id;
+  const accepted = await request(`/requests/${connectionId}/respond`, {
     method: 'POST', token: activated.body.token, body: { action: 'accept' }
   });
   assert.equal(accepted.status, 200);
@@ -129,7 +179,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(availability.status, 200);
   const session = await request('/sessions', {
     method: 'POST', token: adminResponse.body.token,
-    body: { connectionId: connection.body.connectionId, title: 'Algebra practice', subject: 'Math', scheduledDate, startTime: '10:00', endTime: '11:00' }
+    body: { connectionId, title: 'Algebra practice', subject: 'Math', scheduledDate, startTime: '10:00', endTime: '11:00' }
   });
   assert.equal(session.status, 201);
   assert.equal(session.body.confirmation_status, 'pending');
@@ -151,7 +201,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   const today = new Date().toISOString().slice(0, 10);
   const completedSession = await request('/sessions', {
     method: 'POST', token: activated.body.token,
-    body: { connectionId: connection.body.connectionId, title: 'Completed algebra review', subject: 'Math', scheduledDate: today, startTime: '00:00', endTime: '00:30' }
+    body: { connectionId, title: 'Completed algebra review', subject: 'Math', scheduledDate: today, startTime: '00:00', endTime: '00:30' }
   });
   assert.equal(completedSession.status, 201);
   assert.equal(completedSession.body.confirmation_status, 'confirmed');
@@ -213,4 +263,5 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.ok(outbox.body.emails.some((email) => email.template === 'tutor_activation'));
   const audit = await request('/admin/audit-log', { token: adminResponse.body.token });
   assert.ok(audit.body.some((entry) => entry.action === 'tutor_application.approved'));
+  assert.ok(audit.body.some((entry) => entry.action === 'waitlist.matched'));
 });

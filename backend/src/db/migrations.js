@@ -174,6 +174,24 @@ const migrations = [
         CREATE INDEX IF NOT EXISTS idx_session_outcomes_session ON session_outcomes(session_id);
       `);
     }
+  },
+  {
+    version: '005_waitlist_matching_workspace',
+    async up(db) {
+      const userId = db.dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
+      const timestamp = db.dialect === 'postgres' ? 'TIMESTAMPTZ' : 'DATETIME';
+
+      await addColumn(db, 'student_waitlist_entries', 'matched_tutor_id', `${userId} REFERENCES users(id) ON DELETE SET NULL`);
+      await addColumn(db, 'student_waitlist_entries', 'matched_by', `${userId} REFERENCES users(id) ON DELETE SET NULL`);
+      await addColumn(db, 'student_waitlist_entries', 'matched_at', timestamp);
+      await addColumn(db, 'student_waitlist_entries', 'contacted_at', timestamp);
+      await addColumn(db, 'student_waitlist_entries', 'admin_notes', 'TEXT');
+
+      await db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_waitlist_status_updated ON student_waitlist_entries(status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_waitlist_matched_tutor ON student_waitlist_entries(matched_tutor_id);
+      `);
+    }
   }
 ];
 

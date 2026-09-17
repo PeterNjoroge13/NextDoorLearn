@@ -5,6 +5,8 @@ const { isPositiveInteger, sanitizeText } = require('../utils/validation');
 const { createSecurityToken, hashSecurityToken } = require('../utils/securityTokens');
 const { queueEmail, processEmailOutbox, providerConfigured } = require('../services/email');
 const emailTemplates = require('../services/emailTemplates');
+const { getTutorRecommendations, parseList } = require('../services/matching');
+const { createNotification } = require('./notifications');
 
 const router = express.Router();
 
@@ -348,15 +350,138 @@ router.patch('/sponsor-inquiries/:id', async (req, res) => {
 router.get('/waitlist', async (req, res) => {
   try {
     const entries = (await db.prepare(`
-      SELECT w.*, u.name, u.email
+      SELECT w.*, u.name, u.email, tutor.name AS matched_tutor_name, tutor.email AS matched_tutor_email
       FROM student_waitlist_entries w JOIN users u ON u.id = w.student_id
+      LEFT JOIN users tutor ON tutor.id = w.matched_tutor_id
       ORDER BY CASE w.status WHEN 'open' THEN 0 ELSE 1 END, w.updated_at DESC
       LIMIT 250
-    `).all()).map((entry) => ({ ...entry, subjects: JSON.parse(entry.subjects || '[]') }));
+    `).all()).map((entry) => ({ ...entry, subjects: parseList(entry.subjects) }));
     res.json(entries);
   } catch (error) {
     console.error('Admin waitlist error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/waitlist/:id/recommendations', async (req, res) => {
+  try {
+    if (!isPositiveInteger(req.params.id)) return res.status(400).json({ error: 'Valid waitlist entry ID is required' });
+    const entry = await db.prepare('SELECT * FROM student_waitlist_entries WHERE id = ?').get(req.params.id);
+    if (!entry) return res.status(404).json({ error: 'Waitlist entry not found' });
+    const recommendations = await getTutorRecommendations({
+      studentId: entry.student_id,
+      student: {
+        subjects_needed: entry.subjects,
+        grade_level: entry.grade_level,
+        budget_preference: entry.budget_preference,
+        tutoring_mode: entry.tutoring_mode,
+        preferred_schedule: entry.preferred_schedule,
+      },
+      limit: 8,
+    });
+    res.json({ recommendations });
+  } catch (error) {
+    console.error('Admin waitlist recommendations error:', error);
+    res.status(500).json({ error: 'Unable to calculate waitlist matches' });
+  }
+});
+
+router.post('/waitlist/:id/actions', async (req, res) => {
+  try {
+    const waitlistId = req.params.id;
+    const action = sanitizeText(req.body.action, 30);
+    const adminNotes = sanitizeText(req.body.adminNotes, 2000);
+    if (!isPositiveInteger(waitlistId) || !['notes', 'contacted', 'match', 'reopen', 'close'].includes(action)) {
+      return res.status(400).json({ error: 'Valid waitlist entry and action are required' });
+    }
+    const entry = await db.prepare(`
+      SELECT w.*, student.name AS student_name
+      FROM student_waitlist_entries w JOIN users student ON student.id = w.student_id
+      WHERE w.id = ?
+    `).get(waitlistId);
+    if (!entry) return res.status(404).json({ error: 'Waitlist entry not found' });
+    if (['contacted', 'match'].includes(action) && entry.status !== 'open') {
+      return res.status(409).json({ error: 'Reopen this waitlist request before taking that action' });
+    }
+
+    let matchedTutor = null;
+    if (action === 'match') {
+      if (!isPositiveInteger(req.body.tutorId)) return res.status(400).json({ error: 'Choose a recommended tutor' });
+      const recommendations = await getTutorRecommendations({
+        studentId: entry.student_id,
+        student: {
+          subjects_needed: entry.subjects,
+          grade_level: entry.grade_level,
+          budget_preference: entry.budget_preference,
+          tutoring_mode: entry.tutoring_mode,
+        },
+        limit: 25,
+      });
+      matchedTutor = recommendations.find((tutor) => Number(tutor.id) === Number(req.body.tutorId));
+      if (!matchedTutor) return res.status(409).json({ error: 'That tutor is no longer available for this student' });
+
+      await db.withTransaction(async (transaction) => {
+        const existingConnection = await transaction.prepare('SELECT id, status FROM connections WHERE student_id = ? AND tutor_id = ?').get(entry.student_id, matchedTutor.id);
+        if (!existingConnection) {
+          await transaction.prepare("INSERT INTO connections (student_id, tutor_id, status) VALUES (?, ?, 'pending')").run(entry.student_id, matchedTutor.id);
+        } else if (existingConnection.status === 'rejected') {
+          await transaction.prepare("UPDATE connections SET status = 'pending', created_at = CURRENT_TIMESTAMP WHERE id = ?").run(existingConnection.id);
+        }
+        await transaction.prepare(`
+          UPDATE student_waitlist_entries SET status = 'matched', matched_tutor_id = ?, matched_by = ?,
+            matched_at = CURRENT_TIMESTAMP, admin_notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        `).run(matchedTutor.id, req.user.userId, adminNotes || entry.admin_notes || null, waitlistId);
+        await audit(req.user.userId, 'waitlist.matched', 'student_waitlist', waitlistId, {
+          studentId: entry.student_id,
+          tutorId: matchedTutor.id,
+          matchScore: matchedTutor.matchScore,
+        }, transaction);
+      });
+
+      await createNotification(
+        matchedTutor.id,
+        'waitlist_match',
+        'A student may be a strong match',
+        `${entry.student_name} is looking for help in ${parseList(entry.subjects).slice(0, 2).join(' and ') || 'their focus subjects'}. Review the connection request when you are ready.`,
+        '/requests', waitlistId
+      );
+      await createNotification(
+        entry.student_id,
+        'waitlist_match',
+        'We found a tutor match',
+        `${matchedTutor.name} has been invited to review your tutoring request.`,
+        '/tutors', matchedTutor.id
+      );
+    } else {
+      const updates = {
+        notes: 'admin_notes = ?, updated_at = CURRENT_TIMESTAMP',
+        contacted: "contacted_at = CURRENT_TIMESTAMP, admin_notes = ?, updated_at = CURRENT_TIMESTAMP",
+        close: "status = 'closed', admin_notes = ?, updated_at = CURRENT_TIMESTAMP",
+        reopen: "status = 'open', matched_tutor_id = NULL, matched_by = NULL, matched_at = NULL, contacted_at = NULL, admin_notes = ?, updated_at = CURRENT_TIMESTAMP",
+      };
+      await db.withTransaction(async (transaction) => {
+        if (action === 'reopen' && entry.matched_tutor_id) {
+          await transaction.prepare(`
+            DELETE FROM connections
+            WHERE student_id = ? AND tutor_id = ? AND status = 'pending'
+          `).run(entry.student_id, entry.matched_tutor_id);
+        }
+        const notesValue = action === 'notes' ? (adminNotes || null) : (adminNotes || entry.admin_notes || null);
+        await transaction.prepare(`UPDATE student_waitlist_entries SET ${updates[action]} WHERE id = ?`)
+          .run(notesValue, waitlistId);
+        await audit(req.user.userId, `waitlist.${action}`, 'student_waitlist', waitlistId, { studentId: entry.student_id }, transaction);
+      });
+    }
+
+    const updated = await db.prepare(`
+      SELECT w.*, tutor.name AS matched_tutor_name, tutor.email AS matched_tutor_email
+      FROM student_waitlist_entries w LEFT JOIN users tutor ON tutor.id = w.matched_tutor_id
+      WHERE w.id = ?
+    `).get(waitlistId);
+    res.json({ ...updated, subjects: parseList(updated.subjects) });
+  } catch (error) {
+    console.error('Admin waitlist action error:', error);
+    res.status(500).json({ error: 'Unable to update waitlist entry' });
   }
 });
 

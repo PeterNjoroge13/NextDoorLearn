@@ -123,9 +123,12 @@ router.get('/waitlist/me', authenticateToken, async (req, res) => {
   if (req.user.role !== 'student') return res.status(403).json({ error: 'Student access required' });
 
   const entry = await db.prepare(`
-    SELECT id, subjects, grade_level, budget_preference, preferred_schedule,
-           tutoring_mode, learning_goals, status, created_at, updated_at
-    FROM student_waitlist_entries WHERE student_id = ?
+    SELECT w.id, w.subjects, w.grade_level, w.budget_preference, w.preferred_schedule,
+           w.tutoring_mode, w.learning_goals, w.status, w.matched_tutor_id, w.matched_at, tutor.name AS matched_tutor_name,
+           w.created_at, w.updated_at
+    FROM student_waitlist_entries w
+    LEFT JOIN users tutor ON tutor.id = w.matched_tutor_id
+    WHERE w.student_id = ?
   `).get(req.user.userId);
 
   if (!entry) return res.json(null);
@@ -150,6 +153,10 @@ router.put('/waitlist/me', authenticateToken, async (req, res) => {
         tutoring_mode = excluded.tutoring_mode,
         learning_goals = excluded.learning_goals,
         status = 'open',
+        matched_tutor_id = NULL,
+        matched_by = NULL,
+        matched_at = NULL,
+        contacted_at = NULL,
         updated_at = CURRENT_TIMESTAMP
     `).run(
       req.user.userId,

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, ClipboardList, HandCoins, Mail, RefreshCw, ShieldCheck, UserCheck, Users } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, ClipboardList, HandCoins, Mail, RefreshCw, Search, ShieldCheck, Sparkles, UserCheck, UserPlus, Users } from 'lucide-react';
 import api from '../services/api';
 import AppShell, { Avatar, EmptyState, ErrorState, LoadingState } from '../components/AppShell';
 
@@ -17,6 +17,9 @@ const Admin = () => {
   const [emailDelivery, setEmailDelivery] = useState({ providerConfigured: false, emails: [] });
   const [reviewDrafts, setReviewDrafts] = useState({});
   const [moderationDrafts, setModerationDrafts] = useState({});
+  const [waitlistDrafts, setWaitlistDrafts] = useState({});
+  const [waitlistMatches, setWaitlistMatches] = useState({});
+  const [waitlistBusy, setWaitlistBusy] = useState('');
   const [activeTab, setActiveTab] = useState('reports');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -127,6 +130,44 @@ const Admin = () => {
     if (response.error) return showToast(response.error);
     setInquiries((current) => current.map((item) => item.id === response.id ? { ...item, ...response } : item));
     showToast('Sponsor inquiry updated.');
+  };
+
+  const updateWaitlistDraft = (entryId, value) => {
+    setWaitlistDrafts((current) => ({ ...current, [entryId]: value }));
+  };
+
+  const handleFindWaitlistMatches = async (entryId) => {
+    setWaitlistBusy(`find-${entryId}`);
+    const response = await api.getAdminWaitlistRecommendations(entryId, localStorage.getItem('token'));
+    setWaitlistBusy('');
+    if (response.error) return showToast(response.error);
+    const recommendations = Array.isArray(response.recommendations) ? response.recommendations : [];
+    setWaitlistMatches((current) => ({ ...current, [entryId]: recommendations }));
+    showToast(recommendations.length ? `Found ${recommendations.length} available tutor match${recommendations.length === 1 ? '' : 'es'}.` : 'No available tutors match this request yet.');
+  };
+
+  const handleWaitlistAction = async (entry, action, tutorId) => {
+    const busyKey = `${action}-${entry.id}${tutorId ? `-${tutorId}` : ''}`;
+    setWaitlistBusy(busyKey);
+    const response = await api.applyAdminWaitlistAction(entry.id, action, {
+      tutorId,
+      adminNotes: waitlistDrafts[entry.id] ?? entry.admin_notes ?? '',
+    }, localStorage.getItem('token'));
+    setWaitlistBusy('');
+    if (response.error) return showToast(response.error);
+    setWaitlist((current) => current.map((item) => (item.id === response.id ? { ...item, ...response } : item)));
+    setWaitlistDrafts((current) => ({ ...current, [entry.id]: response.admin_notes || '' }));
+    if (action === 'match' || action === 'reopen') {
+      setWaitlistMatches((current) => ({ ...current, [entry.id]: [] }));
+    }
+    const messages = {
+      notes: 'Matching notes saved.',
+      contacted: 'Student outreach recorded.',
+      match: `${response.matched_tutor_name || 'Tutor'} invited to connect.`,
+      reopen: 'Waitlist request reopened.',
+      close: 'Waitlist request closed.',
+    };
+    showToast(messages[action]);
   };
 
   const stats = useMemo(() => ({
@@ -245,7 +286,67 @@ const Admin = () => {
               </div>
             ) : <EmptyState icon={CheckCircle2} title="No tutor applications">New applicants will appear here for review.</EmptyState>
           ) : activeTab === 'waitlist' ? (
-            waitlist.length ? <div className="admin-list">{waitlist.map((entry) => <article className="card card-pad admin-row" key={entry.id}><div><div className="button-row"><span className={`badge ${entry.status === 'open' ? 'badge-warning' : 'badge-success'}`}>{entry.status}</span>{entry.subjects.map((subject) => <span className="badge badge-primary" key={subject}>{subject}</span>)}</div><h2>{entry.name}</h2><p className="muted">{entry.email} · {entry.grade_level || 'Grade not listed'} · {entry.budget_preference || 'Budget flexible'} · {entry.tutoring_mode || 'Any format'}</p><p className="page-copy">{entry.learning_goals || 'No learning goal provided.'}</p><p className="muted">Preferred schedule: {entry.preferred_schedule || 'Not listed'}</p></div></article>)}</div> : <EmptyState icon={CheckCircle2} title="No students waiting">Unmatched students will appear here.</EmptyState>
+            waitlist.length ? (
+              <div className="admin-list">
+                {waitlist.map((entry) => {
+                  const matches = waitlistMatches[entry.id];
+                  const notes = waitlistDrafts[entry.id] ?? entry.admin_notes ?? '';
+                  return (
+                    <article className="card card-pad admin-waitlist-entry" key={entry.id}>
+                      <div className="waitlist-entry-head">
+                        <div>
+                          <div className="button-row">
+                            <span className={`badge ${entry.status === 'open' ? 'badge-warning' : entry.status === 'matched' ? 'badge-success' : ''}`}>{entry.status}</span>
+                            {entry.subjects.map((subject) => <span className="badge badge-primary" key={subject}>{subject}</span>)}
+                            {entry.contacted_at ? <span className="badge badge-blue"><Mail size={14} />Contacted</span> : null}
+                          </div>
+                          <h2>{entry.name}</h2>
+                          <p className="muted">{entry.email} · {entry.grade_level || 'Grade not listed'} · {entry.budget_preference || 'Budget flexible'} · {entry.tutoring_mode || 'Any format'}</p>
+                        </div>
+                        <span className="muted waitlist-date">Updated {new Date(entry.updated_at).toLocaleDateString()}</span>
+                      </div>
+
+                      <div className="waitlist-details">
+                        <div><span>Learning goal</span><p>{entry.learning_goals || 'No learning goal provided.'}</p></div>
+                        <div><span>Preferred schedule</span><p>{entry.preferred_schedule || 'Not listed'}</p></div>
+                        {entry.matched_tutor_name ? <div><span>Matched tutor</span><p><strong>{entry.matched_tutor_name}</strong> · {entry.matched_tutor_email}</p></div> : null}
+                      </div>
+
+                      <div className="waitlist-workspace">
+                        <label className="field">
+                          <span>Private matching notes</span>
+                          <textarea rows="3" value={notes} onChange={(event) => updateWaitlistDraft(entry.id, event.target.value)} placeholder="Outreach history, match context, or follow-up notes" />
+                        </label>
+                        <div className="button-row waitlist-actions">
+                          <button className="btn btn-ghost btn-sm" type="button" disabled={waitlistBusy === `notes-${entry.id}`} onClick={() => handleWaitlistAction(entry, 'notes')}>{waitlistBusy === `notes-${entry.id}` ? 'Saving...' : 'Save notes'}</button>
+                          {entry.status === 'open' ? <button className="btn btn-primary btn-sm" type="button" disabled={waitlistBusy === `find-${entry.id}`} onClick={() => handleFindWaitlistMatches(entry.id)}><Search size={16} />{waitlistBusy === `find-${entry.id}` ? 'Ranking...' : 'Find matches'}</button> : null}
+                          {entry.status === 'open' ? <button className="btn btn-ghost btn-sm" type="button" disabled={waitlistBusy === `contacted-${entry.id}`} onClick={() => handleWaitlistAction(entry, 'contacted')}><Mail size={16} />Mark contacted</button> : null}
+                          {entry.status === 'open' ? <button className="btn btn-ghost btn-sm" type="button" disabled={waitlistBusy === `close-${entry.id}`} onClick={() => handleWaitlistAction(entry, 'close')}>Close request</button> : <button className="btn btn-ghost btn-sm" type="button" disabled={waitlistBusy === `reopen-${entry.id}`} onClick={() => handleWaitlistAction(entry, 'reopen')}>Reopen request</button>}
+                        </div>
+                      </div>
+
+                      {entry.status === 'open' && Array.isArray(matches) ? (
+                        <div className="waitlist-match-panel">
+                          <div className="waitlist-match-heading"><span><Sparkles size={17} />Recommended tutors</span><small>{matches.length ? 'Ranked by subject, format, age group, affordability, and availability.' : 'No available tutors meet this request yet.'}</small></div>
+                          {matches.map((tutor) => (
+                            <div className="waitlist-match-row" key={tutor.id}>
+                              <Avatar name={tutor.name} src={tutor.avatar_url} size={46} />
+                              <div className="waitlist-match-person">
+                                <strong>{tutor.name}</strong>
+                                <span>{tutor.headline || tutor.education || 'Community tutor'}</span>
+                                <small>{tutor.matchReasons.join(' · ') || tutor.subjects.slice(0, 3).join(' · ')}</small>
+                              </div>
+                              <div className="waitlist-match-fit"><strong>{tutor.matchScore}% fit</strong><span>{Number(tutor.hourly_rate || 0) === 0 ? 'Volunteer' : `$${tutor.hourly_rate}/hr`} · {tutor.active_students}/{tutor.max_students || 5} students</span></div>
+                              <button className="btn btn-primary btn-sm" type="button" disabled={waitlistBusy === `match-${entry.id}-${tutor.id}`} onClick={() => handleWaitlistAction(entry, 'match', tutor.id)}><UserPlus size={16} />{waitlistBusy === `match-${entry.id}-${tutor.id}` ? 'Assigning...' : 'Invite match'}</button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : <EmptyState icon={CheckCircle2} title="No students waiting">Unmatched students will appear here.</EmptyState>
           ) : activeTab === 'sponsors' ? (
             inquiries.length ? <div className="admin-list">{inquiries.map((inquiry) => <article className="card card-pad admin-row" key={inquiry.id}><div><div className="button-row"><span className={`badge ${inquiry.status === 'new' ? 'badge-warning' : 'badge-success'}`}>{inquiry.status}</span><span className="badge"><HandCoins size={14} />{inquiry.sponsor_type}</span></div><h2>{inquiry.name}{inquiry.organization ? ` · ${inquiry.organization}` : ''}</h2><p className="muted">{inquiry.email}</p><p className="page-copy">{inquiry.message || 'No message provided.'}</p></div><div className="admin-actions"><select value={inquiry.status} onChange={(event) => handleUpdateInquiry(inquiry.id, event.target.value)}>{inquiryStatuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></div></article>)}</div> : <EmptyState icon={CheckCircle2} title="No sponsor inquiries">Partnership interest will appear here.</EmptyState>
           ) : activeTab === 'reports' ? (

@@ -1,5 +1,4 @@
 const express = require('express');
-const { Webhook } = require('svix');
 const db = require('../db/database');
 
 const router = express.Router();
@@ -8,6 +7,7 @@ router.post('/', express.raw({ type: 'application/json', limit: '256kb' }), asyn
   const secret = process.env.RESEND_WEBHOOK_SECRET;
   if (!secret) return res.status(503).json({ error: 'Email webhook is not configured' });
   try {
+    const { Webhook } = require('svix');
     const payload = req.body.toString('utf8');
     const event = new Webhook(secret).verify(payload, {
       'svix-id': req.headers['svix-id'],
