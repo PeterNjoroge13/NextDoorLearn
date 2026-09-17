@@ -12,6 +12,27 @@ const router = express.Router();
 
 const publicUrl = () => process.env.FRONTEND_URL || 'http://localhost:5173';
 
+const accessTokenFor = (user) => jwt.sign(
+  { userId: user.id, email: user.email, role: user.role, name: user.name },
+  JWT_SECRET,
+  { expiresIn: '24h' }
+);
+
+const createRefreshToken = async (userId, deviceName = null) => {
+  const token = createSecurityToken();
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  await db.prepare(`
+    INSERT INTO refresh_tokens (user_id, token_hash, device_name, expires_at)
+    VALUES (?, ?, ?, ?)
+  `).run(userId, hashSecurityToken(token), sanitizeText(deviceName, 120) || null, expiresAt);
+  return token;
+};
+
+const authPayload = async (user, deviceName = null) => ({
+  token: accessTokenFor(user),
+  refreshToken: await createRefreshToken(user.id, deviceName)
+});
+
 const insertExpiringToken = async (table, userId, hours = 2) => {
   const token = createSecurityToken();
   const expiresAt = new Date(Date.now() + Number(hours) * 60 * 60 * 1000).toISOString();
@@ -100,11 +121,9 @@ router.post('/register', async (req, res) => {
       await insertStudentProfile.run(userId, '', '[]');
     }
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId, email: normalizedEmail, role, name: displayName },
-      JWT_SECRET,
-      { expiresIn: '24h' }
+    const session = await authPayload(
+      { id: userId, email: normalizedEmail, role, name: displayName },
+      req.body.deviceName
     );
     const verificationToken = await sendVerificationEmail({
       id: userId,
@@ -114,7 +133,7 @@ router.post('/register', async (req, res) => {
 
     res.status(201).json({
       message: 'User created successfully',
-      token,
+      ...session,
       user: {
         id: userId, email: normalizedEmail, role, name: displayName, bio: safeBio, emailVerified: false,
         isAdmin: (process.env.ADMIN_EMAILS || '').split(',').map((item) => item.trim().toLowerCase()).includes(normalizedEmail)
@@ -161,18 +180,13 @@ router.post('/login', async (req, res) => {
     const updateLastSeen = await db.prepare('UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?');
     await updateLastSeen.run(user.id);
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role, name: user.name },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const session = await authPayload(user, req.body.deviceName);
     const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map((item) => item.trim().toLowerCase());
     const adminMembership = await db.prepare('SELECT id FROM admin_memberships WHERE user_id = ?').get(user.id);
 
     res.json({
       message: 'Login successful',
-      token,
+      ...session,
       user: {
         id: user.id,
         email: user.email,
@@ -301,6 +315,61 @@ router.post('/resend-verification', async (req, res) => {
   }
 });
 
+router.post('/refresh', async (req, res) => {
+  try {
+    const rawToken = String(req.body.refreshToken || '');
+    if (!rawToken) return res.status(400).json({ error: 'Refresh token is required' });
+
+    const session = await db.prepare(`
+      SELECT rt.id, rt.user_id, u.email, u.role, u.name, u.status
+      FROM refresh_tokens rt
+      JOIN users u ON u.id = rt.user_id
+      WHERE rt.token_hash = ? AND rt.revoked_at IS NULL AND rt.expires_at > CURRENT_TIMESTAMP
+    `).get(hashSecurityToken(rawToken));
+
+    if (!session || session.status !== 'active') {
+      return res.status(401).json({ error: 'Session has expired. Please sign in again.' });
+    }
+
+    const refreshToken = await db.withTransaction(async (transaction) => {
+      await transaction.prepare(`
+        UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP, last_used_at = CURRENT_TIMESTAMP WHERE id = ?
+      `).run(session.id);
+      const nextToken = createSecurityToken();
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      await transaction.prepare(`
+        INSERT INTO refresh_tokens (user_id, token_hash, device_name, expires_at)
+        VALUES (?, ?, ?, ?)
+      `).run(session.user_id, hashSecurityToken(nextToken), sanitizeText(req.body.deviceName, 120) || null, expiresAt);
+      return nextToken;
+    });
+
+    res.json({
+      token: accessTokenFor({ id: session.user_id, email: session.email, role: session.role, name: session.name }),
+      refreshToken
+    });
+  } catch (error) {
+    console.error('Refresh session error:', error);
+    res.status(500).json({ error: 'Unable to refresh session' });
+  }
+});
+
+router.post('/logout', async (req, res) => {
+  try {
+    const rawToken = String(req.body.refreshToken || '');
+    if (rawToken) {
+      await db.prepare(`
+        UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP
+        WHERE token_hash = ? AND revoked_at IS NULL
+      `).run(hashSecurityToken(rawToken));
+    }
+    res.json({ message: 'Signed out successfully' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ error: 'Unable to sign out' });
+  }
+});
+
 router.get('/tutor-activation', async (req, res) => {
   try {
     const token = sanitizeText(req.query.token, 128);
@@ -359,8 +428,8 @@ router.post('/tutor-activation', async (req, res) => {
       return { id: userId, email: activation.email, role: 'tutor', name: activation.name };
     });
 
-    const token = jwt.sign({ userId: user.id, email: user.email, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: '24h' });
-    res.status(201).json({ message: 'Tutor account activated', token, user: { ...user, emailVerified: true } });
+    const session = await authPayload(user, req.body.deviceName);
+    res.status(201).json({ message: 'Tutor account activated', ...session, user: { ...user, emailVerified: true } });
   } catch (error) {
     console.error('Tutor activation error:', error);
     res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to activate tutor account' });

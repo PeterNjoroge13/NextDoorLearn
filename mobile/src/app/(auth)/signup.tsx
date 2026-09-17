@@ -1,0 +1,15 @@
+import { router } from 'expo-router';
+import { ArrowLeft } from 'lucide-react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Button, ErrorNotice, Field, Screen } from '@/components/ui';
+import { useAuth } from '@/context/AuthContext';
+import { colors, spacing, typography } from '@/theme';
+
+export default function SignupScreen() {
+  const { signUp } = useAuth(); const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' }); const [error, setError] = useState(''); const [loading, setLoading] = useState(false);
+  const set = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const submit = async () => { if (form.password !== form.confirm) return setError('Passwords do not match'); setError(''); setLoading(true); try { await signUp(form); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to create account'); } finally { setLoading(false); } };
+  return <Screen><Pressable onPress={() => router.back()} style={styles.back}><ArrowLeft size={22} color={colors.ink} /></Pressable><View style={styles.heading}><Text style={styles.eyebrow}>STUDENT SIGN-UP</Text><Text style={styles.title}>Let’s find the support that fits you.</Text><Text style={styles.subtitle}>Create your account now. A short learning-needs quiz comes next.</Text></View>{error ? <ErrorNotice message={error} /> : null}<View style={styles.form}><Field label="Full name" value={form.name} onChangeText={(v) => set('name', v)} autoComplete="name" /><Field label="Email" value={form.email} onChangeText={(v) => set('email', v)} keyboardType="email-address" autoCapitalize="none" autoComplete="email" /><Field label="Password" value={form.password} onChangeText={(v) => set('password', v)} secureTextEntry autoComplete="new-password" /><Field label="Confirm password" value={form.confirm} onChangeText={(v) => set('confirm', v)} secureTextEntry /><Button label="Create student account" onPress={submit} loading={loading} disabled={!form.name || !form.email || form.password.length < 8} /></View><Text style={styles.legal}>By continuing, you agree to NextDoorLearn’s Terms and Privacy Policy.</Text><View style={styles.tutor}><Text style={styles.tutorCopy}>Want to teach?</Text><Pressable onPress={() => router.push('/(auth)/apply-tutor')}><Text style={styles.link}>Apply as a tutor</Text></Pressable></View></Screen>;
+}
+const styles = StyleSheet.create({ back: { width: 44, height: 44, justifyContent: 'center' }, heading: { gap: spacing.sm }, eyebrow: { color: colors.brand, fontFamily: typography.bold, fontSize: 12 }, title: { fontFamily: typography.bold, color: colors.ink, fontSize: 32, lineHeight: 38 }, subtitle: { fontFamily: typography.regular, color: colors.muted, fontSize: 16, lineHeight: 24 }, form: { gap: spacing.lg }, legal: { color: colors.muted, fontFamily: typography.regular, fontSize: 12, lineHeight: 18, textAlign: 'center' }, tutor: { flexDirection: 'row', justifyContent: 'center', gap: 6 }, tutorCopy: { color: colors.muted }, link: { color: colors.brandStrong, fontFamily: typography.bold } });

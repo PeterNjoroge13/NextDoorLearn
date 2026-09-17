@@ -239,6 +239,36 @@ router.put('/change-password', authenticateToken, async (req, res) => {
   }
 });
 
+// Permanently delete the signed-in account. Store policies require this to be available in-app.
+router.delete('/account', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const currentPassword = String(req.body.currentPassword || '');
+    const confirmation = String(req.body.confirmation || '').trim().toUpperCase();
+
+    if (!currentPassword || confirmation !== 'DELETE') {
+      return res.status(400).json({ error: 'Enter your password and type DELETE to confirm' });
+    }
+
+    const user = await db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
+    if (!user || !(await bcrypt.compare(currentPassword, user.password_hash))) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    await db.withTransaction(async (transaction) => {
+      // These audit relationships intentionally restrict deletion; remove the actor-owned rows first.
+      await transaction.prepare('DELETE FROM moderation_actions WHERE admin_user_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM admin_audit_logs WHERE admin_user_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    });
+
+    res.json({ message: 'Your account and personal data have been deleted' });
+  } catch (error) {
+    console.error('Delete account error:', error);
+    res.status(500).json({ error: 'Unable to delete account' });
+  }
+});
+
 // Get all tutors
 router.get('/tutors', authenticateToken, async (req, res) => {
   try {

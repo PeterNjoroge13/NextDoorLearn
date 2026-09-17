@@ -28,6 +28,7 @@ const blockRoutes = require('./routes/blocks');
 const recommendationRoutes = require('./routes/recommendations');
 const jobRoutes = require('./routes/jobs');
 const resendWebhookRoutes = require('./routes/resendWebhook');
+const deviceRoutes = require('./routes/devices');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -137,6 +138,7 @@ app.use('/api/progress', progressRoutes);
 app.use('/api/blocks', blockRoutes);
 app.use('/api/recommendations', recommendationRoutes);
 app.use('/api/jobs', jobRoutes);
+app.use('/api/devices', deviceRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {

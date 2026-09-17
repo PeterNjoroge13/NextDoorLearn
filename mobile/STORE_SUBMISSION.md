@@ -1,0 +1,28 @@
+# Mobile release checklist
+
+The codebase is prepared for iOS and Android builds with Expo Application Services. The remaining steps require the product owner's Apple, Google, and Expo accounts.
+
+## One-time owner setup
+
+1. Create or sign in to an Expo account and run `npx eas-cli@latest login`.
+2. From `mobile/`, run `npx eas-cli@latest init`. Replace `REPLACE_AFTER_EAS_INIT` in `app.json` with the generated project ID if the command does not do so automatically.
+3. Enroll in the Apple Developer Program and create the App Store Connect app for bundle ID `com.peternjoroge.nextdoorlearn`.
+4. Create a Google Play Console developer account and app with package `com.peternjoroge.nextdoorlearn`.
+5. Create dedicated student and tutor reviewer accounts in production. Put credentials only in App Store Connect and Play Console review notes, never in git.
+6. Confirm the production privacy, support, terms, and account-deletion URLs are live.
+
+## Test releases
+
+1. Run `npm run lint`, `npm run typecheck`, and `npm run export:web`.
+2. Run `npm run build:preview` and install the internal iOS/Android builds on physical devices.
+3. Test registration, login persistence, intake, tutor discovery, connection requests, messaging, scheduling, profile photo upload, notifications, reporting/blocking, and account deletion.
+4. Capture current iPhone and Android screenshots from the signed preview builds.
+
+## Production submission
+
+1. Run `npm run build:production`.
+2. Complete privacy/data-safety questionnaires truthfully from the app's real behavior.
+3. Add store copy and screenshots, reviewer credentials, support URL, privacy URL, and account-deletion URL.
+4. Run `npm run submit:production` after the listings are complete.
+
+Do not submit until email delivery, persistent uploads, push credentials, production monitoring, and both reviewer accounts have been verified on physical devices.

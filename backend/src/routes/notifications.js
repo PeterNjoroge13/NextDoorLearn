@@ -4,6 +4,26 @@ const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
+const sendPushNotification = async (userId, title, message, link) => {
+  const devices = await db.prepare(`
+    SELECT expo_push_token FROM push_devices WHERE user_id = ? AND enabled = 1
+  `).all(userId);
+  if (!devices.length) return;
+
+  const response = await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(devices.map((device) => ({
+      to: device.expo_push_token,
+      title,
+      body: message,
+      sound: 'default',
+      data: { link: link || '/notifications' }
+    })))
+  });
+  if (!response.ok) throw new Error(`Expo push service returned ${response.status}`);
+};
+
 // Get all notifications for user
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -127,6 +147,9 @@ const createNotification = async (userId, type, title, message, link = null, rel
       VALUES (?, ?, ?, ?, ?, ?)
     `);
     const result = await stmt.run(userId, type, title, message, link, relatedId);
+    sendPushNotification(userId, title, message, link).catch((error) => {
+      console.error('Push notification delivery error:', error.message);
+    });
     return result.lastInsertRowid;
   } catch (error) {
     console.error('Create notification error:', error);

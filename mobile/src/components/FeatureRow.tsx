@@ -1,0 +1,9 @@
+import type { LucideIcon } from 'lucide-react-native';
+import { ChevronRight } from 'lucide-react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors, spacing, typography } from '@/theme';
+
+export function FeatureRow({ icon: Icon, title, subtitle, onPress, danger = false, badge }: { icon: LucideIcon; title: string; subtitle?: string; onPress: () => void; danger?: boolean; badge?: string | number }) {
+  return <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}><View style={[styles.icon, danger && styles.dangerIcon]}><Icon size={20} color={danger ? colors.red : colors.brand} /></View><View style={styles.copy}><Text style={[styles.title, danger && styles.dangerText]}>{title}</Text>{subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}</View>{badge ? <View style={styles.badge}><Text style={styles.badgeText}>{badge}</Text></View> : null}<ChevronRight size={19} color={colors.muted} /></Pressable>;
+}
+const styles = StyleSheet.create({ row: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm }, pressed: { opacity: 0.65 }, icon: { width: 40, height: 40, borderRadius: 8, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' }, dangerIcon: { backgroundColor: colors.redSoft }, copy: { flex: 1, gap: 2 }, title: { color: colors.ink, fontFamily: typography.medium, fontSize: 15 }, dangerText: { color: colors.red }, subtitle: { color: colors.muted, fontFamily: typography.regular, fontSize: 12, lineHeight: 17 }, badge: { minWidth: 24, height: 24, borderRadius: 12, backgroundColor: colors.coral, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }, badgeText: { color: colors.white, fontFamily: typography.bold, fontSize: 11 } });

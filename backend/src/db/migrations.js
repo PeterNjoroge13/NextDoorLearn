@@ -192,6 +192,42 @@ const migrations = [
         CREATE INDEX IF NOT EXISTS idx_waitlist_matched_tutor ON student_waitlist_entries(matched_tutor_id);
       `);
     }
+  },
+  {
+    version: '006_mobile_foundation',
+    async up(db) {
+      const id = db.dialect === 'postgres' ? 'BIGSERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+      const userId = db.dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
+      const timestamp = db.dialect === 'postgres' ? 'TIMESTAMPTZ' : 'DATETIME';
+
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS refresh_tokens (
+          id ${id},
+          user_id ${userId} NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token_hash TEXT NOT NULL UNIQUE,
+          device_name TEXT,
+          expires_at ${timestamp} NOT NULL,
+          revoked_at ${timestamp},
+          created_at ${timestamp} DEFAULT CURRENT_TIMESTAMP,
+          last_used_at ${timestamp}
+        );
+
+        CREATE TABLE IF NOT EXISTS push_devices (
+          id ${id},
+          user_id ${userId} NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          expo_push_token TEXT NOT NULL UNIQUE,
+          platform TEXT NOT NULL,
+          device_name TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at ${timestamp} DEFAULT CURRENT_TIMESTAMP,
+          updated_at ${timestamp} DEFAULT CURRENT_TIMESTAMP,
+          last_seen_at ${timestamp} DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id, expires_at);
+        CREATE INDEX IF NOT EXISTS idx_push_devices_user ON push_devices(user_id, enabled);
+      `);
+    }
   }
 ];
 
