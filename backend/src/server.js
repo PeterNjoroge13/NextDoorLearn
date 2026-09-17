@@ -64,6 +64,10 @@ const defaultProductionOriginPatterns = [
   /^https:\/\/[a-z0-9-]+\.vercel\.app$/i
 ];
 
+const defaultDevelopmentOriginPatterns = [
+  /^http:\/\/(localhost|127\.0\.0\.1):\d+$/i
+];
+
 const configuredOriginPatterns = (process.env.CORS_ORIGIN_PATTERNS || '')
   .split(',')
   .map((pattern) => pattern.trim())
@@ -80,7 +84,7 @@ const configuredOriginPatterns = (process.env.CORS_ORIGIN_PATTERNS || '')
 
 const allowedOriginPatterns = process.env.NODE_ENV === 'production'
   ? [...defaultProductionOriginPatterns, ...configuredOriginPatterns]
-  : configuredOriginPatterns;
+  : [...defaultDevelopmentOriginPatterns, ...configuredOriginPatterns];
 
 const isAllowedOrigin = (origin) =>
   allowedOrigins.has(origin) || allowedOriginPatterns.some((pattern) => pattern.test(origin));

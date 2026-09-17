@@ -56,6 +56,17 @@ const imageBlob = () => new Blob([
 
 test('secure tutor activation, matching, session outcomes, reviews, and blocking work end to end', async () => {
   await waitForServer();
+  const expoPreflight = await fetch(`${base}/auth/login`, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: 'http://localhost:8081',
+      'Access-Control-Request-Method': 'POST',
+      'Access-Control-Request-Headers': 'content-type'
+    }
+  });
+  assert.equal(expoPreflight.status, 204);
+  assert.equal(expoPreflight.headers.get('access-control-allow-origin'), 'http://localhost:8081');
+
   const adminResponse = await request('/auth/register', {
     method: 'POST',
     body: { email: 'admin@example.com', password: 'password123', role: 'student', name: 'Admin' }
