@@ -6,7 +6,7 @@ import { SessionCard } from '@/components/DashboardBits';
 import { Button, EmptyState, ErrorNotice, Header, LoadingState, Screen } from '@/components/ui';
 import { request } from '@/lib/api';
 import { useData } from '@/lib/hooks';
-import { colors, spacing, typography } from '@/theme';
+import { colors, typography } from '@/theme';
 import type { Session } from '@/types';
 
 const filters = ['Upcoming', 'All', 'Completed'];

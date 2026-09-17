@@ -11,6 +11,8 @@ import { colors, spacing, typography } from '@/theme';
 
 export default function ProfileScreen() {
   const { user, updateUser } = useAuth(); const state = useData<any>(() => request('/users/profile'), []); const [form, setForm] = useState<any>(null); const [saving, setSaving] = useState(false); const [notice, setNotice] = useState(''); const [error, setError] = useState('');
+  // Hydrate editable draft state once after the server response arrives.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (state.data && !form) setForm({ name: state.data.name || '', bio: state.data.bio || '', phone: state.data.phone || '', location: state.data.location || '', timezone: state.data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone, languages: parseList(state.data.languages).join(', '), website: state.data.website || '', linkedin: state.data.linkedin || '', subjects: parseList(state.data.profile?.subjects).join(', '), education: state.data.profile?.education || '', teachingStyle: state.data.profile?.teaching_style || '', headline: state.data.profile?.headline || '', motivation: state.data.profile?.motivation || '', tutoringMode: state.data.profile?.tutoring_mode || 'online', serviceArea: state.data.profile?.service_area || '', hourlyRate: String(state.data.profile?.hourly_rate || 0), publicProfile: Boolean(state.data.profile?.public_profile_enabled), gradeLevel: state.data.profile?.grade_level || '', school: state.data.profile?.school || '' }); }, [form, state.data]);
   if (state.loading || !form) return <LoadingState />;
   const set = (key: string, value: any) => setForm((current: any) => ({ ...current, [key]: value }));

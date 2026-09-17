@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Avatar, Button, Card, EmptyState, ErrorNotice, Header, LoadingState, Screen } from '@/components/ui';
 import { request } from '@/lib/api';
 import { useData } from '@/lib/hooks';
-import { colors, spacing, typography } from '@/theme';
+import { colors, typography } from '@/theme';
 
 export default function SafetyScreen() {
   const state = useData<any[]>(() => request('/blocks'), []); if (state.loading) return <LoadingState />;

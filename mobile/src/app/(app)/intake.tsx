@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { ArrowLeft, Check, HeartHandshake } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Button, Card, Chip, ErrorNotice, Field, LoadingState, Screen } from '@/components/ui';
+import { Button, Card, ErrorNotice, Field, LoadingState, Screen } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { request } from '@/lib/api';
 import { useData } from '@/lib/hooks';

@@ -1,11 +1,24 @@
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Platform } from 'react-native';
 import { api, configureApiSession } from '@/lib/api';
 import type { AuthResponse, User } from '@/types';
 
 const SESSION_KEY = 'nextdoorlearn.session.v1';
 type StoredSession = Pick<AuthResponse, 'token' | 'refreshToken' | 'user'>;
+
+const sessionStorage = {
+  get: () => Platform.OS === 'web'
+    ? Promise.resolve(typeof window === 'undefined' ? null : window.localStorage.getItem(SESSION_KEY))
+    : SecureStore.getItemAsync(SESSION_KEY),
+  set: (value: string) => Platform.OS === 'web'
+    ? Promise.resolve(typeof window === 'undefined' ? undefined : window.localStorage.setItem(SESSION_KEY, value))
+    : SecureStore.setItemAsync(SESSION_KEY, value),
+  remove: () => Platform.OS === 'web'
+    ? Promise.resolve(typeof window === 'undefined' ? undefined : window.localStorage.removeItem(SESSION_KEY))
+    : SecureStore.deleteItemAsync(SESSION_KEY),
+};
 
 type AuthContextValue = {
   user: User | null;
@@ -25,14 +38,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const persist = useCallback(async (next: StoredSession | null) => {
     setSession(next);
-    if (next) await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(next));
-    else await SecureStore.deleteItemAsync(SESSION_KEY);
+    if (next) await sessionStorage.set(JSON.stringify(next));
+    else await sessionStorage.remove();
   }, []);
 
   useEffect(() => {
-    SecureStore.getItemAsync(SESSION_KEY)
+    sessionStorage.get()
       .then((saved) => saved && setSession(JSON.parse(saved)))
-      .catch(() => SecureStore.deleteItemAsync(SESSION_KEY))
+      .catch(() => sessionStorage.remove())
       .finally(() => setLoading(false));
   }, []);
 

@@ -11,6 +11,8 @@ const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 type Slot = { dayOfWeek: number; startTime: string; endTime: string };
 export default function AvailabilityScreen() {
   const state = useData<any>(() => request('/availability/me'), []); const [slots, setSlots] = useState<Slot[]>([]); const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone); const [draft, setDraft] = useState({ dayOfWeek: 1, startTime: '16:00', endTime: '18:00' }); const [initialized, setInitialized] = useState(false); const [notice, setNotice] = useState(''); const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
+  // Hydrate editable draft state once after the server response arrives.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (state.data && !initialized) { setSlots(state.data.slots || []); setTimezone(state.data.timezone || timezone); setInitialized(true); } }, [initialized, state.data, timezone]);
   if (state.loading) return <LoadingState />;
   const save = async () => { setSaving(true); setError(''); try { await request('/availability/me', { method: 'PUT', body: JSON.stringify({ slots, timezone }) }); setNotice('Availability published.'); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to save availability'); } finally { setSaving(false); } };

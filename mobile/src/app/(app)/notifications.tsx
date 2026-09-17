@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { ArrowLeft, Bell, CheckCheck } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Button, EmptyState, ErrorNotice, Header, LoadingState, Screen } from '@/components/ui';
+import { EmptyState, ErrorNotice, Header, LoadingState, Screen } from '@/components/ui';
 import { request } from '@/lib/api';
 import { useData } from '@/lib/hooks';
 import { colors, spacing, typography } from '@/theme';

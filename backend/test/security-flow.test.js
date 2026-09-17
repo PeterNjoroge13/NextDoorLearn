@@ -27,7 +27,7 @@ server.stderr.on('data', (chunk) => { serverOutput += chunk; });
 after(() => server.kill('SIGTERM'));
 
 const waitForServer = async () => {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     try {
       const response = await fetch(`${base}/health`);
       if (response.ok) return;
@@ -62,6 +62,29 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   });
   assert.equal(adminResponse.status, 201);
   assert.equal(adminResponse.body.user.isAdmin, true);
+  assert.ok(adminResponse.body.refreshToken);
+
+  const refreshed = await request('/auth/refresh', {
+    method: 'POST', body: { refreshToken: adminResponse.body.refreshToken, deviceName: 'Integration test phone' }
+  });
+  assert.equal(refreshed.status, 200);
+  assert.ok(refreshed.body.token);
+  assert.ok(refreshed.body.refreshToken);
+  const reusedRefreshToken = await request('/auth/refresh', {
+    method: 'POST', body: { refreshToken: adminResponse.body.refreshToken }
+  });
+  assert.equal(reusedRefreshToken.status, 401);
+
+  const pushDevice = await request('/devices/push-token', {
+    method: 'POST', token: adminResponse.body.token,
+    body: { token: 'ExpoPushToken[integration_test]', platform: 'ios', deviceName: 'Test phone' }
+  });
+  assert.equal(pushDevice.status, 200);
+  const removedPushDevice = await request('/devices/push-token', {
+    method: 'DELETE', token: adminResponse.body.token,
+    body: { token: 'ExpoPushToken[integration_test]' }
+  });
+  assert.equal(removedPushDevice.status, 200);
 
   const bypass = await request('/auth/register', {
     method: 'POST',
@@ -264,4 +287,23 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   const audit = await request('/admin/audit-log', { token: adminResponse.body.token });
   assert.ok(audit.body.some((entry) => entry.action === 'tutor_application.approved'));
   assert.ok(audit.body.some((entry) => entry.action === 'waitlist.matched'));
+
+  const disposable = await request('/auth/register', {
+    method: 'POST', body: { email: 'delete-me@example.com', password: 'password123', role: 'student', name: 'Delete Me' }
+  });
+  assert.equal(disposable.status, 201);
+  const wrongPasswordDeletion = await request('/users/account', {
+    method: 'DELETE', token: disposable.body.token,
+    body: { currentPassword: 'wrong-password', confirmation: 'DELETE' }
+  });
+  assert.equal(wrongPasswordDeletion.status, 401);
+  const deleted = await request('/users/account', {
+    method: 'DELETE', token: disposable.body.token,
+    body: { currentPassword: 'password123', confirmation: 'DELETE' }
+  });
+  assert.equal(deleted.status, 200);
+  const deletedLogin = await request('/auth/login', {
+    method: 'POST', body: { email: 'delete-me@example.com', password: 'password123' }
+  });
+  assert.equal(deletedLogin.status, 401);
 });

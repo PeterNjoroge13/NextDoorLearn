@@ -3,7 +3,7 @@ import { ArrowLeft, ExternalLink, HeartHandshake, Mail, Scale, Shield } from 'lu
 import { Linking, Pressable, StyleSheet, Text } from 'react-native';
 import { FeatureRow } from '@/components/FeatureRow';
 import { Card, Header, Screen } from '@/components/ui';
-import { colors, spacing, typography } from '@/theme';
+import { colors, typography } from '@/theme';
 
 const WEB = 'https://next-door-learn.vercel.app';
 export default function HelpScreen() {

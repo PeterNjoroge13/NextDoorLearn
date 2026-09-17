@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Bookmark, CalendarDays, HeartHandshake, Inbox, MessageCircle, Sparkles, Target, Users } from 'lucide-react-native';
+import { CalendarDays, HeartHandshake, Inbox, MessageCircle, Sparkles, Target, Users } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SessionCard, Stat, TutorCard } from '@/components/DashboardBits';
 import { Button, Card, ErrorNotice, Header, LoadingState, Screen, SectionTitle } from '@/components/ui';
