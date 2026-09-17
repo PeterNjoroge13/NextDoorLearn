@@ -36,16 +36,14 @@
       ["expo-splash-screen", { "backgroundColor": "#F7F4EE", "image": "./assets/images/nextdoorlearn-icon.png", "imageWidth": 150 }],
       ["expo-secure-store", { "configureAndroidBackup": true, "faceIDPermission": "Allow NextDoorLearn to securely access your saved session." }],
       ["expo-image-picker", { "photosPermission": "Choose a profile picture for your NextDoorLearn profile or tutor application.", "cameraPermission": false }],
-      ["expo-notifications", { "icon": "./assets/images/nextdoorlearn-icon.png", "color": "#0F766E", "defaultChannel": "default" }]
+      ["expo-notifications", { "color": "#0F766E", "defaultChannel": "default" }]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
     "extra": {
-      "apiUrl": "https://nextdoorlearn-backend.onrender.com/api",
-      "eas": { "projectId": "REPLACE_AFTER_EAS_INIT" }
-    },
-    "owner": "peternjoroge13"
+      "apiUrl": "https://nextdoorlearn-backend.onrender.com/api"
+    }
   }
 }

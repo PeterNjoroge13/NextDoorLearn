@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CalendarClock, Camera, ClipboardCheck, ExternalLink, Globe2, Lock, Save, Settings, Trash2, UserRound, UserX } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -11,7 +11,8 @@ const timezones = ['America/New_York', 'America/Chicago', 'America/Denver', 'Ame
 const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const Profile = () => {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, logout } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
   const [loading, setLoading] = useState(true);
@@ -24,6 +25,7 @@ const Profile = () => {
   const [availabilitySlots, setAvailabilitySlots] = useState([]);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [deletePassword, setDeletePassword] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     bio: '',
@@ -234,6 +236,17 @@ const Profile = () => {
     const response = await api.changePassword(passwordData.currentPassword, passwordData.newPassword, token);
     setMessage(response.error || 'Password updated.');
     if (!response.error) setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deletePassword) return setMessage('Enter your current password before deleting your account.');
+    if (!window.confirm('Permanently delete your NextDoorLearn account and all associated data? This cannot be undone.')) return;
+    setSaving(true);
+    const response = await api.deleteAccount(deletePassword, localStorage.getItem('token'));
+    setSaving(false);
+    if (response.error) return setMessage(response.error);
+    logout();
+    navigate('/login', { replace: true });
   };
 
   const handleUnblock = async (blockedUserId) => {
@@ -551,6 +564,12 @@ const Profile = () => {
               {blockedUsers.length ? <div className="list">{blockedUsers.map((blocked) => (
                 <div className="list-item" key={blocked.id}><div><strong>{blocked.name}</strong><p className="muted">{blocked.role}</p></div><button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUnblock(blocked.blocked_user_id)}>Unblock</button></div>
               ))}</div> : <p className="muted">You have not blocked anyone.</p>}
+              <div className="section-head compact" style={{ marginTop: 28 }}><div><h2>Delete account</h2><p>Permanently remove your profile, messages, sessions, and account data.</p></div><Trash2 size={22} /></div>
+              <div className="field">
+                <label>Current password</label>
+                <input type="password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} />
+              </div>
+              <button className="btn btn-danger" type="button" disabled={!deletePassword || saving} onClick={handleDeleteAccount}>Permanently delete account</button>
               </div>
             ) : null}
           </div>

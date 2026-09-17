@@ -121,6 +121,18 @@ const api = {
     return response.json();
   },
 
+  deleteAccount: async (currentPassword, token) => {
+    const response = await fetch(`${API_BASE_URL}/users/account`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ currentPassword, confirmation: 'DELETE' }),
+    });
+    return response.json();
+  },
+
   getProfileCompletion: async (token) => {
     const response = await fetch(`${API_BASE_URL}/users/profile-completion`, {
       headers: {

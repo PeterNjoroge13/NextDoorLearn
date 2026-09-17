@@ -163,6 +163,7 @@ function App() {
             <Route path="/terms" element={<LegalPage type="/terms" />} />
             <Route path="/guidelines" element={<LegalPage type="/guidelines" />} />
             <Route path="/support" element={<LegalPage type="/support" />} />
+            <Route path="/delete-account" element={<LegalPage type="/delete-account" />} />
             <Route path="/forgot-password" element={<AuthUtilityPage mode="forgot" />} />
             <Route path="/reset-password" element={<AuthUtilityPage mode="reset" />} />
             <Route path="/verify-email" element={<AuthUtilityPage mode="verify" />} />

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, FileText, HeartHandshake, Mail, Scale, Shield } from 'lucide-react';
+import { BookOpen, FileText, HeartHandshake, Mail, Scale, Shield, UserX } from 'lucide-react';
 
 const content = {
   '/privacy': {
@@ -28,7 +28,7 @@ const content = {
       {
         title: 'Data choices',
         body:
-          'Users can update profile information in settings. For account deletion or data questions, contact the project owner through the support page.',
+          'Users can update profile information and permanently delete their account from account settings. For other data questions, contact the project owner through the support page.',
       },
     ],
   },
@@ -110,7 +110,36 @@ const content = {
       {
         title: 'Contact',
         body:
-          'During beta, contact the project owner directly. Replace this text with a production support email before public launch.',
+          'During beta, contact founder Peter Njoroge through the LinkedIn profile linked from the NextDoorLearn home page. Do not include passwords or other sensitive information.',
+      },
+    ],
+  },
+  '/delete-account': {
+    eyebrow: 'Account deletion',
+    icon: UserX,
+    title: 'Delete your NextDoorLearn account',
+    intro:
+      'You can permanently delete your account and associated personal data from NextDoorLearn account settings.',
+    sections: [
+      {
+        title: 'Delete from the mobile app',
+        body:
+          'Sign in, open More, choose Account settings, and select Permanently delete my account. Enter your current password to confirm.',
+      },
+      {
+        title: 'Delete from the web app',
+        body:
+          'Sign in on the web, open your profile or account settings, and use the account deletion control. If the control is unavailable during beta, use the support page to contact the project owner.',
+      },
+      {
+        title: 'What is deleted',
+        body:
+          'Deletion removes your account, profile, connections, messages, sessions, reviews, goals, notifications, saved tutors, device tokens, and other data linked to your account. The action cannot be undone.',
+      },
+      {
+        title: 'Safety and legal records',
+        body:
+          'Limited records may be retained only when required for fraud prevention, safety investigations, legal obligations, or enforcement of platform rules.',
       },
     ],
   },
