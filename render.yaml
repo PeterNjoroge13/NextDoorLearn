@@ -17,9 +17,9 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: FRONTEND_URL
-        value: https://next-door-learn.vercel.app
+        value: https://nextdoorlearn.com
       - key: CORS_ORIGINS
-        value: https://next-door-learn.vercel.app
+        value: https://nextdoorlearn.com,https://www.nextdoorlearn.com,https://next-door-learn.vercel.app
       - key: RATE_LIMIT_MAX
         value: 300
       - key: AUTH_RATE_LIMIT_MAX

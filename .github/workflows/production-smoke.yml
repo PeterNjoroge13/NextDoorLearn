@@ -30,7 +30,7 @@ jobs:
         working-directory: backend
         env:
           SMOKE_API_URL: https://nextdoorlearn-backend.onrender.com/api
-          SMOKE_FRONTEND_ORIGIN: https://next-door-learn.vercel.app
+          SMOKE_FRONTEND_ORIGIN: https://nextdoorlearn.com
         run: |
           for attempt in {1..12}; do
             if npm run smoke:production; then

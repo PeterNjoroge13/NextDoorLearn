@@ -6,7 +6,7 @@
 - Deploy frontend on Vercel.
 - Set `VITE_API_URL` in Vercel.
 - Create a Neon project and set its pooled connection string as `DATABASE_URL` in Render.
-- Set `JWT_SECRET`, `FIELD_ENCRYPTION_KEY`, `JOB_SECRET`, `FRONTEND_URL`, and `CORS_ORIGINS` in Render. The Blueprint generates the three secrets for new services.
+- Set `JWT_SECRET`, `FIELD_ENCRYPTION_KEY`, and `JOB_SECRET` in Render. The Blueprint generates all three secrets and configures `FRONTEND_URL` plus `CORS_ORIGINS` for the public domain and Vercel fallback.
 - Set `RESEND_API_KEY`, `EMAIL_FROM`, and `RESEND_WEBHOOK_SECRET` in Render for password reset, verification, and delivery tracking.
 - Set `ADMIN_EMAILS` in Render for moderation endpoints.
 - Keep `REQUIRE_EMAIL_VERIFICATION=false` until Resend delivery is confirmed, then switch it to `true`.
