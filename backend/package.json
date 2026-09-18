@@ -11,6 +11,7 @@
     "dev": "nodemon src/server.js",
     "db:check": "node scripts/check-database.js",
     "smoke": "node scripts/smoke-test.js",
+    "smoke:production": "node scripts/production-smoke.js",
     "test": "node --test --test-concurrency=1 test/*.test.js"
   },
   "keywords": [

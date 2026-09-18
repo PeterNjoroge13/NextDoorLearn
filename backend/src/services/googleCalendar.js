@@ -1,4 +1,5 @@
 const db = require('../db/database');
+const { decryptField, encryptField, isEncryptedField } = require('../utils/fieldEncryption');
 
 const GOOGLE_PROVIDER = 'google';
 const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/calendar.events', 'openid', 'email', 'profile'];
@@ -19,11 +20,25 @@ const getOAuthClient = () => {
 
 const hasGoogleConfig = () => !!getOAuthClient();
 
-const getGoogleIntegration = async (userId) => await db.prepare(`
-  SELECT *
-  FROM user_google_integrations
-  WHERE user_id = ? AND provider = ?
-`).get(userId, GOOGLE_PROVIDER);
+const getGoogleIntegration = async (userId) => {
+  const integration = await db.prepare(`
+    SELECT *
+    FROM user_google_integrations
+    WHERE user_id = ? AND provider = ?
+  `).get(userId, GOOGLE_PROVIDER);
+  if (!integration) return null;
+
+  const accessToken = decryptField(integration.access_token);
+  const refreshToken = decryptField(integration.refresh_token);
+  if ((integration.access_token && !isEncryptedField(integration.access_token)) ||
+      (integration.refresh_token && !isEncryptedField(integration.refresh_token))) {
+    await db.prepare(`
+      UPDATE user_google_integrations SET access_token = ?, refresh_token = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = ? AND provider = ?
+    `).run(encryptField(accessToken), encryptField(refreshToken), userId, GOOGLE_PROVIDER);
+  }
+  return { ...integration, access_token: accessToken, refresh_token: refreshToken };
+};
 
 const upsertGoogleIntegration = async (userId, payload = {}) => {
   const existing = await getGoogleIntegration(userId);
@@ -42,8 +57,8 @@ const upsertGoogleIntegration = async (userId, payload = {}) => {
       SET access_token = ?, refresh_token = ?, token_expiry = ?, calendar_id = ?, sync_enabled = ?, updated_at = CURRENT_TIMESTAMP
       WHERE user_id = ? AND provider = ?
     `).run(
-      updateData.accessToken,
-      updateData.refreshToken,
+      encryptField(updateData.accessToken),
+      encryptField(updateData.refreshToken),
       updateData.tokenExpiry,
       updateData.calendarId,
       updateData.syncEnabled ? 1 : 0,
@@ -60,8 +75,8 @@ const upsertGoogleIntegration = async (userId, payload = {}) => {
   `).run(
     userId,
     GOOGLE_PROVIDER,
-    updateData.accessToken,
-    updateData.refreshToken,
+    encryptField(updateData.accessToken),
+    encryptField(updateData.refreshToken),
     updateData.tokenExpiry,
     updateData.calendarId,
     updateData.syncEnabled ? 1 : 0

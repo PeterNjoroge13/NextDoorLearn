@@ -52,6 +52,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     configureApiSession(session, async (tokens) => {
       if (session) await persist({ ...session, ...tokens });
+    }, async () => {
+      await persist(null);
+      router.replace('/(auth)/welcome');
     });
   }, [persist, session]);
 

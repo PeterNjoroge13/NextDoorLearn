@@ -11,6 +11,7 @@ const { createSecurityToken, hashSecurityToken } = require('../utils/securityTok
 const router = express.Router();
 
 const publicUrl = () => process.env.FRONTEND_URL || 'http://localhost:5173';
+const emailVerificationRequired = () => process.env.REQUIRE_EMAIL_VERIFICATION === 'true';
 
 const accessTokenFor = (user) => jwt.sign(
   {
@@ -130,17 +131,16 @@ router.post('/register', async (req, res) => {
       { id: userId, email: normalizedEmail, role, name: displayName },
       req.body.deviceName
     );
-    const verificationToken = await sendVerificationEmail({
-      id: userId,
-      email: normalizedEmail,
-      name: displayName
-    });
+    const verificationToken = emailVerificationRequired()
+      ? await sendVerificationEmail({ id: userId, email: normalizedEmail, name: displayName })
+      : null;
 
     res.status(201).json({
       message: 'User created successfully',
       ...session,
       user: {
-        id: userId, email: normalizedEmail, role, name: displayName, bio: safeBio, emailVerified: false,
+        id: userId, email: normalizedEmail, role, name: displayName, bio: safeBio,
+        emailVerified: !emailVerificationRequired(),
         isAdmin: (process.env.ADMIN_EMAILS || '').split(',').map((item) => item.trim().toLowerCase()).includes(normalizedEmail)
       },
       ...(process.env.NODE_ENV === 'production' ? {} : { verificationToken })
@@ -198,7 +198,7 @@ router.post('/login', async (req, res) => {
         role: user.role,
         name: user.name,
         bio: user.bio,
-        emailVerified: Boolean(user.email_verified_at),
+        emailVerified: !emailVerificationRequired() || Boolean(user.email_verified_at),
         isAdmin: Boolean(adminMembership) || adminEmails.includes(user.email)
       }
     });

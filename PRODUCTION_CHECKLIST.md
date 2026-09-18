@@ -6,27 +6,30 @@
 - Deploy frontend on Vercel.
 - Set `VITE_API_URL` in Vercel.
 - Create a Neon project and set its pooled connection string as `DATABASE_URL` in Render.
-- Set `JWT_SECRET`, `FRONTEND_URL`, `CORS_ORIGINS`, and `UPLOAD_DIR` in Render.
-- Set `RESEND_API_KEY` and `EMAIL_FROM` in Render for password reset and email verification.
+- Set `JWT_SECRET`, `FIELD_ENCRYPTION_KEY`, `JOB_SECRET`, `FRONTEND_URL`, and `CORS_ORIGINS` in Render. The Blueprint generates the three secrets for new services.
+- Set `RESEND_API_KEY`, `EMAIL_FROM`, and `RESEND_WEBHOOK_SECRET` in Render for password reset, verification, and delivery tracking.
 - Set `ADMIN_EMAILS` in Render for moderation endpoints.
+- Keep `REQUIRE_EMAIL_VERIFICATION=false` until Resend delivery is confirmed, then switch it to `true`.
 - Verify `https://your-api/api/health`.
-- Run `SMOKE_API_URL=https://your-api/api npm run smoke` from `backend`.
-- Register a student and tutor in production.
-- Complete a tutor profile with subjects.
+- Run `SMOKE_API_URL=https://your-api/api SMOKE_FRONTEND_ORIGIN=https://your-frontend npm run smoke:production` from `backend`.
+- Run the mutation-heavy `npm run smoke` only against local or staging environments.
+- Register a student, submit a tutor application, approve it in the admin console, and activate the tutor account.
+- Complete the approved tutor profile with subjects.
 - Send and accept a connection request.
 - Send messages between connected users.
 - Schedule a session.
 
 ## Important Soon After Beta
 
-- Move avatar uploads to persistent object storage.
-- Decide whether to require email verification before messaging/scheduling.
+- Move database-backed images to S3-compatible object storage when upload volume begins to grow.
+- Enable required email verification after Resend and the sending domain are verified.
 - Add Playwright UI smoke tests.
-- Add monitoring/error reporting.
+- Add production monitoring/error reporting and uptime alerts.
+- Configure automated Neon backups or point-in-time recovery for the production branch.
 
 ## Known Local Notes
 
 - This project expects Node `>=20.19.0`.
 - Local development still works with SQLite.
-- Local uploads are stored under `backend/uploads`.
+- New profile and tutor-application images are stored in the database; legacy local upload URLs remain readable.
 - Generated runtime files are intentionally ignored by Git.

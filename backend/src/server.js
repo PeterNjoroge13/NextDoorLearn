@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config();
 const db = require('./db/database');
+const { providerConfigured } = require('./services/email');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -34,6 +35,21 @@ const mediaRoutes = require('./routes/media');
 const app = express();
 const PORT = process.env.PORT || 3001;
 const uploadRoot = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
+
+const validateProductionConfig = () => {
+  if (process.env.NODE_ENV !== 'production') return;
+  const missing = [];
+  if (!process.env.JWT_SECRET) missing.push('JWT_SECRET');
+  if (!process.env.FIELD_ENCRYPTION_KEY) missing.push('FIELD_ENCRYPTION_KEY');
+  if (!process.env.JOB_SECRET) missing.push('JOB_SECRET');
+  if (!process.env.DATABASE_URL) missing.push('DATABASE_URL');
+  if (!process.env.FRONTEND_URL) missing.push('FRONTEND_URL');
+  if (!process.env.CORS_ORIGINS) missing.push('CORS_ORIGINS');
+  if (process.env.REQUIRE_EMAIL_VERIFICATION === 'true' && !providerConfigured()) {
+    missing.push('RESEND_API_KEY and EMAIL_FROM (required when email verification is enabled)');
+  }
+  if (missing.length) throw new Error(`Missing production configuration: ${missing.join(', ')}`);
+};
 
 // Middleware
 app.set('trust proxy', 1);
@@ -91,7 +107,9 @@ app.use(cors({
     if (!origin || isAllowedOrigin(origin)) {
       return callback(null, true);
     }
-    return callback(new Error(`CORS blocked origin: ${origin}`));
+    const error = new Error('Origin not allowed');
+    error.statusCode = 403;
+    return callback(error);
   },
   credentials: true
 }));
@@ -160,6 +178,9 @@ app.get('/api/health', async (req, res) => {
       status: 'ok',
       message: 'NextDoorLearn API is running',
       database: 'ok',
+      email: providerConfigured() ? 'configured' : 'not_configured',
+      emailVerification: process.env.REQUIRE_EMAIL_VERIFICATION === 'true' ? 'required' : 'optional',
+      mediaStorage: 'database',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -173,12 +194,16 @@ app.get('/api/health', async (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
+  const statusCode = Number(err.statusCode) || 500;
+  if (statusCode >= 500) console.error(err.stack);
+  res.status(statusCode).json({
+    error: statusCode === 403 ? 'Origin not allowed' : 'Something went wrong!'
+  });
 });
 
 const startServer = async () => {
   try {
+    validateProductionConfig();
     await db.initialize();
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT} with ${db.dialect}`);

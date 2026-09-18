@@ -25,4 +25,4 @@ The codebase is prepared for iOS and Android builds with Expo Application Servic
 3. Add store copy and screenshots, reviewer credentials, support URL, privacy URL, and account-deletion URL.
 4. Run `npm run submit:production` after the listings are complete.
 
-Do not submit until email delivery, persistent uploads, push credentials, production monitoring, and both reviewer accounts have been verified on physical devices.
+Do not submit until email delivery, push credentials, production monitoring, and both reviewer accounts have been verified on physical devices. Profile images are persistent in Neon for the initial release; move them to object storage as usage grows.

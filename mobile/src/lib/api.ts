@@ -28,15 +28,18 @@ export class ApiError extends Error {
 let accessToken: string | null = null;
 let refreshToken: string | null = null;
 let onSessionRefresh: ((tokens: { token: string; refreshToken: string }) => Promise<void>) | null = null;
+let onSessionExpired: (() => Promise<void>) | null = null;
 let refreshing: Promise<string | null> | null = null;
 
 export const configureApiSession = (
   session: { token: string; refreshToken: string } | null,
-  handler?: (tokens: { token: string; refreshToken: string }) => Promise<void>
+  refreshHandler?: (tokens: { token: string; refreshToken: string }) => Promise<void>,
+  expiredHandler?: () => Promise<void>
 ) => {
   accessToken = session?.token || null;
   refreshToken = session?.refreshToken || null;
-  onSessionRefresh = handler || null;
+  onSessionRefresh = refreshHandler || null;
+  onSessionExpired = expiredHandler || null;
 };
 
 const parseResponse = async <T>(response: Response): Promise<T> => {
@@ -62,7 +65,14 @@ const renewSession = async () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken, deviceName: Constants.deviceName || undefined })
       });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        if (response.status === 401) {
+          accessToken = null;
+          refreshToken = null;
+          await onSessionExpired?.();
+        }
+        return null;
+      }
       const tokens = await parseResponse<{ token: string; refreshToken: string }>(response);
       accessToken = tokens.token;
       refreshToken = tokens.refreshToken;
@@ -87,9 +97,14 @@ export const request = async <T>(path: string, options: RequestOptions = {}): Pr
     },
   });
 
-  if ((response.status === 401 || response.status === 403) && authenticated && retry && refreshToken) {
-    const renewed = await renewSession();
-    if (renewed) return request<T>(path, { ...options, retry: false });
+  if (response.status === 401 && authenticated && retry) {
+    const payload = await response.clone().json().catch(() => ({}));
+    if (payload.code === 'SESSION_EXPIRED') {
+      const hadRefreshToken = Boolean(refreshToken);
+      const renewed = hadRefreshToken ? await renewSession() : null;
+      if (renewed) return request<T>(path, { ...options, retry: false });
+      if (!hadRefreshToken) await onSessionExpired?.();
+    }
   }
   return parseResponse<T>(response);
 };
