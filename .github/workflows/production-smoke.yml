@@ -1,0 +1,43 @@
+name: Production smoke
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify the deployed frontend and API
+        working-directory: backend
+        env:
+          SMOKE_API_URL: https://nextdoorlearn-backend.onrender.com/api
+          SMOKE_FRONTEND_ORIGIN: https://next-door-learn.vercel.app
+        run: |
+          for attempt in {1..12}; do
+            if npm run smoke:production; then
+              curl --fail --silent --show-error --max-time 30 "$SMOKE_FRONTEND_ORIGIN" > /dev/null
+              exit 0
+            fi
+            echo "Deployment is not ready yet (attempt $attempt/12)."
+            sleep 20
+          done
+          exit 1

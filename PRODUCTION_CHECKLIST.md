@@ -12,6 +12,7 @@
 - Keep `REQUIRE_EMAIL_VERIFICATION=false` until Resend delivery is confirmed, then switch it to `true`.
 - Verify `https://your-api/api/health`.
 - Run `SMOKE_API_URL=https://your-api/api SMOKE_FRONTEND_ORIGIN=https://your-frontend npm run smoke:production` from `backend`.
+- Confirm the `Production smoke` GitHub Actions workflow passes after each release; it also checks the live services every six hours.
 - Run the mutation-heavy `npm run smoke` only against local or staging environments.
 - Register a student, submit a tutor application, approve it in the admin console, and activate the tutor account.
 - Complete the approved tutor profile with subjects.
