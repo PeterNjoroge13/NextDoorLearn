@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { getAvailabilitySlots } = require('../utils/availability');
-const { isPositiveInteger } = require('../utils/validation');
+const { isPositiveInteger, isValidHttpUrl, passwordValidationError, sanitizeText } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -77,6 +77,11 @@ router.put('/profile', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { name, bio, phone, location, timezone, languages, website, linkedin, profile } = req.body;
+    const safeWebsite = website === undefined ? null : sanitizeText(website, 500);
+    const safeLinkedin = linkedin === undefined ? null : sanitizeText(linkedin, 500);
+    if ((safeWebsite && !isValidHttpUrl(safeWebsite)) || (safeLinkedin && !isValidHttpUrl(safeLinkedin))) {
+      return res.status(400).json({ error: 'Website and LinkedIn links must start with http:// or https://' });
+    }
 
     // Update basic user info
     const updateUser = await db.prepare(`
@@ -93,14 +98,14 @@ router.put('/profile', authenticateToken, async (req, res) => {
     `);
     
     await updateUser.run(
-      name || null,
-      bio !== undefined ? bio : null,
-      phone !== undefined ? phone : null,
-      location !== undefined ? location : null,
-      timezone !== undefined ? timezone : null,
+      name !== undefined ? sanitizeText(name, 120) || null : null,
+      bio !== undefined ? sanitizeText(bio, 2000) : null,
+      phone !== undefined ? sanitizeText(phone, 60) : null,
+      location !== undefined ? sanitizeText(location, 160) : null,
+      timezone !== undefined ? sanitizeText(timezone, 80) : null,
       languages ? JSON.stringify(languages) : null,
-      website !== undefined ? website : null,
-      linkedin !== undefined ? linkedin : null,
+      safeWebsite,
+      safeLinkedin,
       userId
     );
 
@@ -208,9 +213,8 @@ router.put('/change-password', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Current password and new password are required' });
     }
 
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: 'New password must be at least 8 characters' });
-    }
+    const passwordError = passwordValidationError(newPassword);
+    if (passwordError) return res.status(400).json({ error: passwordError });
 
     // Get current user
     const user = await db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
@@ -228,11 +232,12 @@ router.put('/change-password', authenticateToken, async (req, res) => {
     const saltRounds = 10;
     const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
 
-    // Update password
-    const updatePassword = await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
-    await updatePassword.run(newPasswordHash, userId);
+    await db.withTransaction(async (transaction) => {
+      await transaction.prepare('UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?').run(newPasswordHash, userId);
+      await transaction.prepare('UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL').run(userId);
+    });
 
-    res.json({ message: 'Password changed successfully' });
+    res.json({ message: 'Password changed successfully. Sign in again on your devices.', reauthenticate: true });
   } catch (error) {
     console.error('Change password error:', error);
     res.status(500).json({ error: 'Internal server error' });

@@ -26,6 +26,7 @@ db.exec(`
     languages TEXT,
     website TEXT,
     linkedin TEXT,
+    session_version INTEGER NOT NULL DEFAULT 0,
     last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );

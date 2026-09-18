@@ -107,7 +107,7 @@ const Requests = () => {
                       <Avatar name={request.student_name} src={request.avatar_url} size={54} />
                       <div>
                         <h2 style={{ fontSize: '1.2rem' }}>{request.student_name}</h2>
-                        <p className="muted">{request.student_email}</p>
+                        <p className="muted">{request.grade_level || 'Student seeking support'}</p>
                         <p className="muted" style={{ fontSize: '0.86rem' }}>
                           Sent {new Date(request.created_at).toLocaleDateString()}
                         </p>

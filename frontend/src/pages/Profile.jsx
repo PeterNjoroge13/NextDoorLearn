@@ -235,7 +235,11 @@ const Profile = () => {
     const token = localStorage.getItem('token');
     const response = await api.changePassword(passwordData.currentPassword, passwordData.newPassword, token);
     setMessage(response.error || 'Password updated.');
-    if (!response.error) setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    if (!response.error) {
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      logout();
+      navigate('/login', { replace: true, state: { message: 'Password updated. Sign in again with your new password.' } });
+    }
   };
 
   const handleDeleteAccount = async () => {

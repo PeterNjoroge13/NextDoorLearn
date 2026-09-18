@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
 const { JWT_SECRET } = require('../middleware/auth');
-const { isValidEmail, sanitizeText } = require('../utils/validation');
+const { isValidEmail, passwordValidationError, sanitizeText } = require('../utils/validation');
 const { sendEmail } = require('../services/email');
 const emailTemplates = require('../services/emailTemplates');
 const { createSecurityToken, hashSecurityToken } = require('../utils/securityTokens');
@@ -13,7 +13,13 @@ const router = express.Router();
 const publicUrl = () => process.env.FRONTEND_URL || 'http://localhost:5173';
 
 const accessTokenFor = (user) => jwt.sign(
-  { userId: user.id, email: user.email, role: user.role, name: user.name },
+  {
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+    name: user.name,
+    sessionVersion: Number(user.session_version || 0)
+  },
   JWT_SECRET,
   { expiresIn: '24h' }
 );
@@ -75,9 +81,8 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Enter a valid email address' });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    }
+    const passwordError = passwordValidationError(password);
+    if (passwordError) return res.status(400).json({ error: passwordError });
 
     const directTutorAllowed = process.env.NODE_ENV !== 'production' && process.env.ALLOW_DIRECT_TUTOR_REGISTRATION === 'true';
     if (role !== 'student' && !(role === 'tutor' && directTutorAllowed)) {
@@ -152,7 +157,7 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     const normalizedEmail = String(email || '').trim().toLowerCase();
 
-    if (!normalizedEmail || !password) {
+    if (!normalizedEmail || typeof password !== 'string' || !password || Buffer.byteLength(password, 'utf8') > 72) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
@@ -242,9 +247,8 @@ router.post('/reset-password', async (req, res) => {
     const token = sanitizeText(req.body.token, 128);
     const password = String(req.body.password || '');
 
-    if (!token || password.length < 8) {
-      return res.status(400).json({ error: 'Valid token and password of at least 8 characters are required' });
-    }
+    const passwordError = passwordValidationError(password);
+    if (!token || passwordError) return res.status(400).json({ error: passwordError || 'Valid reset token is required' });
 
     const reset = await db.prepare(`
       SELECT * FROM password_reset_tokens
@@ -256,8 +260,11 @@ router.post('/reset-password', async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, reset.user_id);
-    await db.prepare('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL').run(reset.user_id);
+    await db.withTransaction(async (transaction) => {
+      await transaction.prepare('UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?').run(passwordHash, reset.user_id);
+      await transaction.prepare('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL').run(reset.user_id);
+      await transaction.prepare('UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL').run(reset.user_id);
+    });
 
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
@@ -321,20 +328,24 @@ router.post('/refresh', async (req, res) => {
     if (!rawToken) return res.status(400).json({ error: 'Refresh token is required' });
 
     const session = await db.prepare(`
-      SELECT rt.id, rt.user_id, u.email, u.role, u.name, u.status
+      SELECT rt.id, rt.user_id, u.email, u.role, u.name, u.status, u.session_version
       FROM refresh_tokens rt
       JOIN users u ON u.id = rt.user_id
       WHERE rt.token_hash = ? AND rt.revoked_at IS NULL AND rt.expires_at > CURRENT_TIMESTAMP
     `).get(hashSecurityToken(rawToken));
 
     if (!session || session.status !== 'active') {
-      return res.status(401).json({ error: 'Session has expired. Please sign in again.' });
+      return res.status(401).json({ error: 'Session has expired. Please sign in again.', code: 'SESSION_EXPIRED' });
     }
 
     const refreshToken = await db.withTransaction(async (transaction) => {
-      await transaction.prepare(`
-        UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP, last_used_at = CURRENT_TIMESTAMP WHERE id = ?
+      const revoked = await transaction.prepare(`
+        UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP, last_used_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND revoked_at IS NULL
       `).run(session.id);
+      if (!revoked.changes) {
+        throw Object.assign(new Error('Session has expired. Please sign in again.'), { statusCode: 401 });
+      }
       const nextToken = createSecurityToken();
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       await transaction.prepare(`
@@ -345,12 +356,15 @@ router.post('/refresh', async (req, res) => {
     });
 
     res.json({
-      token: accessTokenFor({ id: session.user_id, email: session.email, role: session.role, name: session.name }),
+      token: accessTokenFor({ id: session.user_id, email: session.email, role: session.role, name: session.name, session_version: session.session_version }),
       refreshToken
     });
   } catch (error) {
     console.error('Refresh session error:', error);
-    res.status(500).json({ error: 'Unable to refresh session' });
+    res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : 'Unable to refresh session',
+      ...(error.statusCode ? { code: 'SESSION_EXPIRED' } : {})
+    });
   }
 });
 
@@ -393,9 +407,8 @@ router.post('/tutor-activation', async (req, res) => {
   try {
     const rawToken = sanitizeText(req.body.token, 128);
     const password = String(req.body.password || '');
-    if (!rawToken || password.length < 8) {
-      return res.status(400).json({ error: 'A valid invitation and password of at least 8 characters are required' });
-    }
+    const passwordError = passwordValidationError(password);
+    if (!rawToken || passwordError) return res.status(400).json({ error: passwordError || 'A valid invitation is required' });
 
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await db.withTransaction(async (transaction) => {
@@ -425,6 +438,11 @@ router.post('/tutor-activation', async (req, res) => {
       await transaction.prepare(`
         UPDATE tutor_applications SET activation_status = 'activated', activated_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `).run(userId, activation.application_id);
+      const mediaId = activation.profile_picture_url?.match(/^\/api\/media\/([0-9a-f-]+)$/i)?.[1];
+      if (mediaId) {
+        await transaction.prepare('UPDATE media_assets SET owner_user_id = ? WHERE id = ? AND application_id = ?')
+          .run(userId, mediaId, activation.application_id);
+      }
       return { id: userId, email: activation.email, role: 'tutor', name: activation.name };
     });
 

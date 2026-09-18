@@ -19,16 +19,19 @@ const authenticateToken = async (req, res, next) => {
   try {
     user = jwt.verify(token, JWT_SECRET);
   } catch {
-    return res.status(403).json({ error: 'Invalid or expired token' });
+    return res.status(401).json({ error: 'Invalid or expired token', code: 'SESSION_EXPIRED' });
   }
 
   try {
-    const currentUser = await db.prepare('SELECT id, email, role, name, status, email_verified_at, verified_at FROM users WHERE id = ?').get(user.userId);
+    const currentUser = await db.prepare('SELECT id, email, role, name, status, email_verified_at, verified_at, session_version FROM users WHERE id = ?').get(user.userId);
     if (!currentUser) {
-      return res.status(403).json({ error: 'Invalid user' });
+      return res.status(401).json({ error: 'Invalid user', code: 'SESSION_EXPIRED' });
     }
     if (currentUser.status !== 'active') {
       return res.status(403).json({ error: `Account is ${currentUser.status || 'unavailable'}` });
+    }
+    if (Number(user.sessionVersion || 0) !== Number(currentUser.session_version || 0)) {
+      return res.status(401).json({ error: 'Session has expired. Please sign in again.', code: 'SESSION_EXPIRED' });
     }
 
     req.user = { ...user, ...currentUser, userId: currentUser.id };

@@ -27,7 +27,7 @@ server.stderr.on('data', (chunk) => { serverOutput += chunk; });
 after(() => server.kill('SIGTERM'));
 
 const waitForServer = async () => {
-  for (let attempt = 0; attempt < 300; attempt += 1) {
+  for (let attempt = 0; attempt < 1200; attempt += 1) {
     try {
       const response = await fetch(`${base}/health`);
       if (response.ok) return;
@@ -86,6 +86,70 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   });
   assert.equal(reusedRefreshToken.status, 401);
 
+  const oversizedPassword = await request('/auth/register', {
+    method: 'POST',
+    body: { email: 'oversized@example.com', password: 'a'.repeat(73), role: 'student', name: 'Oversized Password' }
+  });
+  assert.equal(oversizedPassword.status, 400);
+
+  const concurrentSession = await request('/auth/login', {
+    method: 'POST', body: { email: 'admin@example.com', password: 'password123' }
+  });
+  const concurrentRefreshes = await Promise.all([
+    request('/auth/refresh', { method: 'POST', body: { refreshToken: concurrentSession.body.refreshToken } }),
+    request('/auth/refresh', { method: 'POST', body: { refreshToken: concurrentSession.body.refreshToken } })
+  ]);
+  assert.deepEqual(concurrentRefreshes.map(({ status }) => status).sort(), [200, 401]);
+
+  const passwordChangeUser = await request('/auth/register', {
+    method: 'POST',
+    body: { email: 'password-change@example.com', password: 'password123', role: 'student', name: 'Password Change' }
+  });
+  const changedPassword = await request('/users/change-password', {
+    method: 'PUT', token: passwordChangeUser.body.token,
+    body: { currentPassword: 'password123', newPassword: 'updated-password123' }
+  });
+  assert.equal(changedPassword.status, 200);
+  assert.equal(changedPassword.body.reauthenticate, true);
+  const accessAfterPasswordChange = await request('/users/profile', { token: passwordChangeUser.body.token });
+  assert.equal(accessAfterPasswordChange.status, 401);
+  const refreshAfterPasswordChange = await request('/auth/refresh', {
+    method: 'POST', body: { refreshToken: passwordChangeUser.body.refreshToken }
+  });
+  assert.equal(refreshAfterPasswordChange.status, 401);
+  const oldPasswordLogin = await request('/auth/login', {
+    method: 'POST', body: { email: 'password-change@example.com', password: 'password123' }
+  });
+  assert.equal(oldPasswordLogin.status, 401);
+  const changedPasswordLogin = await request('/auth/login', {
+    method: 'POST', body: { email: 'password-change@example.com', password: 'updated-password123' }
+  });
+  assert.equal(changedPasswordLogin.status, 200);
+
+  const passwordResetUser = await request('/auth/register', {
+    method: 'POST',
+    body: { email: 'password-reset@example.com', password: 'password123', role: 'student', name: 'Password Reset' }
+  });
+  const forgotPassword = await request('/auth/forgot-password', {
+    method: 'POST', body: { email: 'password-reset@example.com' }
+  });
+  assert.equal(forgotPassword.status, 200);
+  assert.ok(forgotPassword.body.resetToken);
+  const resetPassword = await request('/auth/reset-password', {
+    method: 'POST', body: { token: forgotPassword.body.resetToken, password: 'reset-password123' }
+  });
+  assert.equal(resetPassword.status, 200);
+  const accessAfterPasswordReset = await request('/users/profile', { token: passwordResetUser.body.token });
+  assert.equal(accessAfterPasswordReset.status, 401);
+  const refreshAfterPasswordReset = await request('/auth/refresh', {
+    method: 'POST', body: { refreshToken: passwordResetUser.body.refreshToken }
+  });
+  assert.equal(refreshAfterPasswordReset.status, 401);
+  const resetPasswordLogin = await request('/auth/login', {
+    method: 'POST', body: { email: 'password-reset@example.com', password: 'reset-password123' }
+  });
+  assert.equal(resetPasswordLogin.status, 200);
+
   const pushDevice = await request('/devices/push-token', {
     method: 'POST', token: adminResponse.body.token,
     body: { token: 'ExpoPushToken[integration_test]', platform: 'ios', deviceName: 'Test phone' }
@@ -96,6 +160,18 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     body: { token: 'ExpoPushToken[integration_test]' }
   });
   assert.equal(removedPushDevice.status, 200);
+
+  const avatar = new FormData();
+  avatar.append('avatar', imageBlob(), 'avatar.png');
+  const uploadedAvatar = await request('/upload/avatar', {
+    method: 'POST', token: adminResponse.body.token, body: avatar
+  });
+  assert.equal(uploadedAvatar.status, 200);
+  assert.match(uploadedAvatar.body.avatarUrl, /^\/api\/media\//);
+  const avatarResponse = await fetch(`http://127.0.0.1:${port}${uploadedAvatar.body.avatarUrl}`);
+  assert.equal(avatarResponse.status, 200);
+  assert.equal(avatarResponse.headers.get('content-type'), 'image/png');
+  assert.ok((await avatarResponse.arrayBuffer()).byteLength > 0);
 
   const bypass = await request('/auth/register', {
     method: 'POST',
@@ -126,6 +202,11 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   });
   assert.equal(activated.status, 201);
   assert.equal(activated.body.user.role, 'tutor');
+  const activatedProfile = await request('/users/profile', { token: activated.body.token });
+  assert.match(activatedProfile.body.avatar_url, /^\/api\/media\//);
+  const tutorPhoto = await fetch(`http://127.0.0.1:${port}${activatedProfile.body.avatar_url}`);
+  assert.equal(tutorPhoto.status, 200);
+  assert.equal(tutorPhoto.headers.get('content-type'), 'image/png');
 
   const reused = await request('/auth/tutor-activation', {
     method: 'POST', body: { token: approved.body.activationToken, password: 'newpassword123' }
@@ -195,7 +276,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   const studentWaitlist = await request('/community/waitlist/me', { token: adminResponse.body.token });
   assert.equal(studentWaitlist.body.matched_tutor_name, 'Approved Tutor');
   const tutorRequests = await request('/requests', { token: activated.body.token });
-  const matchedRequest = tutorRequests.body.find((item) => item.student_email === 'admin@example.com');
+  const matchedRequest = tutorRequests.body.find((item) => item.student_name === 'Admin');
   assert.ok(matchedRequest);
   const connectionId = matchedRequest.id;
   const accepted = await request(`/requests/${connectionId}/respond`, {

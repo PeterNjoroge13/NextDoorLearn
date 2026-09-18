@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   languages TEXT,
   website TEXT,
   linkedin TEXT,
+  session_version INTEGER NOT NULL DEFAULT 0,
   last_seen TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   email_verified_at TIMESTAMPTZ,

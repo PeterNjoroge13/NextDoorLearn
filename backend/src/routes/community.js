@@ -1,8 +1,9 @@
 const express = require('express');
+const { randomUUID } = require('crypto');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { isValidEmail, sanitizeText } = require('../utils/validation');
-const { createImageUpload, handleSingleImage, isSupportedImage, removeUploadedFile } = require('../utils/imageUpload');
+const { createImageUpload, detectImageMime, handleSingleImage } = require('../utils/imageUpload');
 const { queueEmail } = require('../services/email');
 const emailTemplates = require('../services/emailTemplates');
 
@@ -25,13 +26,12 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
       return res.status(400).json({ error: 'A profile picture is required' });
     }
 
-    if (!isSupportedImage(req.file.path)) {
-      removeUploadedFile(req.file.path);
+    const mimeType = detectImageMime(req.file.buffer);
+    if (!mimeType) {
       return res.status(400).json({ error: 'The selected file is not a valid JPG, PNG, or WebP image' });
     }
 
     if (!name || !isValidEmail(email) || subjects.length === 0 || !motivation) {
-      removeUploadedFile(req.file.path);
       return res.status(400).json({ error: 'Name, valid email, subjects, and motivation are required' });
     }
 
@@ -42,30 +42,36 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
     `).get(email);
 
     if (existing) {
-      removeUploadedFile(req.file.path);
       return res.status(409).json({ error: 'An application for this email is already under review' });
     }
 
-    const profilePictureUrl = `/uploads/tutor-applications/${req.file.filename}`;
-
-    const result = await db.prepare(`
-      INSERT INTO tutor_applications
-        (name, email, phone, location, subjects, education, experience, motivation, availability, tutoring_mode, hourly_rate, profile_picture_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      name,
-      email,
-      sanitizeText(req.body.phone, 60),
-      sanitizeText(req.body.location, 160),
-      JSON.stringify(subjects),
-      sanitizeText(req.body.education, 1000),
-      sanitizeText(req.body.experience, 1200),
-      motivation,
-      sanitizeText(req.body.availability, 800),
-      sanitizeText(req.body.tutoringMode, 40),
-      Math.max(0, Number(req.body.hourlyRate) || 0),
-      profilePictureUrl
-    );
+    const assetId = randomUUID();
+    const profilePictureUrl = `/api/media/${assetId}`;
+    const result = await db.withTransaction(async (transaction) => {
+      const applicationResult = await transaction.prepare(`
+        INSERT INTO tutor_applications
+          (name, email, phone, location, subjects, education, experience, motivation, availability, tutoring_mode, hourly_rate, profile_picture_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        name,
+        email,
+        sanitizeText(req.body.phone, 60),
+        sanitizeText(req.body.location, 160),
+        JSON.stringify(subjects),
+        sanitizeText(req.body.education, 1000),
+        sanitizeText(req.body.experience, 1200),
+        motivation,
+        sanitizeText(req.body.availability, 800),
+        sanitizeText(req.body.tutoringMode, 40),
+        Math.max(0, Number(req.body.hourlyRate) || 0),
+        profilePictureUrl
+      );
+      await transaction.prepare(`
+        INSERT INTO media_assets (id, application_id, kind, mime_type, data, byte_size)
+        VALUES (?, ?, 'tutor_application', ?, ?, ?)
+      `).run(assetId, applicationResult.lastInsertRowid, mimeType, req.file.buffer, req.file.buffer.length);
+      return applicationResult;
+    });
 
     const applicationId = Number(result.lastInsertRowid);
     const content = emailTemplates.tutorApplicationReceived(name, process.env.FRONTEND_URL || 'http://localhost:5173');
@@ -82,7 +88,6 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
       message: 'Application received. We will contact you after it is reviewed.'
     });
   } catch (error) {
-    removeUploadedFile(req.file?.path);
     console.error('Tutor application error:', error);
     res.status(500).json({ error: 'Unable to submit tutor application' });
   }

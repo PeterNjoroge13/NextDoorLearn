@@ -228,6 +228,34 @@ const migrations = [
         CREATE INDEX IF NOT EXISTS idx_push_devices_user ON push_devices(user_id, enabled);
       `);
     }
+  },
+  {
+    version: '007_session_security',
+    async up(db) {
+      await addColumn(db, 'users', 'session_version', 'INTEGER NOT NULL DEFAULT 0');
+    }
+  },
+  {
+    version: '008_persistent_media',
+    async up(db) {
+      const userId = db.dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
+      const timestamp = db.dialect === 'postgres' ? 'TIMESTAMPTZ' : 'DATETIME';
+      const binary = db.dialect === 'postgres' ? 'BYTEA' : 'BLOB';
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS media_assets (
+          id TEXT PRIMARY KEY,
+          owner_user_id ${userId} REFERENCES users(id) ON DELETE CASCADE,
+          application_id ${userId} REFERENCES tutor_applications(id) ON DELETE SET NULL,
+          kind TEXT NOT NULL,
+          mime_type TEXT NOT NULL,
+          data ${binary} NOT NULL,
+          byte_size INTEGER NOT NULL,
+          created_at ${timestamp} DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_media_assets_owner ON media_assets(owner_user_id, kind);
+        CREATE INDEX IF NOT EXISTS idx_media_assets_application ON media_assets(application_id);
+      `);
+    }
   }
 ];
 

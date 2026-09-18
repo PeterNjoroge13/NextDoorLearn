@@ -43,7 +43,7 @@ const Login = ({ initialMode = 'login' }) => {
       if (response.error) {
         setError(response.error);
       } else {
-        login(response.user, response.token);
+        login(response.user, response.token, response.refreshToken);
         navigate('/dashboard', { replace: true });
       }
     } catch {

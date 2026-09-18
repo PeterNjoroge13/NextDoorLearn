@@ -6,14 +6,13 @@ const { isTimeRangeWithinAvailability } = require('../utils/availability');
 const { syncSessionToGoogle } = require('../services/googleCalendar');
 const { usersAreBlocked } = require('../services/safety');
 const { scheduleSessionReminders } = require('../services/reminders');
-const { isPositiveInteger, isValidDate, isValidTime, sanitizeText } = require('../utils/validation');
+const { boundedInteger, isPositiveInteger, isValidDate, isValidHttpUrl, isValidTime, sanitizeText } = require('../utils/validation');
 
 const router = express.Router();
 router.use(authenticateToken, requireVerifiedEmail);
 
 const getSessionWithOutcome = (sessionId) => db.prepare(`
-  SELECT s.*, student.name AS student_name, student.email AS student_email,
-    tutor.name AS tutor_name, tutor.email AS tutor_email,
+  SELECT s.*, student.name AS student_name, tutor.name AS tutor_name,
     outcome.tutor_summary, outcome.skills_practiced, outcome.next_steps,
     outcome.student_reflection, outcome.confidence_before, outcome.confidence_after,
     outcome.tutor_submitted_at, outcome.student_submitted_at
@@ -44,9 +43,7 @@ router.get('/', async (req, res) => {
       SELECT 
         s.*,
         u1.name as tutor_name,
-        u1.email as tutor_email,
         u2.name as student_name,
-        u2.email as student_email,
         c.status as connection_status,
         outcome.tutor_summary,
         outcome.skills_practiced,
@@ -94,7 +91,7 @@ router.get('/', async (req, res) => {
 router.get('/upcoming', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { limit = 5 } = req.query;
+    const limit = boundedInteger(req.query.limit, { min: 1, max: 50, fallback: 5 });
     
     const sessions = await db.prepare(`
       SELECT 
@@ -110,7 +107,7 @@ router.get('/upcoming', async (req, res) => {
         AND (s.scheduled_date > date('now') OR (s.scheduled_date = date('now') AND s.start_time > time('now')))
       ORDER BY s.scheduled_date ASC, s.start_time ASC
       LIMIT ?
-    `).all(userId, userId, parseInt(limit));
+    `).all(userId, userId, limit);
     
     res.json(sessions);
   } catch (error) {
@@ -242,6 +239,9 @@ router.post('/', async (req, res) => {
     const safeDescription = sanitizeText(description, 2000);
     const safeSubject = sanitizeText(subject, 120);
     const safeMeetingLink = sanitizeText(meetingLink, 500);
+    if (safeMeetingLink && !isValidHttpUrl(safeMeetingLink)) {
+      return res.status(400).json({ error: 'Meeting link must start with http:// or https://' });
+    }
     
     // Verify the connection exists and user is part of it
     const connection = await db.prepare(`

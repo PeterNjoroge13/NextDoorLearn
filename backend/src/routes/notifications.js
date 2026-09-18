@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
+const { boundedInteger } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -28,7 +29,9 @@ const sendPushNotification = async (userId, title, message, link) => {
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { limit = 50, offset = 0, unread_only = false } = req.query;
+    const { unread_only = false } = req.query;
+    const limit = boundedInteger(req.query.limit, { min: 1, max: 100, fallback: 50 });
+    const offset = boundedInteger(req.query.offset, { min: 0, max: 10000, fallback: 0 });
 
     let query = `
       SELECT * FROM notifications 
@@ -38,7 +41,7 @@ router.get('/', authenticateToken, async (req, res) => {
       LIMIT ? OFFSET ?
     `;
 
-    const notifications = await db.prepare(query).all(userId, parseInt(limit), parseInt(offset));
+    const notifications = await db.prepare(query).all(userId, limit, offset);
     
     const unreadCount = await db.prepare(
       'SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0'

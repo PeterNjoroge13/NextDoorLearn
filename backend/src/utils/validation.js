@@ -7,10 +7,11 @@ const isValidEmail = (value) =>
   typeof value === 'string' &&
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim().toLowerCase());
 
-const isValidDate = (value) =>
-  typeof value === 'string' &&
-  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-  !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
+const isValidDate = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
 
 const isValidTime = (value) =>
   typeof value === 'string' &&
@@ -21,10 +22,38 @@ const sanitizeText = (value, maxLength = 1000) => {
   return String(value).trim().slice(0, maxLength);
 };
 
+const boundedInteger = (value, { min = 0, max = Number.MAX_SAFE_INTEGER, fallback = min } = {}) => {
+  const numeric = Number.parseInt(value, 10);
+  return Number.isInteger(numeric) ? Math.min(max, Math.max(min, numeric)) : fallback;
+};
+
+const isValidHttpUrl = (value) => {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol);
+  } catch {
+    return false;
+  }
+};
+
+const passwordValidationError = (value) => {
+  if (typeof value !== 'string' || value.length < 8) {
+    return 'Password must be at least 8 characters';
+  }
+  if (Buffer.byteLength(value, 'utf8') > 72) {
+    return 'Password must be 72 bytes or fewer';
+  }
+  return null;
+};
+
 module.exports = {
+  boundedInteger,
   isPositiveInteger,
   isValidDate,
   isValidEmail,
+  isValidHttpUrl,
   isValidTime,
+  passwordValidationError,
   sanitizeText
 };

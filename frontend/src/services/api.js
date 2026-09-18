@@ -1,6 +1,56 @@
 const configuredApiUrl = import.meta.env.VITE_API_URL;
 export const API_BASE_URL = configuredApiUrl || 'http://localhost:3001/api';
 
+let refreshRequest = null;
+
+const clearStoredSession = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('user');
+  window.dispatchEvent(new CustomEvent('nextdoorlearn:session-expired'));
+};
+
+const refreshAccessToken = async () => {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) return null;
+
+  if (!refreshRequest) {
+    refreshRequest = (async () => {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken, deviceName: 'Web browser' }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.token || !payload.refreshToken) throw new Error('Unable to refresh session');
+      localStorage.setItem('token', payload.token);
+      localStorage.setItem('refreshToken', payload.refreshToken);
+      return payload.token;
+    })()
+      .catch(() => {
+        clearStoredSession();
+        return null;
+      })
+      .finally(() => { refreshRequest = null; });
+  }
+
+  return refreshRequest;
+};
+
+const apiFetch = async (input, init = {}) => {
+  const response = await fetch(input, init);
+  const headers = new Headers(init.headers || {});
+  if (response.status !== 401 || !headers.has('Authorization')) return response;
+
+  const payload = await response.clone().json().catch(() => ({}));
+  if (payload.code !== 'SESSION_EXPIRED') return response;
+
+  const token = await refreshAccessToken();
+  if (!token) return response;
+  headers.set('Authorization', `Bearer ${token}`);
+  return fetch(input, { ...init, headers });
+};
+
 export const isApiConfiguredForProduction = () =>
   import.meta.env.DEV ||
   Boolean(configuredApiUrl && !configuredApiUrl.includes('localhost') && !configuredApiUrl.includes('127.0.0.1'));
@@ -8,7 +58,7 @@ export const isApiConfiguredForProduction = () =>
 const api = {
   // Auth endpoints
   register: async (userData) => {
-    const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    const response = await apiFetch(`${API_BASE_URL}/auth/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -19,7 +69,7 @@ const api = {
   },
 
   login: async (credentials) => {
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    const response = await apiFetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -29,8 +79,17 @@ const api = {
     return response.json();
   },
 
+  logout: async (refreshToken) => {
+    const response = await apiFetch(`${API_BASE_URL}/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    return response.json();
+  },
+
   forgotPassword: async (email) => {
-    const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+    const response = await apiFetch(`${API_BASE_URL}/auth/forgot-password`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -41,7 +100,7 @@ const api = {
   },
 
   resetPassword: async (token, password) => {
-    const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+    const response = await apiFetch(`${API_BASE_URL}/auth/reset-password`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -52,7 +111,7 @@ const api = {
   },
 
   verifyEmail: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/auth/verify-email`, {
+    const response = await apiFetch(`${API_BASE_URL}/auth/verify-email`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -63,7 +122,7 @@ const api = {
   },
 
   resendVerification: async (email) => {
-    const response = await fetch(`${API_BASE_URL}/auth/resend-verification`, {
+    const response = await apiFetch(`${API_BASE_URL}/auth/resend-verification`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -74,12 +133,12 @@ const api = {
   },
 
   getTutorActivation: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/auth/tutor-activation?token=${encodeURIComponent(token || '')}`);
+    const response = await apiFetch(`${API_BASE_URL}/auth/tutor-activation?token=${encodeURIComponent(token || '')}`);
     return response.json();
   },
 
   activateTutor: async (token, password) => {
-    const response = await fetch(`${API_BASE_URL}/auth/tutor-activation`, {
+    const response = await apiFetch(`${API_BASE_URL}/auth/tutor-activation`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, password }),
@@ -89,7 +148,7 @@ const api = {
 
   // User endpoints
   getProfile: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/users/profile`, {
+    const response = await apiFetch(`${API_BASE_URL}/users/profile`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -98,7 +157,7 @@ const api = {
   },
 
   updateProfile: async (profileData, token) => {
-    const response = await fetch(`${API_BASE_URL}/users/profile`, {
+    const response = await apiFetch(`${API_BASE_URL}/users/profile`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -110,7 +169,7 @@ const api = {
   },
 
   changePassword: async (currentPassword, newPassword, token) => {
-    const response = await fetch(`${API_BASE_URL}/users/change-password`, {
+    const response = await apiFetch(`${API_BASE_URL}/users/change-password`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -122,7 +181,7 @@ const api = {
   },
 
   deleteAccount: async (currentPassword, token) => {
-    const response = await fetch(`${API_BASE_URL}/users/account`, {
+    const response = await apiFetch(`${API_BASE_URL}/users/account`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
@@ -134,7 +193,7 @@ const api = {
   },
 
   getProfileCompletion: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/users/profile-completion`, {
+    const response = await apiFetch(`${API_BASE_URL}/users/profile-completion`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -143,21 +202,21 @@ const api = {
   },
 
   getTutors: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/users/tutors`, {
+    const response = await apiFetch(`${API_BASE_URL}/users/tutors`, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     return response.json();
   },
 
   getRecommendations: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/recommendations`, {
+    const response = await apiFetch(`${API_BASE_URL}/recommendations`, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     return response.json();
   },
 
   getTutorProfile: async (tutorId, token) => {
-    const response = await fetch(`${API_BASE_URL}/users/tutors/${tutorId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/users/tutors/${tutorId}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -166,7 +225,7 @@ const api = {
   },
 
   getPublicTutorProfile: async (tutorId) => {
-    const response = await fetch(`${API_BASE_URL}/users/public/tutors/${tutorId}`);
+    const response = await apiFetch(`${API_BASE_URL}/users/public/tutors/${tutorId}`);
     return response.json();
   },
 
@@ -177,7 +236,7 @@ const api = {
       else if (Array.isArray(value)) formData.append(key, value.join(','));
       else formData.append(key, value ?? '');
     });
-    const response = await fetch(`${API_BASE_URL}/community/tutor-applications`, {
+    const response = await apiFetch(`${API_BASE_URL}/community/tutor-applications`, {
       method: 'POST',
       body: formData,
     });
@@ -187,7 +246,7 @@ const api = {
   uploadProfilePicture: async (file, token) => {
     const formData = new FormData();
     formData.append('avatar', file);
-    const response = await fetch(`${API_BASE_URL}/upload/avatar`, {
+    const response = await apiFetch(`${API_BASE_URL}/upload/avatar`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
       body: formData,
@@ -196,7 +255,7 @@ const api = {
   },
 
   deleteProfilePicture: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/upload/avatar`, {
+    const response = await apiFetch(`${API_BASE_URL}/upload/avatar`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` },
     });
@@ -204,7 +263,7 @@ const api = {
   },
 
   submitSponsorInquiry: async (inquiry) => {
-    const response = await fetch(`${API_BASE_URL}/community/sponsor-inquiries`, {
+    const response = await apiFetch(`${API_BASE_URL}/community/sponsor-inquiries`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(inquiry),
@@ -213,14 +272,14 @@ const api = {
   },
 
   getMyWaitlistEntry: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/community/waitlist/me`, {
+    const response = await apiFetch(`${API_BASE_URL}/community/waitlist/me`, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     return response.json();
   },
 
   joinWaitlist: async (details, token) => {
-    const response = await fetch(`${API_BASE_URL}/community/waitlist/me`, {
+    const response = await apiFetch(`${API_BASE_URL}/community/waitlist/me`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify(details),
@@ -229,7 +288,7 @@ const api = {
   },
 
   leaveWaitlist: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/community/waitlist/me`, {
+    const response = await apiFetch(`${API_BASE_URL}/community/waitlist/me`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` },
     });
@@ -237,7 +296,7 @@ const api = {
   },
 
   getFavorites: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/favorites`, {
+    const response = await apiFetch(`${API_BASE_URL}/favorites`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -246,7 +305,7 @@ const api = {
   },
 
   addFavorite: async (tutorId, token) => {
-    const response = await fetch(`${API_BASE_URL}/favorites/${tutorId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/favorites/${tutorId}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -256,7 +315,7 @@ const api = {
   },
 
   removeFavorite: async (tutorId, token) => {
-    const response = await fetch(`${API_BASE_URL}/favorites/${tutorId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/favorites/${tutorId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -266,7 +325,7 @@ const api = {
   },
 
   submitReport: async (reportedUserId, reason, details, token) => {
-    const response = await fetch(`${API_BASE_URL}/reports`, {
+    const response = await apiFetch(`${API_BASE_URL}/reports`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -279,7 +338,7 @@ const api = {
 
   // Connection endpoints
   sendConnectionRequest: async (tutorId, token) => {
-    const response = await fetch(`${API_BASE_URL}/connections/request`, {
+    const response = await apiFetch(`${API_BASE_URL}/connections/request`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -291,7 +350,7 @@ const api = {
   },
 
   getConnectionRequests: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/connections/requests`, {
+    const response = await apiFetch(`${API_BASE_URL}/connections/requests`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -300,7 +359,7 @@ const api = {
   },
 
   respondToConnection: async (connectionId, status, token) => {
-    const response = await fetch(`${API_BASE_URL}/connections/${connectionId}/respond`, {
+    const response = await apiFetch(`${API_BASE_URL}/connections/${connectionId}/respond`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -312,7 +371,7 @@ const api = {
   },
 
   getMyConnections: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/connections/my-connections`, {
+    const response = await apiFetch(`${API_BASE_URL}/connections/my-connections`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -322,7 +381,7 @@ const api = {
 
   // Message endpoints
   sendMessage: async (connectionId, content, token) => {
-    const response = await fetch(`${API_BASE_URL}/messages/send`, {
+    const response = await apiFetch(`${API_BASE_URL}/messages/send`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -334,7 +393,7 @@ const api = {
   },
 
   getMessages: async (connectionId, token) => {
-    const response = await fetch(`${API_BASE_URL}/messages/${connectionId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/messages/${connectionId}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -343,7 +402,7 @@ const api = {
   },
 
   getConversations: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/messages`, {
+    const response = await apiFetch(`${API_BASE_URL}/messages`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -353,7 +412,7 @@ const api = {
 
   // Status endpoints
   updateOnlineStatus: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/status/online`, {
+    const response = await apiFetch(`${API_BASE_URL}/status/online`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -363,7 +422,7 @@ const api = {
   },
 
   getOnlineUsers: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/status/online`, {
+    const response = await apiFetch(`${API_BASE_URL}/status/online`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -373,7 +432,7 @@ const api = {
 
   // Message statistics
   getMessageStats: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/messages/stats`, {
+    const response = await apiFetch(`${API_BASE_URL}/messages/stats`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -385,14 +444,14 @@ const api = {
   getLearningGoals: async (token, studentId) => {
     const params = new URLSearchParams();
     if (studentId) params.set('studentId', studentId);
-    const response = await fetch(`${API_BASE_URL}/progress/goals${params.size ? `?${params}` : ''}`, {
+    const response = await apiFetch(`${API_BASE_URL}/progress/goals${params.size ? `?${params}` : ''}`, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     return response.json();
   },
 
   createLearningGoal: async (goal, token) => {
-    const response = await fetch(`${API_BASE_URL}/progress/goals`, {
+    const response = await apiFetch(`${API_BASE_URL}/progress/goals`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify(goal),
@@ -401,7 +460,7 @@ const api = {
   },
 
   updateLearningGoal: async (goalId, updates, token) => {
-    const response = await fetch(`${API_BASE_URL}/progress/goals/${goalId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/progress/goals/${goalId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify(updates),
@@ -410,7 +469,7 @@ const api = {
   },
 
   deleteLearningGoal: async (goalId, token) => {
-    const response = await fetch(`${API_BASE_URL}/progress/goals/${goalId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/progress/goals/${goalId}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` },
     });
@@ -418,7 +477,7 @@ const api = {
   },
 
   addGoalMilestone: async (goalId, title, token) => {
-    const response = await fetch(`${API_BASE_URL}/progress/goals/${goalId}/milestones`, {
+    const response = await apiFetch(`${API_BASE_URL}/progress/goals/${goalId}/milestones`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ title }),
@@ -427,7 +486,7 @@ const api = {
   },
 
   updateGoalMilestone: async (milestoneId, updates, token) => {
-    const response = await fetch(`${API_BASE_URL}/progress/milestones/${milestoneId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/progress/milestones/${milestoneId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify(updates),
@@ -436,7 +495,7 @@ const api = {
   },
 
   deleteGoalMilestone: async (milestoneId, token) => {
-    const response = await fetch(`${API_BASE_URL}/progress/milestones/${milestoneId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/progress/milestones/${milestoneId}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` },
     });
@@ -444,7 +503,7 @@ const api = {
   },
 
   getUserStatus: async (userId, token) => {
-    const response = await fetch(`${API_BASE_URL}/status/user/${userId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/status/user/${userId}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -459,7 +518,7 @@ const api = {
     if (filters.month) params.append('month', filters.month);
     if (filters.year) params.append('year', filters.year);
     
-    const response = await fetch(`${API_BASE_URL}/sessions?${params}`, {
+    const response = await apiFetch(`${API_BASE_URL}/sessions?${params}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -468,7 +527,7 @@ const api = {
   },
 
   getUpcomingSessions: async (token, limit = 5) => {
-    const response = await fetch(`${API_BASE_URL}/sessions/upcoming?limit=${limit}`, {
+    const response = await apiFetch(`${API_BASE_URL}/sessions/upcoming?limit=${limit}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -477,7 +536,7 @@ const api = {
   },
 
   createSession: async (sessionData, token) => {
-    const response = await fetch(`${API_BASE_URL}/sessions`, {
+    const response = await apiFetch(`${API_BASE_URL}/sessions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -489,7 +548,7 @@ const api = {
   },
 
   updateSessionStatus: async (sessionId, status, notes, token) => {
-    const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/status`, {
+    const response = await apiFetch(`${API_BASE_URL}/sessions/${sessionId}/status`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -501,7 +560,7 @@ const api = {
   },
 
   updateSessionOutcome: async (sessionId, outcome, token) => {
-    const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/outcome`, {
+    const response = await apiFetch(`${API_BASE_URL}/sessions/${sessionId}/outcome`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -513,7 +572,7 @@ const api = {
   },
 
   deleteSession: async (sessionId, token) => {
-    const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/sessions/${sessionId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -523,7 +582,7 @@ const api = {
   },
 
   getSessionStats: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/sessions/stats`, {
+    const response = await apiFetch(`${API_BASE_URL}/sessions/stats`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -533,7 +592,7 @@ const api = {
 
   // Availability endpoints
   getMyAvailability: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/availability/me`, {
+    const response = await apiFetch(`${API_BASE_URL}/availability/me`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -542,7 +601,7 @@ const api = {
   },
 
   updateMyAvailability: async (slots, timezone, token) => {
-    const response = await fetch(`${API_BASE_URL}/availability/me`, {
+    const response = await apiFetch(`${API_BASE_URL}/availability/me`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -556,7 +615,7 @@ const api = {
   getTutorAvailability: async (tutorId, date, token) => {
     const params = new URLSearchParams();
     if (date) params.append('date', date);
-    const response = await fetch(`${API_BASE_URL}/availability/tutor/${tutorId}?${params}`, {
+    const response = await apiFetch(`${API_BASE_URL}/availability/tutor/${tutorId}?${params}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -566,7 +625,7 @@ const api = {
 
   // Google Calendar endpoints
   getGoogleAuthUrl: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/google/auth-url`, {
+    const response = await apiFetch(`${API_BASE_URL}/google/auth-url`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -575,7 +634,7 @@ const api = {
   },
 
   getGoogleStatus: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/google/status`, {
+    const response = await apiFetch(`${API_BASE_URL}/google/status`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -584,7 +643,7 @@ const api = {
   },
 
   toggleGoogleSync: async (enabled, token) => {
-    const response = await fetch(`${API_BASE_URL}/google/sync-toggle`, {
+    const response = await apiFetch(`${API_BASE_URL}/google/sync-toggle`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -596,7 +655,7 @@ const api = {
   },
 
   disconnectGoogle: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/google/disconnect`, {
+    const response = await apiFetch(`${API_BASE_URL}/google/disconnect`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -607,7 +666,7 @@ const api = {
 
   // Request endpoints
   getRequests: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/requests`, {
+    const response = await apiFetch(`${API_BASE_URL}/requests`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -616,7 +675,7 @@ const api = {
   },
 
   respondToRequest: async (requestId, action, token) => {
-    const response = await fetch(`${API_BASE_URL}/requests/${requestId}/respond`, {
+    const response = await apiFetch(`${API_BASE_URL}/requests/${requestId}/respond`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -629,7 +688,7 @@ const api = {
 
   // Review endpoints
   createReview: async (tutorId, rating, comment, sessionId, token) => {
-    const response = await fetch(`${API_BASE_URL}/reviews`, {
+    const response = await apiFetch(`${API_BASE_URL}/reviews`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -641,17 +700,17 @@ const api = {
   },
 
   getTutorReviews: async (tutorId) => {
-    const response = await fetch(`${API_BASE_URL}/reviews/tutor/${tutorId}`);
+    const response = await apiFetch(`${API_BASE_URL}/reviews/tutor/${tutorId}`);
     return response.json();
   },
 
   getTutorAverageRating: async (tutorId) => {
-    const response = await fetch(`${API_BASE_URL}/reviews/tutor/${tutorId}/average`);
+    const response = await apiFetch(`${API_BASE_URL}/reviews/tutor/${tutorId}/average`);
     return response.json();
   },
 
   getMyReview: async (tutorId, token) => {
-    const response = await fetch(`${API_BASE_URL}/reviews/tutor/${tutorId}/my-review`, {
+    const response = await apiFetch(`${API_BASE_URL}/reviews/tutor/${tutorId}/my-review`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -660,7 +719,7 @@ const api = {
   },
 
   deleteReview: async (reviewId, token) => {
-    const response = await fetch(`${API_BASE_URL}/reviews/${reviewId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/reviews/${reviewId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -671,7 +730,7 @@ const api = {
 
   // Notification endpoints
   getNotifications: async (token, limit = 50, unreadOnly = false) => {
-    const response = await fetch(`${API_BASE_URL}/notifications?limit=${limit}&unread_only=${unreadOnly}`, {
+    const response = await apiFetch(`${API_BASE_URL}/notifications?limit=${limit}&unread_only=${unreadOnly}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -680,7 +739,7 @@ const api = {
   },
 
   getUnreadCount: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/notifications/unread-count`, {
+    const response = await apiFetch(`${API_BASE_URL}/notifications/unread-count`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -689,7 +748,7 @@ const api = {
   },
 
   markNotificationRead: async (notificationId, token) => {
-    const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
+    const response = await apiFetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -699,7 +758,7 @@ const api = {
   },
 
   markAllNotificationsRead: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/notifications/read-all`, {
+    const response = await apiFetch(`${API_BASE_URL}/notifications/read-all`, {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -709,7 +768,7 @@ const api = {
   },
 
   deleteNotification: async (notificationId, token) => {
-    const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/notifications/${notificationId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -719,7 +778,7 @@ const api = {
   },
 
   clearReadNotifications: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/notifications/clear/read`, {
+    const response = await apiFetch(`${API_BASE_URL}/notifications/clear/read`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -730,12 +789,12 @@ const api = {
 
   // Admin endpoints
   getAdminOverview: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/overview`, { headers: { 'Authorization': `Bearer ${token}` } });
+    const response = await apiFetch(`${API_BASE_URL}/admin/overview`, { headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();
   },
 
   getAdminUsers: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/users`, {
+    const response = await apiFetch(`${API_BASE_URL}/admin/users`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -744,7 +803,7 @@ const api = {
   },
 
   updateAdminUser: async (userId, updates, token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/admin/users/${userId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -756,7 +815,7 @@ const api = {
   },
 
   getAdminReports: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/reports`, {
+    const response = await apiFetch(`${API_BASE_URL}/admin/reports`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -765,7 +824,7 @@ const api = {
   },
 
   updateAdminReport: async (reportId, status, token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/reports/${reportId}`, {
+    const response = await apiFetch(`${API_BASE_URL}/admin/reports/${reportId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -777,7 +836,7 @@ const api = {
   },
 
   applyAdminModeration: async (reportId, action, reason, token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/reports/${reportId}/actions`, {
+    const response = await apiFetch(`${API_BASE_URL}/admin/reports/${reportId}/actions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ action, reason }),
@@ -786,37 +845,37 @@ const api = {
   },
 
   getAdminTutorApplications: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/tutor-applications`, { headers: { 'Authorization': `Bearer ${token}` } });
+    const response = await apiFetch(`${API_BASE_URL}/admin/tutor-applications`, { headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();
   },
 
   updateAdminTutorApplication: async (applicationId, updates, token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/tutor-applications/${applicationId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(typeof updates === 'string' ? { status: updates } : updates) });
+    const response = await apiFetch(`${API_BASE_URL}/admin/tutor-applications/${applicationId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(typeof updates === 'string' ? { status: updates } : updates) });
     return response.json();
   },
 
   getAdminSponsorInquiries: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/sponsor-inquiries`, { headers: { 'Authorization': `Bearer ${token}` } });
+    const response = await apiFetch(`${API_BASE_URL}/admin/sponsor-inquiries`, { headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();
   },
 
   updateAdminSponsorInquiry: async (inquiryId, status, token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/sponsor-inquiries/${inquiryId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ status }) });
+    const response = await apiFetch(`${API_BASE_URL}/admin/sponsor-inquiries/${inquiryId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ status }) });
     return response.json();
   },
 
   getAdminWaitlist: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/waitlist`, { headers: { 'Authorization': `Bearer ${token}` } });
+    const response = await apiFetch(`${API_BASE_URL}/admin/waitlist`, { headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();
   },
 
   getAdminWaitlistRecommendations: async (entryId, token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/waitlist/${entryId}/recommendations`, { headers: { 'Authorization': `Bearer ${token}` } });
+    const response = await apiFetch(`${API_BASE_URL}/admin/waitlist/${entryId}/recommendations`, { headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();
   },
 
   applyAdminWaitlistAction: async (entryId, action, details, token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/waitlist/${entryId}/actions`, {
+    const response = await apiFetch(`${API_BASE_URL}/admin/waitlist/${entryId}/actions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ action, ...details }),
@@ -825,37 +884,37 @@ const api = {
   },
 
   getAdminAuditLog: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/audit-log`, { headers: { 'Authorization': `Bearer ${token}` } });
+    const response = await apiFetch(`${API_BASE_URL}/admin/audit-log`, { headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();
   },
 
   getAdminEmailOutbox: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/email-outbox`, { headers: { 'Authorization': `Bearer ${token}` } });
+    const response = await apiFetch(`${API_BASE_URL}/admin/email-outbox`, { headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();
   },
 
   processAdminEmailOutbox: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/admin/email-outbox/process`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+    const response = await apiFetch(`${API_BASE_URL}/admin/email-outbox/process`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();
   },
 
   getBlockedUsers: async (token) => {
-    const response = await fetch(`${API_BASE_URL}/blocks`, { headers: { 'Authorization': `Bearer ${token}` } });
+    const response = await apiFetch(`${API_BASE_URL}/blocks`, { headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();
   },
 
   blockUser: async (userId, reason, token) => {
-    const response = await fetch(`${API_BASE_URL}/blocks/${userId}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ reason }) });
+    const response = await apiFetch(`${API_BASE_URL}/blocks/${userId}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ reason }) });
     return response.json();
   },
 
   unblockUser: async (userId, token) => {
-    const response = await fetch(`${API_BASE_URL}/blocks/${userId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+    const response = await apiFetch(`${API_BASE_URL}/blocks/${userId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();
   },
 
   respondToSessionRequest: async (sessionId, decision, token) => {
-    const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/confirmation`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ decision }) });
+    const response = await apiFetch(`${API_BASE_URL}/sessions/${sessionId}/confirmation`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ decision }) });
     return response.json();
   },
 };

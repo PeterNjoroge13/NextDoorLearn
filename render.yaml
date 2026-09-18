@@ -26,6 +26,8 @@ services:
         value: 300
       - key: AUTH_RATE_LIMIT_MAX
         value: 30
+      - key: PUBLIC_FORM_RATE_LIMIT_MAX
+        value: 15
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM

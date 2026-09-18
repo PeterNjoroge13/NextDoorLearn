@@ -29,6 +29,7 @@ const recommendationRoutes = require('./routes/recommendations');
 const jobRoutes = require('./routes/jobs');
 const resendWebhookRoutes = require('./routes/resendWebhook');
 const deviceRoutes = require('./routes/devices');
+const mediaRoutes = require('./routes/media');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -60,10 +61,6 @@ const allowedOrigins = new Set(
     : [...configuredOrigins, ...defaultDevOrigins]
 );
 
-const defaultProductionOriginPatterns = [
-  /^https:\/\/[a-z0-9-]+\.vercel\.app$/i
-];
-
 const defaultDevelopmentOriginPatterns = [
   /^http:\/\/(localhost|127\.0\.0\.1):\d+$/i
 ];
@@ -83,7 +80,7 @@ const configuredOriginPatterns = (process.env.CORS_ORIGIN_PATTERNS || '')
   .filter(Boolean);
 
 const allowedOriginPatterns = process.env.NODE_ENV === 'production'
-  ? [...defaultProductionOriginPatterns, ...configuredOriginPatterns]
+  ? configuredOriginPatterns
   : [...defaultDevelopmentOriginPatterns, ...configuredOriginPatterns];
 
 const isAllowedOrigin = (origin) =>
@@ -116,7 +113,17 @@ const authLimiter = rateLimit({
   message: { error: 'Too many authentication attempts. Please try again later.' }
 });
 
+const publicFormLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: Number(process.env.PUBLIC_FORM_RATE_LIMIT_MAX || 15),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many submissions. Please try again later.' }
+});
+
 app.use('/api', apiLimiter);
+app.use('/api/community/tutor-applications', publicFormLimiter);
+app.use('/api/community/sponsor-inquiries', publicFormLimiter);
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(uploadRoot));
@@ -143,6 +150,7 @@ app.use('/api/blocks', blockRoutes);
 app.use('/api/recommendations', recommendationRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/devices', deviceRoutes);
+app.use('/api/media', mediaRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {

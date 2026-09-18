@@ -40,7 +40,7 @@ const TutorActivation = () => {
     const response = await api.activateTutor(token, password);
     setSubmitting(false);
     if (response.error) return setError(response.error);
-    login(response.user, response.token);
+    login(response.user, response.token, response.refreshToken);
     navigate('/profile', { replace: true });
   };
 

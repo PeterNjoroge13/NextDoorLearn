@@ -14,11 +14,17 @@ router.post('/push-token', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'A valid Expo push token and platform are required' });
     }
 
+    const existingDevice = await db.prepare(
+      'SELECT user_id FROM push_devices WHERE expo_push_token = ?'
+    ).get(token);
+    if (existingDevice && Number(existingDevice.user_id) !== Number(req.user.userId)) {
+      return res.status(409).json({ error: 'This push token is already registered to another account' });
+    }
+
     await db.prepare(`
       INSERT INTO push_devices (user_id, expo_push_token, platform, device_name, enabled, updated_at, last_seen_at)
       VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT(expo_push_token) DO UPDATE SET
-        user_id = excluded.user_id,
         platform = excluded.platform,
         device_name = excluded.device_name,
         enabled = 1,

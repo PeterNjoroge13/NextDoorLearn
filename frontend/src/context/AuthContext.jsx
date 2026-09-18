@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useCallback, useContext, useState, useEffect } from 'react';
+import api from '../services/api';
 
 const AuthContext = createContext();
 
@@ -24,23 +25,37 @@ export const AuthProvider = ({ children }) => {
         setUser(JSON.parse(userData));
       } catch {
         localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
       }
     }
     setLoading(false);
   }, []);
 
-  const login = useCallback((userData, token) => {
-    setUser(userData);
-    localStorage.setItem('user', JSON.stringify(userData));
-    localStorage.setItem('token', token);
-  }, []);
-
-  const logout = useCallback(() => {
+  const clearSession = useCallback(() => {
     setUser(null);
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
   }, []);
+
+  useEffect(() => {
+    window.addEventListener('nextdoorlearn:session-expired', clearSession);
+    return () => window.removeEventListener('nextdoorlearn:session-expired', clearSession);
+  }, [clearSession]);
+
+  const login = useCallback((userData, token, refreshToken) => {
+    setUser(userData);
+    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('token', token);
+    if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+  }, []);
+
+  const logout = useCallback(() => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    clearSession();
+    if (refreshToken) api.logout(refreshToken).catch(() => {});
+  }, [clearSession]);
 
   const updateUser = useCallback((updates) => {
     setUser((current) => {

@@ -1,8 +1,9 @@
 const express = require('express');
+const { randomUUID } = require('crypto');
 const path = require('path');
 const { authenticateToken } = require('../middleware/auth');
 const db = require('../db/database');
-const { createImageUpload, handleSingleImage, isSupportedImage, removeUploadedFile, uploadRoot } = require('../utils/imageUpload');
+const { createImageUpload, detectImageMime, handleSingleImage, removeUploadedFile, uploadRoot } = require('../utils/imageUpload');
 
 const router = express.Router();
 const upload = createImageUpload({ directory: 'avatars', prefix: (req) => `avatar-${req.user.userId}`, maxSizeMb: 10 });
@@ -14,15 +15,25 @@ router.post('/avatar', authenticateToken, handleSingleImage(upload, 'avatar'), a
       return res.status(400).json({ error: 'Choose a profile picture to upload' });
     }
 
-    if (!isSupportedImage(req.file.path)) {
-      removeUploadedFile(req.file.path);
+    const mimeType = detectImageMime(req.file.buffer);
+    if (!mimeType) {
       return res.status(400).json({ error: 'The selected file is not a valid JPG, PNG, or WebP image' });
     }
 
-    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    const assetId = randomUUID();
+    const avatarUrl = `/api/media/${assetId}`;
     const previous = await db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.userId);
-    const updateUser = await db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?');
-    await updateUser.run(avatarUrl, req.user.userId);
+    await db.withTransaction(async (transaction) => {
+      await transaction.prepare(`
+        INSERT INTO media_assets (id, owner_user_id, kind, mime_type, data, byte_size)
+        VALUES (?, ?, 'avatar', ?, ?, ?)
+      `).run(assetId, req.user.userId, mimeType, req.file.buffer, req.file.buffer.length);
+      await transaction.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(avatarUrl, req.user.userId);
+      const previousMediaId = previous?.avatar_url?.match(/^\/api\/media\/([0-9a-f-]+)$/i)?.[1];
+      if (previousMediaId) {
+        await transaction.prepare('DELETE FROM media_assets WHERE id = ? AND owner_user_id = ?').run(previousMediaId, req.user.userId);
+      }
+    });
 
     if (previous?.avatar_url?.startsWith('/uploads/avatars/')) {
       removeUploadedFile(path.join(uploadRoot, previous.avatar_url.replace(/^\/uploads\//, '')));
@@ -33,7 +44,6 @@ router.post('/avatar', authenticateToken, handleSingleImage(upload, 'avatar'), a
       avatarUrl: avatarUrl
     });
   } catch (error) {
-    removeUploadedFile(req.file?.path);
     console.error('Avatar upload error:', error);
     res.status(500).json({ error: 'Error uploading profile picture' });
   }
@@ -46,13 +56,17 @@ router.delete('/avatar', authenticateToken, async (req, res) => {
     const user = await db.prepare('SELECT avatar_url FROM users WHERE id = ?').get(req.user.userId);
     
     if (user && user.avatar_url) {
-      // Remove the file from filesystem
-      const filePath = path.join(uploadRoot, user.avatar_url.replace(/^\/uploads\//, ''));
-      removeUploadedFile(filePath);
-      
-      // Update database to remove avatar URL
-      const updateUser = await db.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?');
-      await updateUser.run(req.user.userId);
+      const mediaId = user.avatar_url.match(/^\/api\/media\/([0-9a-f-]+)$/i)?.[1];
+      await db.withTransaction(async (transaction) => {
+        await transaction.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?').run(req.user.userId);
+        if (mediaId) {
+          await transaction.prepare('DELETE FROM media_assets WHERE id = ? AND owner_user_id = ?').run(mediaId, req.user.userId);
+        }
+      });
+      if (user.avatar_url.startsWith('/uploads/avatars/')) {
+        const filePath = path.join(uploadRoot, user.avatar_url.replace(/^\/uploads\//, ''));
+        removeUploadedFile(filePath);
+      }
     }
 
     res.json({ message: 'Avatar removed successfully' });
