@@ -24,7 +24,10 @@ type AuthContextValue = {
   user: User | null;
   loading: boolean;
   signIn(email: string, password: string): Promise<void>;
-  signUp(data: { name: string; email: string; password: string }): Promise<void>;
+  signUp(data: {
+    name: string; email: string; password: string; ageGroup: '13-17' | '18+';
+    guardianConsent: boolean; termsAccepted: boolean; privacyAccepted: boolean; safetyAccepted: boolean;
+  }): Promise<void>;
   signOut(): Promise<void>;
   updateUser(changes: Partial<User>): Promise<void>;
   clearSession(): Promise<void>;

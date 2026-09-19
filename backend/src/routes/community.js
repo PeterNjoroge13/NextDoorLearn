@@ -6,6 +6,7 @@ const { isValidEmail, sanitizeText } = require('../utils/validation');
 const { createImageUpload, detectImageMime, handleSingleImage } = require('../utils/imageUpload');
 const { queueEmail } = require('../services/email');
 const emailTemplates = require('../services/emailTemplates');
+const { POLICY_VERSION, validateTutorConsent } = require('../utils/policies');
 
 const router = express.Router();
 const applicationPhotoUpload = createImageUpload({ directory: 'tutor-applications', prefix: 'tutor-application', maxSizeMb: 5 });
@@ -21,6 +22,9 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
     const email = String(req.body.email || '').trim().toLowerCase();
     const subjects = list(req.body.subjects);
     const motivation = sanitizeText(req.body.motivation, 2000);
+    const consent = validateTutorConsent(req.body);
+
+    if (consent.error) return res.status(400).json({ error: consent.error });
 
     if (!req.file) {
       return res.status(400).json({ error: 'A profile picture is required' });
@@ -50,8 +54,9 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
     const result = await db.withTransaction(async (transaction) => {
       const applicationResult = await transaction.prepare(`
         INSERT INTO tutor_applications
-          (name, email, phone, location, subjects, education, experience, motivation, availability, tutoring_mode, hourly_rate, profile_picture_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (name, email, phone, location, subjects, education, experience, motivation, availability, tutoring_mode,
+           hourly_rate, profile_picture_url, policy_version, adult_confirmed_at, terms_accepted_at, privacy_accepted_at, safety_accepted_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       `).run(
         name,
         email,
@@ -64,7 +69,8 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
         sanitizeText(req.body.availability, 800),
         sanitizeText(req.body.tutoringMode, 40),
         Math.max(0, Number(req.body.hourlyRate) || 0),
-        profilePictureUrl
+        profilePictureUrl,
+        POLICY_VERSION
       );
       await transaction.prepare(`
         INSERT INTO media_assets (id, application_id, kind, mime_type, data, byte_size)

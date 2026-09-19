@@ -13,8 +13,8 @@ router.get('/profile', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
     
     const user = await db.prepare(`
-      SELECT id, email, role, name, bio, avatar_url, phone, location, timezone, 
-             languages, website, linkedin, created_at 
+      SELECT id, email, role, name, bio, avatar_url, phone, location, timezone,
+             languages, website, linkedin, age_group, created_at
       FROM users WHERE id = ?
     `).get(userId);
     
@@ -51,6 +51,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
       FROM user_google_integrations
       WHERE user_id = ? AND provider = 'google'
     `).get(userId);
+    const policyAcceptances = await db.prepare(`
+      SELECT policy_type, policy_version, accepted_at
+      FROM policy_acceptances WHERE user_id = ? ORDER BY accepted_at DESC
+    `).all(userId);
 
     res.json({
       ...user,
@@ -64,7 +68,8 @@ router.get('/profile', authenticateToken, async (req, res) => {
               updatedAt: googleIntegration.updated_at
             }
           : null
-      }
+      },
+      policyAcceptances
     });
   } catch (error) {
     console.error('Get profile error:', error);

@@ -114,9 +114,12 @@ export const api = {
     method: 'POST', authenticated: false,
     body: JSON.stringify({ email, password, deviceName: Constants.deviceName || 'Mobile app' })
   }),
-  register: (data: { name: string; email: string; password: string }) => request<AuthResponse>('/auth/register', {
+  register: (data: {
+    name: string; email: string; password: string; ageGroup: '13-17' | '18+';
+    guardianConsent: boolean; termsAccepted: boolean; privacyAccepted: boolean; safetyAccepted: boolean;
+  }) => request<AuthResponse>('/auth/register', {
     method: 'POST', authenticated: false,
-    body: JSON.stringify({ ...data, role: 'student', deviceName: Constants.deviceName || 'Mobile app' })
+    body: JSON.stringify({ ...data, role: 'student', consentSource: 'mobile', deviceName: Constants.deviceName || 'Mobile app' })
   }),
   forgotPassword: (email: string) => request<{ message: string }>('/auth/forgot-password', {
     method: 'POST', authenticated: false, body: JSON.stringify({ email })

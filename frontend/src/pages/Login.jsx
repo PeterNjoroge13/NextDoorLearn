@@ -12,7 +12,9 @@ const Login = ({ initialMode = 'login' }) => {
     name: '',
     role: 'student',
     bio: '',
+    ageGroup: '',
   });
+  const [consent, setConsent] = useState({ legal: false, safety: false, guardian: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { login } = useAuth();
@@ -38,7 +40,14 @@ const Login = ({ initialMode = 'login' }) => {
 
       const response = isLogin
         ? await api.login({ email: formData.email, password: formData.password })
-        : await api.register(formData);
+        : await api.register({
+            ...formData,
+            termsAccepted: consent.legal,
+            privacyAccepted: consent.legal,
+            safetyAccepted: consent.safety,
+            guardianConsent: formData.ageGroup === '13-17' ? consent.guardian : false,
+            consentSource: 'web',
+          });
 
       if (response.error) {
         setError(response.error);
@@ -149,6 +158,16 @@ const Login = ({ initialMode = 'login' }) => {
                     </Link>
                   </div>
                 </div>
+
+                <div className="field">
+                  <label htmlFor="age-group">Age group</label>
+                  <select id="age-group" name="ageGroup" value={formData.ageGroup} onChange={handleChange} required>
+                    <option value="">Choose your age group</option>
+                    <option value="13-17">13–17</option>
+                    <option value="18+">18 or older</option>
+                  </select>
+                  <small className="muted">Accounts are currently available only to people age 13 or older.</small>
+                </div>
               </>
             ) : null}
 
@@ -183,7 +202,30 @@ const Login = ({ initialMode = 'login' }) => {
               </div>
             ) : null}
 
-            <button className="btn btn-primary w-full" type="submit" disabled={loading}>
+            {!isLogin ? (
+              <div className="consent-stack">
+                {formData.ageGroup === '13-17' ? (
+                  <label className="consent-row">
+                    <input type="checkbox" checked={consent.guardian} onChange={(event) => setConsent((current) => ({ ...current, guardian: event.target.checked }))} />
+                    <span>I confirm that my parent or guardian has given me permission to use NextDoorLearn.</span>
+                  </label>
+                ) : null}
+                <label className="consent-row">
+                  <input type="checkbox" checked={consent.legal} onChange={(event) => setConsent((current) => ({ ...current, legal: event.target.checked }))} />
+                  <span>I agree to the <Link to="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link to="/privacy" target="_blank">Privacy Policy</Link>.</span>
+                </label>
+                <label className="consent-row">
+                  <input type="checkbox" checked={consent.safety} onChange={(event) => setConsent((current) => ({ ...current, safety: event.target.checked }))} />
+                  <span>I will follow the <Link to="/guidelines" target="_blank">Community and Safety Guidelines</Link>.</span>
+                </label>
+              </div>
+            ) : null}
+
+            <button
+              className="btn btn-primary w-full"
+              type="submit"
+              disabled={loading || (!isLogin && (!formData.ageGroup || !consent.legal || !consent.safety || (formData.ageGroup === '13-17' && !consent.guardian)))}
+            >
               <ShieldCheck size={18} />
               {loading ? 'Working...' : isLogin ? 'Sign in' : 'Create account'}
             </button>

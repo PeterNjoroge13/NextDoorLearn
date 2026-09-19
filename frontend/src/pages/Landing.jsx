@@ -148,6 +148,16 @@ const Landing = () => {
           <Link className="btn btn-ghost" to="/donate">Sponsor access</Link>
         </div>
       </section>
+      <footer className="landing-footer">
+        <span>© 2026 NextDoorLearn</span>
+        <nav aria-label="Legal and safety">
+          <Link to="/terms">Terms</Link>
+          <Link to="/privacy">Privacy</Link>
+          <Link to="/guidelines">Safety</Link>
+          <Link to="/support">Support</Link>
+          <Link to="/delete-account">Account deletion</Link>
+        </nav>
+      </footer>
     </main>
   );
 };

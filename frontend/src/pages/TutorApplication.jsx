@@ -13,6 +13,7 @@ const TutorApplication = () => {
   const [form, setForm] = useState({
     name: '', email: '', phone: '', location: '', profilePicture: null, subjects: '', education: '',
     experience: '', motivation: '', availability: '', tutoringMode: 'online', hourlyRate: 0,
+    isAdult: false, termsAccepted: false, privacyAccepted: false, safetyAccepted: false,
   });
 
   const field = (name, value) => setForm((current) => ({ ...current, [name]: value }));
@@ -43,6 +44,9 @@ const TutorApplication = () => {
     event.preventDefault();
     setError('');
     if (!form.motivation || !form.availability) return setError('Please share why you want to tutor and when you can help.');
+    if (!form.isAdult || !form.termsAccepted || !form.privacyAccepted || !form.safetyAccepted) {
+      return setError('Confirm the age, legal, privacy, and safety requirements before submitting.');
+    }
     setStatus('submitting');
     try {
       const response = await api.submitTutorApplication({ ...form, subjects: form.subjects.split(',').map((item) => item.trim()).filter(Boolean) });
@@ -119,10 +123,16 @@ const TutorApplication = () => {
               <div className="grid grid-2"><div className="field"><label>Tutoring format</label><select value={form.tutoringMode} onChange={(e) => field('tutoringMode', e.target.value)}><option value="online">Online</option><option value="in-person">In person</option><option value="hybrid">Both</option></select></div><div className="field"><label>Hourly rate (0 for volunteer)</label><input type="number" min="0" value={form.hourlyRate} onChange={(e) => field('hourlyRate', e.target.value)} /></div></div>
               <div className="field"><label>Typical availability</label><textarea value={form.availability} onChange={(e) => field('availability', e.target.value)} placeholder="Weekday evenings and Saturday mornings" required /></div>
               <div className="field"><label>Why do you want to tutor through NextDoorLearn?</label><textarea value={form.motivation} onChange={(e) => field('motivation', e.target.value)} required /></div>
+              <div className="consent-stack">
+                <label className="consent-row"><input type="checkbox" checked={form.isAdult} onChange={(e) => field('isAdult', e.target.checked)} /><span>I confirm that I am at least 18 years old.</span></label>
+                <label className="consent-row"><input type="checkbox" checked={form.termsAccepted} onChange={(e) => field('termsAccepted', e.target.checked)} /><span>I agree to the <Link to="/terms" target="_blank">Terms of Service</Link>.</span></label>
+                <label className="consent-row"><input type="checkbox" checked={form.privacyAccepted} onChange={(e) => field('privacyAccepted', e.target.checked)} /><span>I acknowledge the <Link to="/privacy" target="_blank">Privacy Policy</Link>.</span></label>
+                <label className="consent-row"><input type="checkbox" checked={form.safetyAccepted} onChange={(e) => field('safetyAccepted', e.target.checked)} /><span>I agree to follow the tutor code of conduct in the <Link to="/guidelines" target="_blank">Community and Safety Guidelines</Link>.</span></label>
+              </div>
             </> : null}
             <div className="button-row application-actions">
               {step > 0 ? <button className="btn btn-ghost" type="button" onClick={() => setStep((current) => current - 1)}><ArrowLeft size={17} />Back</button> : <span />}
-              {step < 2 ? <button className="btn btn-primary" type="button" onClick={next}>Continue<ArrowRight size={17} /></button> : <button className="btn btn-primary" type="submit" disabled={status === 'submitting'}>{status === 'submitting' ? 'Submitting...' : 'Submit application'}<CheckCircle2 size={17} /></button>}
+              {step < 2 ? <button className="btn btn-primary" type="button" onClick={next}>Continue<ArrowRight size={17} /></button> : <button className="btn btn-primary" type="submit" disabled={status === 'submitting' || !form.isAdult || !form.termsAccepted || !form.privacyAccepted || !form.safetyAccepted}>{status === 'submitting' ? 'Submitting...' : 'Submit application'}<CheckCircle2 size={17} /></button>}
             </div>
           </form>
         </section>

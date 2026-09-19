@@ -7,6 +7,7 @@ const { isValidEmail, passwordValidationError, sanitizeText } = require('../util
 const { sendEmail } = require('../services/email');
 const emailTemplates = require('../services/emailTemplates');
 const { createSecurityToken, hashSecurityToken } = require('../utils/securityTokens');
+const { POLICY_VERSION, recordUserPolicyAcceptances, validateStudentConsent } = require('../utils/policies');
 
 const router = express.Router();
 
@@ -90,6 +91,9 @@ router.post('/register', async (req, res) => {
       return res.status(403).json({ error: 'Tutors must complete and activate an approved tutor application' });
     }
 
+    const consent = validateStudentConsent(req.body);
+    if (consent.error) return res.status(400).json({ error: consent.error });
+
     // Check if user already exists
     const existingUser = await db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
     if (existingUser) {
@@ -100,32 +104,31 @@ router.post('/register', async (req, res) => {
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    // Insert user
-    const insertUser = await db.prepare(`
-      INSERT INTO users (email, password_hash, role, name, bio)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    
-    const result = await insertUser.run(normalizedEmail, passwordHash, role, displayName, safeBio);
-    const userId = result.lastInsertRowid;
-    if (role === 'tutor' && directTutorAllowed) {
-      await db.prepare('UPDATE users SET verified_at = CURRENT_TIMESTAMP WHERE id = ?').run(userId);
-    }
-
-    // Create profile based on role
-    if (role === 'tutor') {
-      const insertTutorProfile = await db.prepare(`
-        INSERT INTO tutor_profiles (user_id, subjects, availability, hourly_rate)
-        VALUES (?, ?, ?, ?)
-      `);
-      await insertTutorProfile.run(userId, '[]', '{}', 0);
-    } else {
-      const insertStudentProfile = await db.prepare(`
-        INSERT INTO student_profiles (user_id, grade_level, subjects_needed)
-        VALUES (?, ?, ?)
-      `);
-      await insertStudentProfile.run(userId, '', '[]');
-    }
+    const userId = await db.withTransaction(async (transaction) => {
+      const result = await transaction.prepare(`
+        INSERT INTO users (email, password_hash, role, name, bio, age_group)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(normalizedEmail, passwordHash, role, displayName, safeBio, consent.ageGroup);
+      const createdUserId = result.lastInsertRowid;
+      if (role === 'tutor' && directTutorAllowed) {
+        await transaction.prepare('UPDATE users SET verified_at = CURRENT_TIMESTAMP WHERE id = ?').run(createdUserId);
+        await transaction.prepare(`
+          INSERT INTO tutor_profiles (user_id, subjects, availability, hourly_rate)
+          VALUES (?, ?, ?, ?)
+        `).run(createdUserId, '[]', '{}', 0);
+      } else {
+        await transaction.prepare(`
+          INSERT INTO student_profiles (user_id, grade_level, subjects_needed)
+          VALUES (?, ?, ?)
+        `).run(createdUserId, '', '[]');
+      }
+      await recordUserPolicyAcceptances(transaction, createdUserId, {
+        guardianConsent: consent.guardianConsent,
+        source: req.body.consentSource,
+        userAgent: req.get('user-agent')
+      });
+      return createdUserId;
+    });
 
     const session = await authPayload(
       { id: userId, email: normalizedEmail, role, name: displayName },
@@ -141,6 +144,8 @@ router.post('/register', async (req, res) => {
       user: {
         id: userId, email: normalizedEmail, role, name: displayName, bio: safeBio,
         emailVerified: !emailVerificationRequired(),
+        ageGroup: consent.ageGroup,
+        policyVersion: POLICY_VERSION,
         isAdmin: (process.env.ADMIN_EMAILS || '').split(',').map((item) => item.trim().toLowerCase()).includes(normalizedEmail)
       },
       ...(process.env.NODE_ENV === 'production' ? {} : { verificationToken })
@@ -425,8 +430,8 @@ router.post('/tutor-activation', async (req, res) => {
       if (existing) throw Object.assign(new Error('An account already exists for this email'), { statusCode: 409 });
 
       const result = await transaction.prepare(`
-        INSERT INTO users (email, password_hash, role, name, bio, avatar_url, phone, location, email_verified_at, verified_at)
-        VALUES (?, ?, 'tutor', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        INSERT INTO users (email, password_hash, role, name, bio, avatar_url, phone, location, age_group, email_verified_at, verified_at)
+        VALUES (?, ?, 'tutor', ?, ?, ?, ?, ?, '18+', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       `).run(activation.email, passwordHash, activation.name, activation.motivation, activation.profile_picture_url, activation.phone, activation.location);
       const userId = result.lastInsertRowid;
       await transaction.prepare(`
@@ -438,6 +443,10 @@ router.post('/tutor-activation', async (req, res) => {
       await transaction.prepare(`
         UPDATE tutor_applications SET activation_status = 'activated', activated_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `).run(userId, activation.application_id);
+      await recordUserPolicyAcceptances(transaction, userId, {
+        source: 'tutor_application',
+        userAgent: req.get('user-agent')
+      });
       const mediaId = activation.profile_picture_url?.match(/^\/api\/media\/([0-9a-f-]+)$/i)?.[1];
       if (mediaId) {
         await transaction.prepare('UPDATE media_assets SET owner_user_id = ? WHERE id = ? AND application_id = ?')
@@ -447,7 +456,11 @@ router.post('/tutor-activation', async (req, res) => {
     });
 
     const session = await authPayload(user, req.body.deviceName);
-    res.status(201).json({ message: 'Tutor account activated', ...session, user: { ...user, emailVerified: true } });
+    res.status(201).json({
+      message: 'Tutor account activated',
+      ...session,
+      user: { ...user, emailVerified: true, ageGroup: '18+', policyVersion: POLICY_VERSION }
+    });
   } catch (error) {
     console.error('Tutor activation error:', error);
     res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to activate tutor account' });

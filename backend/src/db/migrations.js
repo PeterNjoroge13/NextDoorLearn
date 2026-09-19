@@ -256,6 +256,35 @@ const migrations = [
         CREATE INDEX IF NOT EXISTS idx_media_assets_application ON media_assets(application_id);
       `);
     }
+  },
+  {
+    version: '009_policy_acceptance',
+    async up(db) {
+      const id = db.dialect === 'postgres' ? 'BIGSERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+      const userId = db.dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
+      const timestamp = db.dialect === 'postgres' ? 'TIMESTAMPTZ' : 'DATETIME';
+
+      await addColumn(db, 'users', 'age_group', 'TEXT');
+      await addColumn(db, 'tutor_applications', 'policy_version', 'TEXT');
+      await addColumn(db, 'tutor_applications', 'adult_confirmed_at', timestamp);
+      await addColumn(db, 'tutor_applications', 'terms_accepted_at', timestamp);
+      await addColumn(db, 'tutor_applications', 'privacy_accepted_at', timestamp);
+      await addColumn(db, 'tutor_applications', 'safety_accepted_at', timestamp);
+
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS policy_acceptances (
+          id ${id},
+          user_id ${userId} NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          policy_type TEXT NOT NULL,
+          policy_version TEXT NOT NULL,
+          source TEXT NOT NULL,
+          user_agent TEXT,
+          accepted_at ${timestamp} DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, policy_type, policy_version)
+        );
+        CREATE INDEX IF NOT EXISTS idx_policy_acceptances_user ON policy_acceptances(user_id, accepted_at);
+      `);
+    }
   }
 ];
 

@@ -54,6 +54,14 @@ const imageBlob = () => new Blob([
   Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
 ], { type: 'image/png' });
 
+const registrationConsent = {
+  ageGroup: '18+',
+  termsAccepted: true,
+  privacyAccepted: true,
+  safetyAccepted: true,
+  consentSource: 'integration_test'
+};
+
 test('secure tutor activation, matching, session outcomes, reviews, and blocking work end to end', async () => {
   await waitForServer();
   const expoPreflight = await fetch(`${base}/auth/login`, {
@@ -67,13 +75,35 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(expoPreflight.status, 204);
   assert.equal(expoPreflight.headers.get('access-control-allow-origin'), 'http://localhost:8081');
 
+  const missingConsent = await request('/auth/register', {
+    method: 'POST',
+    body: { email: 'no-consent@example.com', password: 'password123', role: 'student', name: 'No Consent' }
+  });
+  assert.equal(missingConsent.status, 400);
+
+  const teenWithoutPermission = await request('/auth/register', {
+    method: 'POST',
+    body: {
+      email: 'teen-no-permission@example.com', password: 'password123', role: 'student', name: 'Teen Student',
+      ...registrationConsent, ageGroup: '13-17', guardianConsent: false
+    }
+  });
+  assert.equal(teenWithoutPermission.status, 400);
+
   const adminResponse = await request('/auth/register', {
     method: 'POST',
-    body: { email: 'admin@example.com', password: 'password123', role: 'student', name: 'Admin' }
+    body: { email: 'admin@example.com', password: 'password123', role: 'student', name: 'Admin', ...registrationConsent }
   });
   assert.equal(adminResponse.status, 201);
   assert.equal(adminResponse.body.user.isAdmin, true);
   assert.ok(adminResponse.body.refreshToken);
+  assert.equal(adminResponse.body.user.policyVersion, '2026-09-19');
+  const adminProfile = await request('/users/profile', { token: adminResponse.body.token });
+  assert.equal(adminProfile.body.age_group, '18+');
+  assert.deepEqual(
+    adminProfile.body.policyAcceptances.map((item) => item.policy_type).sort(),
+    ['community_safety', 'privacy', 'terms']
+  );
 
   const refreshed = await request('/auth/refresh', {
     method: 'POST', body: { refreshToken: adminResponse.body.refreshToken, deviceName: 'Integration test phone' }
@@ -88,7 +118,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
 
   const oversizedPassword = await request('/auth/register', {
     method: 'POST',
-    body: { email: 'oversized@example.com', password: 'a'.repeat(73), role: 'student', name: 'Oversized Password' }
+    body: { email: 'oversized@example.com', password: 'a'.repeat(73), role: 'student', name: 'Oversized Password', ...registrationConsent }
   });
   assert.equal(oversizedPassword.status, 400);
 
@@ -103,7 +133,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
 
   const passwordChangeUser = await request('/auth/register', {
     method: 'POST',
-    body: { email: 'password-change@example.com', password: 'password123', role: 'student', name: 'Password Change' }
+    body: { email: 'password-change@example.com', password: 'password123', role: 'student', name: 'Password Change', ...registrationConsent }
   });
   const changedPassword = await request('/users/change-password', {
     method: 'PUT', token: passwordChangeUser.body.token,
@@ -128,7 +158,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
 
   const passwordResetUser = await request('/auth/register', {
     method: 'POST',
-    body: { email: 'password-reset@example.com', password: 'password123', role: 'student', name: 'Password Reset' }
+    body: { email: 'password-reset@example.com', password: 'password123', role: 'student', name: 'Password Reset', ...registrationConsent }
   });
   const forgotPassword = await request('/auth/forgot-password', {
     method: 'POST', body: { email: 'password-reset@example.com' }
@@ -175,7 +205,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
 
   const bypass = await request('/auth/register', {
     method: 'POST',
-    body: { email: 'bypass@example.com', password: 'password123', role: 'tutor', name: 'Bypass' }
+    body: { email: 'bypass@example.com', password: 'password123', role: 'tutor', name: 'Bypass', ...registrationConsent }
   });
   assert.equal(bypass.status, 403);
 
@@ -183,7 +213,8 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   Object.entries({
     name: 'Approved Tutor', email: 'approved@example.com', subjects: 'Math,Physics',
     education: 'College student', motivation: 'I want to help students.', availability: 'Weekends',
-    tutoringMode: 'online', hourlyRate: '0'
+    tutoringMode: 'online', hourlyRate: '0', isAdult: 'true', termsAccepted: 'true',
+    privacyAccepted: 'true', safetyAccepted: 'true'
   }).forEach(([key, value]) => application.append(key, value));
   application.append('profilePicture', imageBlob(), 'profile.png');
   const submitted = await request('/community/tutor-applications', { method: 'POST', body: application });
@@ -381,7 +412,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.ok(audit.body.some((entry) => entry.action === 'waitlist.matched'));
 
   const disposable = await request('/auth/register', {
-    method: 'POST', body: { email: 'delete-me@example.com', password: 'password123', role: 'student', name: 'Delete Me' }
+    method: 'POST', body: { email: 'delete-me@example.com', password: 'password123', role: 'student', name: 'Delete Me', ...registrationConsent }
   });
   assert.equal(disposable.status, 201);
   const wrongPasswordDeletion = await request('/users/account', {
