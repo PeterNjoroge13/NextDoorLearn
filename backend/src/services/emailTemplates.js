@@ -57,12 +57,52 @@ module.exports = {
       footer: needsInfo ? 'Reply to the NextDoorLearn team with the requested information.' : 'Thank you for your interest in supporting students.'
     });
   },
-  sessionReminder(name, title, when, otherName, url) {
+  sessionReminder(name, title, when, otherName, url, meetingReady = false) {
     return actionEmail({
       heading: `Upcoming session: ${title}`,
-      intro: `Hi ${name}, your tutoring session with ${otherName} is scheduled for ${when}.`,
+      intro: `Hi ${name}, your tutoring session with ${otherName} is scheduled for ${when}.${meetingReady ? ' Your secure meeting room is ready on the session page.' : ''}`,
       actionLabel: 'View session', actionUrl: url,
       footer: 'Open NextDoorLearn to review the meeting details or make a change.'
     });
+  },
+  sessionUpdate({ event, name, otherName, title, when, meetingReady, url }) {
+    const content = {
+      requested: {
+        heading: 'New tutoring session request',
+        subject: `Session request: ${title}`,
+        intro: `Hi ${name}, ${otherName} requested "${title}" for ${when}. Open NextDoorLearn to confirm or decline the request.`,
+        actionLabel: 'Review request',
+        footer: 'A meeting room and calendar event are created only after the tutor confirms the session.'
+      },
+      confirmed: {
+        heading: 'Your tutoring session is confirmed',
+        subject: `Confirmed: ${title}`,
+        intro: `Hi ${name}, your session "${title}" with ${otherName} is confirmed for ${when}.${meetingReady ? ' The secure meeting room is ready on the session page.' : ''}`,
+        actionLabel: 'View session',
+        footer: 'Keep meeting links private and join from the NextDoorLearn session page.'
+      },
+      declined: {
+        heading: 'Session request declined',
+        subject: `Session update: ${title}`,
+        intro: `Hi ${name}, the request for "${title}" with ${otherName} at ${when} was declined. You can choose another available time in NextDoorLearn.`,
+        actionLabel: 'View schedule',
+        footer: 'No calendar event or meeting room was created for this request.'
+      },
+      cancelled: {
+        heading: 'Tutoring session cancelled',
+        subject: `Cancelled: ${title}`,
+        intro: `Hi ${name}, the session "${title}" with ${otherName}, previously planned for ${when}, was cancelled.`,
+        actionLabel: 'View schedule',
+        footer: 'The connected calendar event and managed meeting room have been removed.'
+      }
+    }[event];
+    const email = actionEmail({
+      heading: content.heading,
+      intro: content.intro,
+      actionLabel: content.actionLabel,
+      actionUrl: url,
+      footer: content.footer
+    });
+    return { subject: content.subject, ...email };
   }
 };

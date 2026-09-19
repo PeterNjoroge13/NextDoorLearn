@@ -547,6 +547,21 @@ const api = {
     return response.json();
   },
 
+  getSessionMeeting: async (sessionId, token) => {
+    const response = await apiFetch(`${API_BASE_URL}/sessions/${sessionId}/meeting`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
+  retrySessionMeeting: async (sessionId, token) => {
+    const response = await apiFetch(`${API_BASE_URL}/sessions/${sessionId}/meeting`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
   updateSessionStatus: async (sessionId, status, notes, token) => {
     const response = await apiFetch(`${API_BASE_URL}/sessions/${sessionId}/status`, {
       method: 'PATCH',

@@ -6,6 +6,8 @@ const path = require('path');
 require('dotenv').config();
 const db = require('./db/database');
 const { providerConfigured } = require('./services/email');
+const { zoomConfigured } = require('./services/zoom');
+const { hasGoogleConfig } = require('./services/googleCalendar');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -180,6 +182,8 @@ app.get('/api/health', async (req, res) => {
       database: 'ok',
       email: providerConfigured() ? 'configured' : 'not_configured',
       emailVerification: process.env.REQUIRE_EMAIL_VERIFICATION === 'true' ? 'required' : 'optional',
+      zoom: zoomConfigured() ? 'configured' : 'not_configured',
+      googleCalendar: hasGoogleConfig() ? 'configured' : 'not_configured',
       mediaStorage: 'database',
       timestamp: new Date().toISOString()
     });

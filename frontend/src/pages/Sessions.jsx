@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, FileText, List, Plus, Star, UserX, X } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, ExternalLink, FileText, List, Plus, RefreshCw, Star, Unplug, UserX, Video, X } from 'lucide-react';
 import api from '../services/api';
 import AppShell, { EmptyState, ErrorState, LoadingState } from '../components/AppShell';
 import { useAuth } from '../context/AuthContext';
@@ -22,6 +22,10 @@ const Sessions = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
+  const [googleStatus, setGoogleStatus] = useState({ configured: false, connected: false, integration: null });
+  const [integrationBusy, setIntegrationBusy] = useState(false);
+  const [integrationNotice, setIntegrationNotice] = useState('');
+  const [meetingBusy, setMeetingBusy] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [outcomeSession, setOutcomeSession] = useState(null);
   const [reviewSession, setReviewSession] = useState(null);
@@ -46,9 +50,10 @@ const Sessions = () => {
   const fetchSessions = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const [sessionsResponse, connectionsResponse] = await Promise.all([
+      const [sessionsResponse, connectionsResponse, googleResponse] = await Promise.all([
         api.getSessions(token, filters),
         api.getMyConnections(token),
+        api.getGoogleStatus(token),
       ]);
       if (sessionsResponse.error) {
         setError(sessionsResponse.error);
@@ -57,6 +62,7 @@ const Sessions = () => {
       } else {
         setSessions(Array.isArray(sessionsResponse) ? sessionsResponse : []);
         setConnections((Array.isArray(connectionsResponse) ? connectionsResponse : []).filter((connection) => connection.status === 'accepted'));
+        if (!googleResponse.error) setGoogleStatus(googleResponse);
         setError('');
       }
     } catch {
@@ -69,6 +75,16 @@ const Sessions = () => {
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const result = url.searchParams.get('googleSync');
+    if (!result) return;
+    if (result === 'connected') setIntegrationNotice('Google Calendar is connected. Confirmed sessions are now syncing.');
+    else setActionError('Google Calendar could not be connected. Please try again.');
+    url.searchParams.delete('googleSync');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  }, []);
 
   const handleCreateSession = async (event) => {
     event.preventDefault();
@@ -118,6 +134,79 @@ const Sessions = () => {
       else setSessions((current) => current.map((session) => session.id === sessionId ? { ...session, ...response } : session));
     } catch {
       setActionError('The session request could not be updated.');
+    }
+  };
+
+  const handleGoogleConnect = async () => {
+    setIntegrationBusy(true);
+    setActionError('');
+    try {
+      const response = await api.getGoogleAuthUrl(localStorage.getItem('token'));
+      if (!response.authUrl) throw new Error(response.error || 'Google Calendar connection is unavailable.');
+      window.location.assign(response.authUrl);
+    } catch (error) {
+      setActionError(error.message || 'Google Calendar could not be connected.');
+      setIntegrationBusy(false);
+    }
+  };
+
+  const handleGoogleToggle = async () => {
+    setIntegrationBusy(true);
+    setActionError('');
+    try {
+      const enabled = !googleStatus.integration?.syncEnabled;
+      const response = await api.toggleGoogleSync(enabled, localStorage.getItem('token'));
+      if (response.error) throw new Error(response.error);
+      setGoogleStatus((current) => ({ ...current, connected: true, integration: response.integration }));
+    } catch (error) {
+      setActionError(error.message || 'Calendar sync could not be updated.');
+    } finally {
+      setIntegrationBusy(false);
+    }
+  };
+
+  const handleGoogleDisconnect = async () => {
+    setIntegrationBusy(true);
+    setActionError('');
+    try {
+      const response = await api.disconnectGoogle(localStorage.getItem('token'));
+      if (response.error) throw new Error(response.error);
+      setGoogleStatus((current) => ({ ...current, connected: false, integration: null }));
+    } catch (error) {
+      setActionError(error.message || 'Google Calendar could not be disconnected.');
+    } finally {
+      setIntegrationBusy(false);
+    }
+  };
+
+  const handleOpenMeeting = async (session) => {
+    const popup = window.open('', '_blank');
+    if (popup) {
+      popup.opener = null;
+      popup.document.title = 'Opening secure meeting';
+      if (popup.document.body) popup.document.body.textContent = 'Opening your secure meeting...';
+    }
+    setMeetingBusy(session.id);
+    setActionError('');
+    try {
+      const token = localStorage.getItem('token');
+      const shouldRetry = user?.role === 'tutor' && !session.meeting_link;
+      const response = shouldRetry
+        ? await api.retrySessionMeeting(session.id, token)
+        : await api.getSessionMeeting(session.id, token);
+      if (response.error) throw new Error(response.error);
+      const url = user?.role === 'tutor' ? response.startUrl || response.joinUrl : response.joinUrl;
+      if (!url) throw new Error('The meeting room is not ready yet.');
+      if (popup) popup.location.replace(url);
+      else window.location.assign(url);
+      setSessions((current) => current.map((item) => item.id === session.id
+        ? { ...item, meeting_link: response.joinUrl, meeting_provider: response.provider, meeting_status: response.status }
+        : item));
+    } catch (error) {
+      if (popup) popup.close();
+      setActionError(error.message || 'The meeting room could not be opened.');
+    } finally {
+      setMeetingBusy(null);
     }
   };
 
@@ -229,6 +318,22 @@ const Sessions = () => {
         </section>
 
         {actionError ? <div className="alert alert-error" role="alert">{actionError}<button type="button" onClick={() => setActionError('')} aria-label="Dismiss error">Dismiss</button></div> : null}
+        {integrationNotice ? <div className="alert alert-success" role="status">{integrationNotice}<button type="button" onClick={() => setIntegrationNotice('')} aria-label="Dismiss notice">Dismiss</button></div> : null}
+
+        <section className="calendar-integration" aria-label="Calendar integration">
+          <div className="calendar-integration-icon"><CalendarDays size={22} /></div>
+          <div>
+            <strong>Google Calendar</strong>
+            <p>{googleStatus.connected
+              ? `Session sync is ${googleStatus.integration?.syncEnabled ? 'on' : 'paused'}.`
+              : googleStatus.configured ? 'Connect once to keep confirmed sessions in your calendar.' : 'Calendar connection is coming soon.'}</p>
+          </div>
+          <div className="button-row">
+            {!googleStatus.connected && googleStatus.configured ? <button className="btn btn-primary btn-sm" type="button" disabled={integrationBusy} onClick={handleGoogleConnect}><ExternalLink size={16} />Connect</button> : null}
+            {googleStatus.connected ? <button className="btn btn-ghost btn-sm" type="button" disabled={integrationBusy} onClick={handleGoogleToggle}><RefreshCw size={16} />{googleStatus.integration?.syncEnabled ? 'Pause sync' : 'Resume sync'}</button> : null}
+            {googleStatus.connected ? <button className="icon-button" type="button" disabled={integrationBusy} onClick={handleGoogleDisconnect} aria-label="Disconnect Google Calendar" title="Disconnect Google Calendar"><Unplug size={17} /></button> : null}
+          </div>
+        </section>
 
         <section className="card calendar-toolbar">
           <div className="calendar-navigation">
@@ -325,11 +430,13 @@ const Sessions = () => {
                         Cancel
                       </button>
                     ) : null}
-                    {session.meeting_link && session.status === 'scheduled' && session.confirmation_status === 'confirmed' ? (
-                      <a className="btn btn-primary btn-sm" href={session.meeting_link} target="_blank" rel="noreferrer">
-                        Join meeting
-                      </a>
+                    {session.status === 'scheduled' && session.confirmation_status === 'confirmed' && (session.meeting_link || user?.role === 'tutor') ? (
+                      <button className="btn btn-primary btn-sm" type="button" disabled={meetingBusy === session.id} onClick={() => handleOpenMeeting(session)}>
+                        {session.meeting_status === 'error' ? <RefreshCw size={16} /> : <Video size={16} />}
+                        {meetingBusy === session.id ? 'Opening...' : session.meeting_status === 'error' ? 'Retry room' : session.meeting_link ? 'Open meeting' : 'Prepare room'}
+                      </button>
                     ) : null}
+                    {session.status === 'scheduled' && session.confirmation_status === 'confirmed' && !session.meeting_link && user?.role === 'student' ? <span className="muted">Meeting room pending</span> : null}
                   </div>
                 </article>
               ))}
@@ -394,10 +501,11 @@ const Sessions = () => {
                   <input type="time" value={formData.endTime} onChange={(event) => setFormData((current) => ({ ...current, endTime: event.target.value }))} required />
                 </div>
               </div>
-              <div className="field">
-                <label>Meeting link</label>
-                <input value={formData.meetingLink} onChange={(event) => setFormData((current) => ({ ...current, meetingLink: event.target.value }))} placeholder="https://..." />
-              </div>
+              {user?.role === 'tutor' ? <div className="field">
+                <label>Custom meeting link <span className="muted">(optional)</span></label>
+                <input value={formData.meetingLink} onChange={(event) => setFormData((current) => ({ ...current, meetingLink: event.target.value }))} placeholder="Leave blank to use the managed Zoom room" />
+                <small className="muted">For confirmed online sessions, NextDoorLearn prepares a secure room automatically when Zoom is connected.</small>
+              </div> : null}
               <div className="field">
                 <label>Description</label>
                 <textarea value={formData.description} onChange={(event) => setFormData((current) => ({ ...current, description: event.target.value }))} />

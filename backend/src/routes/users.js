@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { getAvailabilitySlots } = require('../utils/availability');
-const { isPositiveInteger, isValidHttpUrl, passwordValidationError, sanitizeText } = require('../utils/validation');
+const { isPositiveInteger, isValidHttpUrl, isValidTimeZone, passwordValidationError, sanitizeText } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -86,6 +86,9 @@ router.put('/profile', authenticateToken, async (req, res) => {
     const safeLinkedin = linkedin === undefined ? null : sanitizeText(linkedin, 500);
     if ((safeWebsite && !isValidHttpUrl(safeWebsite)) || (safeLinkedin && !isValidHttpUrl(safeLinkedin))) {
       return res.status(400).json({ error: 'Website and LinkedIn links must start with http:// or https://' });
+    }
+    if (timezone !== undefined && String(timezone).trim() && !isValidTimeZone(String(timezone))) {
+      return res.status(400).json({ error: 'Choose a valid timezone such as America/New_York' });
     }
 
     // Update basic user info

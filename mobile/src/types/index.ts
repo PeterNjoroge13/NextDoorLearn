@@ -47,6 +47,8 @@ export type Session = {
   status: string;
   confirmation_status?: string;
   meeting_link?: string;
+  meeting_provider?: string;
+  meeting_status?: string;
   tutor_name?: string;
   student_name?: string;
   connection_id?: number;

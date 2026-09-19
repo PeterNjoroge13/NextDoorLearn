@@ -18,7 +18,9 @@ const getOAuthClient = () => {
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 };
 
-const hasGoogleConfig = () => !!getOAuthClient();
+const hasGoogleConfig = () => Boolean(
+  process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REDIRECT_URI
+);
 
 const getGoogleIntegration = async (userId) => {
   const integration = await db.prepare(`
@@ -86,6 +88,14 @@ const upsertGoogleIntegration = async (userId, payload = {}) => {
 };
 
 const disconnectGoogleIntegration = async (userId) => {
+  const integration = await getGoogleIntegration(userId);
+  if (integration?.access_token && hasGoogleConfig()) {
+    try {
+      await getOAuthClient().revokeToken(integration.access_token);
+    } catch (error) {
+      console.error('Google token revocation warning:', error.message || error);
+    }
+  }
   await db.prepare(`
     DELETE FROM user_google_integrations
     WHERE user_id = ? AND provider = ?
@@ -167,6 +177,7 @@ const buildEventPayload = (session, timezone = null) => ({
   description: [session.description, session.subject ? `Subject: ${session.subject}` : null, session.meeting_link ? `Meeting link: ${session.meeting_link}` : null]
     .filter(Boolean)
     .join('\n'),
+  location: session.meeting_link || undefined,
   start: { dateTime: toDateTime(session.scheduled_date, session.start_time), timeZone: timezone || 'UTC' },
   end: { dateTime: toDateTime(session.scheduled_date, session.end_time), timeZone: timezone || 'UTC' }
 });

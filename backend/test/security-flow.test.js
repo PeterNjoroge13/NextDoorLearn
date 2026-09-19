@@ -1,11 +1,45 @@
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
+const http = require('node:http');
 const path = require('node:path');
 
 const port = 3219;
 const base = `http://127.0.0.1:${port}/api`;
 const databasePath = path.join('/tmp', `nextdoorlearn-test-${process.pid}.db`);
+const zoomPort = 3229;
+let zoomMeetingSequence = 0;
+const zoomServer = http.createServer((req, res) => {
+  const send = (status, payload) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(payload ? JSON.stringify(payload) : undefined);
+  };
+  if (req.method === 'POST' && req.url?.startsWith('/oauth/token')) {
+    return send(200, { access_token: 'fake-zoom-token', expires_in: 3600 });
+  }
+  if (req.method === 'POST' && /^\/v2\/users\/[^/]+\/meetings$/.test(req.url || '')) {
+    zoomMeetingSequence += 1;
+    return send(201, {
+      id: zoomMeetingSequence,
+      join_url: `https://zoom.example/j/${zoomMeetingSequence}`,
+      start_url: `https://zoom.example/s/${zoomMeetingSequence}?zak=initial`
+    });
+  }
+  const meetingMatch = req.url?.match(/^\/v2\/meetings\/(\d+)$/);
+  if (meetingMatch && req.method === 'GET') {
+    return send(200, {
+      id: Number(meetingMatch[1]),
+      join_url: `https://zoom.example/j/${meetingMatch[1]}`,
+      start_url: `https://zoom.example/s/${meetingMatch[1]}?zak=refreshed`
+    });
+  }
+  if (meetingMatch && req.method === 'DELETE') {
+    res.writeHead(204);
+    return res.end();
+  }
+  return send(404, { message: 'Fake Zoom route not found' });
+});
+zoomServer.listen(zoomPort, '127.0.0.1');
 const server = spawn(process.execPath, ['src/server.js'], {
   cwd: path.resolve(__dirname, '..'),
   env: {
@@ -16,7 +50,13 @@ const server = spawn(process.execPath, ['src/server.js'], {
     DATABASE_PATH: databasePath,
     JWT_SECRET: 'integration-test-secret',
     ADMIN_EMAILS: 'admin@example.com',
-    ALLOW_DIRECT_TUTOR_REGISTRATION: 'false'
+    ALLOW_DIRECT_TUTOR_REGISTRATION: 'false',
+    ZOOM_ACCOUNT_ID: 'test-account',
+    ZOOM_CLIENT_ID: 'test-client',
+    ZOOM_CLIENT_SECRET: 'test-secret',
+    ZOOM_HOST_USER_ID: 'host@example.com',
+    ZOOM_TOKEN_URL: `http://127.0.0.1:${zoomPort}/oauth/token`,
+    ZOOM_API_BASE_URL: `http://127.0.0.1:${zoomPort}/v2`
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -24,7 +64,10 @@ const server = spawn(process.execPath, ['src/server.js'], {
 let serverOutput = '';
 server.stdout.on('data', (chunk) => { serverOutput += chunk; });
 server.stderr.on('data', (chunk) => { serverOutput += chunk; });
-after(() => server.kill('SIGTERM'));
+after(() => {
+  server.kill('SIGTERM');
+  zoomServer.close();
+});
 
 const waitForServer = async () => {
   for (let attempt = 0; attempt < 1200; attempt += 1) {
@@ -323,6 +366,21 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     body: { timezone: 'UTC', slots: [{ dayOfWeek, startTime: '00:00', endTime: '12:00' }] }
   });
   assert.equal(availability.status, 200);
+  const invalidTimezone = await request('/availability/me', {
+    method: 'PUT', token: activated.body.token,
+    body: { timezone: 'Not/A_Timezone', slots: [{ dayOfWeek, startTime: '09:00', endTime: '10:00' }] }
+  });
+  assert.equal(invalidTimezone.status, 400);
+  const studentCustomMeeting = await request('/sessions', {
+    method: 'POST', token: adminResponse.body.token,
+    body: { connectionId, title: 'Unsafe link attempt', scheduledDate, startTime: '10:00', endTime: '11:00', meetingLink: 'https://student.example/room' }
+  });
+  assert.equal(studentCustomMeeting.status, 403);
+  const insecureTutorMeeting = await request('/sessions', {
+    method: 'POST', token: activated.body.token,
+    body: { connectionId, title: 'Insecure room', scheduledDate, startTime: '10:00', endTime: '11:00', meetingLink: 'http://tutor.example/room' }
+  });
+  assert.equal(insecureTutorMeeting.status, 400);
   const session = await request('/sessions', {
     method: 'POST', token: adminResponse.body.token,
     body: { connectionId, title: 'Algebra practice', subject: 'Math', scheduledDate, startTime: '10:00', endTime: '11:00' }
@@ -335,8 +393,23 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     method: 'PATCH', token: activated.body.token, body: { decision: 'confirmed' }
   });
   assert.equal(confirmed.status, 200);
+  const meetingAccess = await request(`/sessions/${session.body.id}/meeting`, { token: adminResponse.body.token });
+  assert.equal(meetingAccess.status, 200);
+  assert.equal(meetingAccess.body.status, 'ready');
+  assert.equal(meetingAccess.body.joinUrl, 'https://zoom.example/j/1');
+  assert.equal(meetingAccess.body.startUrl, undefined);
+  const tutorMeetingAccess = await request(`/sessions/${session.body.id}/meeting`, { token: activated.body.token });
+  assert.equal(tutorMeetingAccess.status, 200);
+  assert.equal(tutorMeetingAccess.body.startUrl, 'https://zoom.example/s/1?zak=refreshed');
+  const studentCannotProvisionMeeting = await request(`/sessions/${session.body.id}/meeting`, {
+    method: 'POST', token: adminResponse.body.token
+  });
+  assert.equal(studentCannotProvisionMeeting.status, 404);
   const afterConfirmation = await request('/sessions/upcoming', { token: adminResponse.body.token });
-  assert.ok(afterConfirmation.body.some((item) => item.id === session.body.id));
+  const confirmedSession = afterConfirmation.body.find((item) => item.id === session.body.id);
+  assert.ok(confirmedSession);
+  assert.equal(confirmedSession.meeting_link, 'https://zoom.example/j/1');
+  assert.equal(confirmedSession.host_url, undefined);
 
   const earlyOutcome = await request(`/sessions/${session.body.id}/outcome`, {
     method: 'PATCH', token: activated.body.token,
@@ -404,9 +477,20 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(sessionStats.body.reflections_completed, 1);
   assert.equal(sessionStats.body.average_confidence_gain, 2);
 
+  const cancelledSession = await request(`/sessions/${session.body.id}/status`, {
+    method: 'PATCH', token: adminResponse.body.token, body: { status: 'cancelled', notes: 'Schedule changed' }
+  });
+  assert.equal(cancelledSession.status, 200);
+  assert.equal(cancelledSession.body.meeting_link, null);
+  const cancelledMeetingAccess = await request(`/sessions/${session.body.id}/meeting`, { token: activated.body.token });
+  assert.equal(cancelledMeetingAccess.status, 409);
+
   const outbox = await request('/admin/email-outbox', { token: adminResponse.body.token });
   assert.equal(outbox.status, 200);
   assert.ok(outbox.body.emails.some((email) => email.template === 'tutor_activation'));
+  assert.ok(outbox.body.emails.some((email) => email.template === 'session_requested'));
+  assert.ok(outbox.body.emails.some((email) => email.template === 'session_confirmed'));
+  assert.ok(outbox.body.emails.some((email) => email.template === 'session_cancelled'));
   const audit = await request('/admin/audit-log', { token: adminResponse.body.token });
   assert.ok(audit.body.some((entry) => entry.action === 'tutor_application.approved'));
   assert.ok(audit.body.some((entry) => entry.action === 'waitlist.matched'));

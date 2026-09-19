@@ -1,5 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const db = require('../db/database');
 const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
 const {
   hasGoogleConfig,
@@ -7,14 +8,28 @@ const {
   upsertGoogleIntegration,
   disconnectGoogleIntegration,
   createAuthUrl,
-  exchangeCodeForTokens
+  exchangeCodeForTokens,
+  syncSessionToGoogle
 } = require('../services/googleCalendar');
 
 const router = express.Router();
 
-const buildCallbackUrl = (status = 'success') => {
+const buildCallbackUrl = (status = 'success', client = 'web') => {
+  if (client === 'mobile') return `nextdoorlearn://schedule?googleSync=${status}`;
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  return `${frontendUrl}/profile?googleSync=${status}`;
+  return `${frontendUrl}/sessions?googleSync=${status}`;
+};
+
+const syncUpcomingSessions = async (userId) => {
+  const sessions = await db.prepare(`
+    SELECT * FROM sessions
+    WHERE (student_id = ? OR tutor_id = ?)
+      AND status = 'scheduled' AND confirmation_status = 'confirmed'
+      AND (scheduled_date > date('now') OR scheduled_date = date('now'))
+    ORDER BY scheduled_date ASC, start_time ASC
+    LIMIT 100
+  `).all(userId, userId);
+  for (const session of sessions) await syncSessionToGoogle(session, 'upsert');
 };
 
 router.get('/auth-url', authenticateToken, async (req, res) => {
@@ -23,8 +38,9 @@ router.get('/auth-url', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Google OAuth is not configured on the server' });
     }
 
+    const client = req.query.client === 'mobile' ? 'mobile' : 'web';
     const state = jwt.sign(
-      { userId: req.user.userId, type: 'google_oauth_state' },
+      { userId: req.user.userId, type: 'google_oauth_state', client },
       JWT_SECRET,
       { expiresIn: '10m' }
     );
@@ -38,6 +54,7 @@ router.get('/auth-url', authenticateToken, async (req, res) => {
 });
 
 router.get('/callback', async (req, res) => {
+  let callbackClient = 'web';
   try {
     const { code, state } = req.query;
     if (!code || !state) {
@@ -48,6 +65,7 @@ router.get('/callback', async (req, res) => {
     if (!decoded?.userId || decoded.type !== 'google_oauth_state') {
       return res.redirect(buildCallbackUrl('invalid_state'));
     }
+    callbackClient = decoded.client === 'mobile' ? 'mobile' : 'web';
 
     const tokenPayload = await exchangeCodeForTokens(code);
     await upsertGoogleIntegration(decoded.userId, {
@@ -56,11 +74,12 @@ router.get('/callback', async (req, res) => {
       tokenExpiry: tokenPayload.tokenExpiry,
       syncEnabled: 1
     });
+    await syncUpcomingSessions(decoded.userId);
 
-    return res.redirect(buildCallbackUrl('connected'));
+    return res.redirect(buildCallbackUrl('connected', callbackClient));
   } catch (error) {
     console.error('Google callback error:', error);
-    return res.redirect(buildCallbackUrl('failed'));
+    return res.redirect(buildCallbackUrl('failed', callbackClient));
   }
 });
 
@@ -76,6 +95,7 @@ router.post('/sync-toggle', authenticateToken, async (req, res) => {
     const updated = await upsertGoogleIntegration(req.user.userId, {
       syncEnabled: enabled ? 1 : 0
     });
+    if (enabled) await syncUpcomingSessions(req.user.userId);
 
     res.json({
       message: `Google sync ${enabled ? 'enabled' : 'disabled'}`,
@@ -105,6 +125,7 @@ router.get('/status', authenticateToken, async (req, res) => {
   try {
     const integration = await getGoogleIntegration(req.user.userId);
     res.json({
+      configured: hasGoogleConfig(),
       connected: Boolean(integration),
       integration: integration
         ? {

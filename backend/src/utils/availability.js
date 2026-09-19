@@ -1,4 +1,5 @@
 const db = require('../db/database');
+const { isValidTimeZone } = require('./validation');
 
 const WEEK_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_NAME_TO_INDEX = WEEK_DAYS.reduce((acc, day, index) => {
@@ -41,6 +42,9 @@ const normalizeSlots = (slots = [], timezone = null) => {
 
     if (!isValidTimeString(startTime) || !isValidTimeString(endTime)) {
       return { error: 'Each slot must have valid startTime and endTime in HH:MM format' };
+    }
+    if (slotTimezone && !isValidTimeZone(slotTimezone)) {
+      return { error: 'Each timezone must be a valid IANA timezone such as America/New_York' };
     }
 
     const startMinutes = timeToMinutes(startTime);

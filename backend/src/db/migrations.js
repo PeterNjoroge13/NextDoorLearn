@@ -285,6 +285,30 @@ const migrations = [
         CREATE INDEX IF NOT EXISTS idx_policy_acceptances_user ON policy_acceptances(user_id, accepted_at);
       `);
     }
+  },
+  {
+    version: '010_managed_video_meetings',
+    async up(db) {
+      const id = db.dialect === 'postgres' ? 'BIGSERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+      const userId = db.dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
+      const timestamp = db.dialect === 'postgres' ? 'TIMESTAMPTZ' : 'DATETIME';
+
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS session_meetings (
+          id ${id},
+          session_id ${userId} NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+          provider TEXT NOT NULL,
+          provider_meeting_id TEXT UNIQUE,
+          host_url TEXT,
+          status TEXT NOT NULL DEFAULT 'pending',
+          last_error TEXT,
+          created_at ${timestamp} DEFAULT CURRENT_TIMESTAMP,
+          updated_at ${timestamp} DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_session_meetings_provider_id
+          ON session_meetings(provider, provider_meeting_id);
+      `);
+    }
   }
 ];
 

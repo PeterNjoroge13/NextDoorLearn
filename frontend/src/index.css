@@ -2468,6 +2468,9 @@ textarea:focus {
 .switch input:focus-visible + span { box-shadow: 0 0 0 4px rgba(15,118,110,.18); }
 
 .calendar-toolbar { display: grid; grid-template-columns: minmax(250px, 1fr) 180px auto; gap: 16px; align-items: end; padding: 14px 16px; }
+.calendar-integration { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--line); background: var(--surface); }
+.calendar-integration-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 6px; background: var(--brand-soft); color: var(--brand-strong); }
+.calendar-integration p { margin: 3px 0 0; color: var(--muted); font-size: .86rem; }
 .calendar-navigation { display: flex; align-items: center; gap: 13px; align-self: center; }
 .calendar-navigation strong { min-width: 170px; text-align: center; font-size: 1.05rem; }
 .calendar-view-toggle { margin: 0; min-width: 210px; }
@@ -2744,6 +2747,8 @@ textarea:focus {
   .application-photo-field { grid-template-columns: 72px minmax(0, 1fr); }
   .application-photo-preview { width: 72px; height: 72px; }
   .calendar-toolbar { grid-template-columns: 1fr; }
+  .calendar-integration { grid-template-columns: auto 1fr; }
+  .calendar-integration .button-row { grid-column: 1 / -1; }
   .calendar-view-toggle { grid-column: auto; }
   .calendar-shell { overflow-x: auto; }
   .calendar-weekdays,

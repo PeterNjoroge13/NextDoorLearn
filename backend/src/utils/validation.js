@@ -17,6 +17,16 @@ const isValidTime = (value) =>
   typeof value === 'string' &&
   /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 
+const isValidTimeZone = (value) => {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value.trim() }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const sanitizeText = (value, maxLength = 1000) => {
   if (value === undefined || value === null) return '';
   return String(value).trim().slice(0, maxLength);
@@ -54,6 +64,7 @@ module.exports = {
   isValidEmail,
   isValidHttpUrl,
   isValidTime,
+  isValidTimeZone,
   passwordValidationError,
   sanitizeText
 };

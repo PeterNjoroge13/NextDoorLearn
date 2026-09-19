@@ -5,7 +5,9 @@ const { createNotification } = require('./notifications');
 const { isTimeRangeWithinAvailability } = require('../utils/availability');
 const { syncSessionToGoogle } = require('../services/googleCalendar');
 const { usersAreBlocked } = require('../services/safety');
-const { scheduleSessionReminders } = require('../services/reminders');
+const { scheduleSessionReminders, zonedTimeToUtc } = require('../services/reminders');
+const { deleteZoomMeeting, getMeetingAccess, provisionZoomMeeting, zoomConfigured } = require('../services/zoom');
+const { queueSessionEmails } = require('../services/sessionCommunications');
 const { boundedInteger, isPositiveInteger, isValidDate, isValidHttpUrl, isValidTime, sanitizeText } = require('../utils/validation');
 
 const router = express.Router();
@@ -15,11 +17,13 @@ const getSessionWithOutcome = (sessionId) => db.prepare(`
   SELECT s.*, student.name AS student_name, tutor.name AS tutor_name,
     outcome.tutor_summary, outcome.skills_practiced, outcome.next_steps,
     outcome.student_reflection, outcome.confidence_before, outcome.confidence_after,
-    outcome.tutor_submitted_at, outcome.student_submitted_at
+    outcome.tutor_submitted_at, outcome.student_submitted_at,
+    meeting.provider AS meeting_provider, meeting.status AS meeting_status
   FROM sessions s
   JOIN users student ON student.id = s.student_id
   JOIN users tutor ON tutor.id = s.tutor_id
   LEFT JOIN session_outcomes outcome ON outcome.session_id = s.id
+  LEFT JOIN session_meetings meeting ON meeting.session_id = s.id
   WHERE s.id = ?
 `).get(sessionId);
 
@@ -55,13 +59,16 @@ router.get('/', async (req, res) => {
         outcome.student_submitted_at,
         review.id as review_id,
         review.rating as review_rating,
-        review.comment as review_comment
+        review.comment as review_comment,
+        meeting.provider as meeting_provider,
+        meeting.status as meeting_status
       FROM sessions s
       JOIN users u1 ON s.tutor_id = u1.id
       JOIN users u2 ON s.student_id = u2.id
       JOIN connections c ON s.connection_id = c.id
       LEFT JOIN session_outcomes outcome ON outcome.session_id = s.id
       LEFT JOIN reviews review ON review.student_id = s.student_id AND review.tutor_id = s.tutor_id
+      LEFT JOIN session_meetings meeting ON meeting.session_id = s.id
       WHERE (s.tutor_id = ? OR s.student_id = ?)
     `;
     
@@ -97,10 +104,13 @@ router.get('/upcoming', async (req, res) => {
       SELECT 
         s.*,
         u1.name as tutor_name,
-        u2.name as student_name
+        u2.name as student_name,
+        meeting.provider as meeting_provider,
+        meeting.status as meeting_status
       FROM sessions s
       JOIN users u1 ON s.tutor_id = u1.id
       JOIN users u2 ON s.student_id = u2.id
+      LEFT JOIN session_meetings meeting ON meeting.session_id = s.id
       WHERE (s.tutor_id = ? OR s.student_id = ?)
         AND s.status = 'scheduled'
         AND s.confirmation_status = 'confirmed'
@@ -113,6 +123,43 @@ router.get('/upcoming', async (req, res) => {
   } catch (error) {
     console.error('Get upcoming sessions error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/:id/meeting', async (req, res) => {
+  try {
+    if (!isPositiveInteger(req.params.id)) return res.status(400).json({ error: 'Valid session ID is required' });
+    const session = await db.prepare(`
+      SELECT * FROM sessions WHERE id = ? AND (student_id = ? OR tutor_id = ?)
+    `).get(req.params.id, req.user.userId, req.user.userId);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.status !== 'scheduled' || session.confirmation_status !== 'confirmed') {
+      return res.status(409).json({ error: 'The session must be confirmed before opening its meeting room' });
+    }
+    res.json(await getMeetingAccess(session, req.user));
+  } catch (error) {
+    console.error('Get meeting access error:', error);
+    res.status(503).json({ error: 'The meeting room is temporarily unavailable. Please try again shortly.' });
+  }
+});
+
+router.post('/:id/meeting', async (req, res) => {
+  try {
+    if (!isPositiveInteger(req.params.id)) return res.status(400).json({ error: 'Valid session ID is required' });
+    const session = await db.prepare(`
+      SELECT * FROM sessions WHERE id = ? AND tutor_id = ?
+    `).get(req.params.id, req.user.userId);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.status !== 'scheduled' || session.confirmation_status !== 'confirmed') {
+      return res.status(409).json({ error: 'Confirm this session before creating its meeting room' });
+    }
+    if (session.meeting_link) return res.json(await getMeetingAccess(session, req.user));
+    if (!zoomConfigured()) return res.status(503).json({ error: 'Managed Zoom meetings are not configured yet' });
+    const provisioned = await provisionZoomMeeting(session, { force: true });
+    res.json(await getMeetingAccess(provisioned, req.user));
+  } catch (error) {
+    console.error('Retry meeting creation error:', error);
+    res.status(503).json({ error: 'The Zoom room could not be created. Check the Zoom connection and try again.' });
   }
 });
 
@@ -239,8 +286,8 @@ router.post('/', async (req, res) => {
     const safeDescription = sanitizeText(description, 2000);
     const safeSubject = sanitizeText(subject, 120);
     const safeMeetingLink = sanitizeText(meetingLink, 500);
-    if (safeMeetingLink && !isValidHttpUrl(safeMeetingLink)) {
-      return res.status(400).json({ error: 'Meeting link must start with http:// or https://' });
+    if (safeMeetingLink && (!isValidHttpUrl(safeMeetingLink) || !safeMeetingLink.toLowerCase().startsWith('https://'))) {
+      return res.status(400).json({ error: 'Meeting link must be a secure https:// URL' });
     }
     
     // Verify the connection exists and user is part of it
@@ -255,14 +302,23 @@ router.post('/', async (req, res) => {
     if (await usersAreBlocked(connection.student_id, connection.tutor_id)) {
       return res.status(403).json({ error: 'Scheduling is unavailable for this connection' });
     }
+    if (safeMeetingLink && Number(userId) !== Number(connection.tutor_id)) {
+      return res.status(403).json({ error: 'Only the tutor can provide a custom meeting link' });
+    }
     
     // Calculate duration
     const start = new Date(`2000-01-01T${startTime}`);
     const end = new Date(`2000-01-01T${endTime}`);
     const durationMinutes = Math.round((end - start) / (1000 * 60));
     
-    if (durationMinutes <= 0) {
-      return res.status(400).json({ error: 'End time must be after start time' });
+    if (durationMinutes < 15 || durationMinutes > 240) {
+      return res.status(400).json({ error: 'Sessions must be between 15 minutes and 4 hours' });
+    }
+
+    const tutorSettings = await db.prepare('SELECT timezone FROM users WHERE id = ?').get(connection.tutor_id);
+    const sessionStartsAt = zonedTimeToUtc(scheduledDate, startTime, tutorSettings?.timezone || 'UTC');
+    if (process.env.NODE_ENV !== 'test' && sessionStartsAt.getTime() < Date.now() + 5 * 60 * 1000) {
+      return res.status(400).json({ error: 'Sessions must begin at least 5 minutes in the future' });
     }
 
     const isInAvailability = await isTimeRangeWithinAvailability(
@@ -304,7 +360,7 @@ router.post('/', async (req, res) => {
     });
     
     // Get the created session with user details
-    const newSession = await db.prepare(`
+    let newSession = await db.prepare(`
       SELECT 
         s.*,
         u1.name as tutor_name,
@@ -316,6 +372,14 @@ router.post('/', async (req, res) => {
     `).get(result.lastInsertRowid);
 
     await scheduleSessionReminders(newSession).catch((error) => console.error('Unable to schedule session reminders:', error));
+    if (confirmationStatus === 'confirmed' && !newSession.meeting_link) {
+      try {
+        newSession = await provisionZoomMeeting(newSession);
+      } catch (error) {
+        console.error('Zoom meeting provisioning warning:', error.message || error);
+        newSession = { ...newSession, meeting_provider: 'zoom', meeting_status: 'error' };
+      }
+    }
 
     // Notify the other participant
     const recipientId = userId === connection.tutor_id ? connection.student_id : connection.tutor_id;
@@ -331,6 +395,8 @@ router.post('/', async (req, res) => {
     );
 
     if (confirmationStatus === 'confirmed') await syncSessionToGoogle(newSession, 'upsert');
+    await queueSessionEmails(newSession, confirmationStatus === 'confirmed' ? 'confirmed' : 'requested')
+      .catch((error) => console.error('Session email warning:', error.message || error));
     
     res.status(201).json(newSession);
   } catch (error) {
@@ -355,10 +421,20 @@ router.patch('/:id/confirmation', async (req, res) => {
     await db.prepare(`
       UPDATE sessions SET confirmation_status = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
     `).run(decision, decision === 'declined' ? 'cancelled' : 'scheduled', sessionId);
+    let updatedSession = { ...session, confirmation_status: decision, status: decision === 'declined' ? 'cancelled' : 'scheduled' };
     if (decision === 'declined') {
       await db.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
     } else {
-      await syncSessionToGoogle({ ...session, confirmation_status: decision }, 'upsert');
+      if (!updatedSession.meeting_link) {
+        try {
+          updatedSession = await provisionZoomMeeting(updatedSession);
+        } catch (error) {
+          console.error('Zoom meeting provisioning warning:', error.message || error);
+          updatedSession = { ...updatedSession, meeting_provider: 'zoom', meeting_status: 'error' };
+        }
+      }
+      await scheduleSessionReminders(updatedSession).catch((error) => console.error('Unable to schedule session reminders:', error));
+      await syncSessionToGoogle(updatedSession, 'upsert');
     }
     await createNotification(
       session.student_id,
@@ -367,7 +443,13 @@ router.patch('/:id/confirmation', async (req, res) => {
       `${session.tutor_name} ${decision} your session request for "${session.title}".`,
       '/sessions', sessionId
     );
-    res.json(await db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId));
+    await queueSessionEmails(updatedSession, decision)
+      .catch((error) => console.error('Session email warning:', error.message || error));
+    res.json(await db.prepare(`
+      SELECT s.*, meeting.provider AS meeting_provider, meeting.status AS meeting_status
+      FROM sessions s LEFT JOIN session_meetings meeting ON meeting.session_id = s.id
+      WHERE s.id = ?
+    `).get(sessionId));
   } catch (error) {
     console.error('Session confirmation error:', error);
     res.status(500).json({ error: 'Unable to update session request' });
@@ -415,7 +497,7 @@ router.patch('/:id/status', async (req, res) => {
     await updateSession.run(status, sanitizeText(notes, 2000) || session.notes, sessionId);
     
     // Get updated session
-    const updatedSession = await db.prepare(`
+    let updatedSession = await db.prepare(`
       SELECT 
         s.*,
         u1.name as tutor_name,
@@ -449,6 +531,10 @@ router.patch('/:id/status', async (req, res) => {
     if (status === 'cancelled') {
       await db.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
       await syncSessionToGoogle(updatedSession, 'delete');
+      await deleteZoomMeeting(updatedSession).catch((error) => console.error('Zoom meeting deletion warning:', error.message || error));
+      updatedSession = { ...updatedSession, meeting_link: null, meeting_provider: null, meeting_status: null };
+      await queueSessionEmails(updatedSession, 'cancelled')
+        .catch((error) => console.error('Session email warning:', error.message || error));
     } else {
       await syncSessionToGoogle(updatedSession, 'upsert');
     }
@@ -481,11 +567,12 @@ router.delete('/:id', async (req, res) => {
       return res.status(400).json({ error: 'Only scheduled sessions can be deleted' });
     }
     
+    await syncSessionToGoogle(session, 'delete');
+    await deleteZoomMeeting(session).catch((error) => console.error('Zoom meeting deletion warning:', error.message || error));
+
     // Delete session
     const deleteSession = await db.prepare('DELETE FROM sessions WHERE id = ?');
     await deleteSession.run(sessionId);
-
-    await syncSessionToGoogle(session, 'delete');
     
     res.json({ message: 'Session deleted successfully' });
   } catch (error) {

@@ -39,8 +39,8 @@ const scheduleSessionReminders = async (session) => {
 
 const processSessionReminders = async (limit = 50) => {
   const reminders = await db.prepare(`
-    SELECT sr.*, s.title, s.starts_at, s.student_id, s.tutor_id,
-      recipient.name AS recipient_name, recipient.email AS recipient_email,
+    SELECT sr.*, s.title, s.starts_at, s.student_id, s.tutor_id, s.meeting_link,
+      recipient.name AS recipient_name, recipient.email AS recipient_email, recipient.timezone AS recipient_timezone,
       student.name AS student_name, tutor.name AS tutor_name
     FROM session_reminders sr
     JOIN sessions s ON s.id = sr.session_id
@@ -55,8 +55,19 @@ const processSessionReminders = async (limit = 50) => {
   let sent = 0;
   for (const reminder of reminders) {
     const otherName = Number(reminder.user_id) === Number(reminder.student_id) ? reminder.tutor_name : reminder.student_name;
-    const when = new Date(reminder.starts_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
-    const content = emailTemplates.sessionReminder(reminder.recipient_name, reminder.title, `${when} UTC`, otherName, `${process.env.FRONTEND_URL || 'http://localhost:5173'}/sessions`);
+    const reminderTimezone = reminder.recipient_timezone || 'UTC';
+    const when = new Date(reminder.starts_at).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+      timeZone: reminderTimezone, timeZoneName: 'short'
+    });
+    const content = emailTemplates.sessionReminder(
+      reminder.recipient_name,
+      reminder.title,
+      when,
+      otherName,
+      `${process.env.FRONTEND_URL || 'http://localhost:5173'}/sessions`,
+      Boolean(reminder.meeting_link)
+    );
     const email = await queueEmail({
       to: reminder.recipient_email,
       template: `session_reminder_${reminder.reminder_type}`,
