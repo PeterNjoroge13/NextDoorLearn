@@ -41,6 +41,30 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npm test
+      - name: Run full API workflow smoke test
+        env:
+          PORT: 3218
+          NODE_ENV: development
+          DATABASE_PATH: /tmp/nextdoorlearn-ci-smoke.db
+          JWT_SECRET: ci-smoke-jwt-secret-with-enough-entropy
+          FIELD_ENCRYPTION_KEY: ci-smoke-field-encryption-key
+          ALLOW_DIRECT_TUTOR_REGISTRATION: 'true'
+        run: |
+          npm start > /tmp/nextdoorlearn-ci-smoke.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3218/api/health > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          if ! SMOKE_API_URL=http://127.0.0.1:3218/api npm run smoke; then
+            cat /tmp/nextdoorlearn-ci-smoke.log
+            exit 1
+          fi
 
   mobile:
     runs-on: ubuntu-latest

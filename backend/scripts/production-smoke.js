@@ -48,6 +48,8 @@ const main = async () => {
     database: health.body.database,
     email: health.body.email,
     emailVerification: health.body.emailVerification,
+    zoom: health.body.zoom,
+    googleCalendar: health.body.googleCalendar,
     mediaStorage: health.body.mediaStorage
   }, null, 2));
 };

@@ -43,6 +43,10 @@ const main = async () => {
   const studentEmail = `smoke.student.${unique}@example.com`;
   const tutorEmail = `smoke.tutor.${unique}@example.com`;
   const password = 'password123';
+  const consent = {
+    ageGroup: '18+', termsAccepted: true, privacyAccepted: true,
+    safetyAccepted: true, consentSource: 'local_smoke'
+  };
 
   const health = await request('/health');
   if (health.status !== 'ok') {
@@ -56,7 +60,8 @@ const main = async () => {
       password,
       role: 'tutor',
       name: 'Smoke Tutor',
-      bio: 'Smoke test tutor'
+      bio: 'Smoke test tutor',
+      ...consent
     })
   });
 
@@ -67,9 +72,11 @@ const main = async () => {
       password,
       role: 'student',
       name: 'Smoke Student',
-      bio: 'Smoke test student'
+      bio: 'Smoke test student',
+      ...consent
     })
   });
+  let studentToken = student.token;
 
   if (tutor.verificationToken) {
     await request('/auth/verify-email', {
@@ -92,10 +99,11 @@ const main = async () => {
     });
   }
 
-  await request('/auth/login', {
+  const studentLogin = await request('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email: studentEmail, password: studentPassword })
   });
+  studentToken = studentLogin.token;
 
   await request('/users/profile', {
     method: 'PUT',
@@ -112,7 +120,7 @@ const main = async () => {
 
   const learningGoal = await request('/progress/goals', {
     method: 'POST',
-    token: student.token,
+    token: studentToken,
     body: JSON.stringify({
       subject: 'Math',
       title: 'Solve derivatives independently',
@@ -131,17 +139,17 @@ const main = async () => {
 
   const firstMilestone = await request(`/progress/goals/${learningGoal.id}/milestones`, {
     method: 'POST',
-    token: student.token,
+    token: studentToken,
     body: JSON.stringify({ title: 'Review the power rule' })
   });
   await request(`/progress/goals/${learningGoal.id}/milestones`, {
     method: 'POST',
-    token: student.token,
+    token: studentToken,
     body: JSON.stringify({ title: 'Complete a practice set' })
   });
   const goalAtHalf = await request(`/progress/milestones/${firstMilestone.id}`, {
     method: 'PATCH',
-    token: student.token,
+    token: studentToken,
     body: JSON.stringify({ isCompleted: true })
   });
 
@@ -155,14 +163,14 @@ const main = async () => {
     body: JSON.stringify({ subject: 'Math', title: 'Tutor-owned goal' })
   });
 
-  const tutors = await request('/users/tutors', { token: student.token });
+  const tutors = await request('/users/tutors', { token: studentToken });
   const createdTutor = tutors.find((item) => item.id === tutor.user.id);
   if (!createdTutor) {
     throw new Error('Created tutor was not returned by tutor browse endpoint');
   }
 
   const tutorProfile = await request(`/users/tutors/${tutor.user.id}`, {
-    token: student.token
+    token: studentToken
   });
 
   if (tutorProfile.id !== tutor.user.id || !Array.isArray(tutorProfile.subjects)) {
@@ -188,10 +196,10 @@ const main = async () => {
 
   const avatarForm = new FormData();
   avatarForm.append('avatar', testImage(), 'avatar.png');
-  const avatarUpload = await request('/upload/avatar', { method: 'POST', token: student.token, body: avatarForm });
+  const avatarUpload = await request('/upload/avatar', { method: 'POST', token: studentToken, body: avatarForm });
   if (!avatarUpload.avatarUrl) throw new Error('Profile picture was not uploaded');
 
-  const profileWithAvatar = await request('/users/profile', { token: student.token });
+  const profileWithAvatar = await request('/users/profile', { token: studentToken });
   if (profileWithAvatar.avatar_url !== avatarUpload.avatarUrl) throw new Error('Uploaded profile picture was not saved');
 
   const applicationForm = new FormData();
@@ -204,6 +212,10 @@ const main = async () => {
   applicationForm.append('availability', 'Saturday mornings');
   applicationForm.append('tutoringMode', 'online');
   applicationForm.append('hourlyRate', '0');
+  applicationForm.append('isAdult', 'true');
+  applicationForm.append('termsAccepted', 'true');
+  applicationForm.append('privacyAccepted', 'true');
+  applicationForm.append('safetyAccepted', 'true');
   applicationForm.append('profilePicture', testImage(), 'profile.png');
   const application = await request('/community/tutor-applications', {
     method: 'POST',
@@ -224,7 +236,7 @@ const main = async () => {
 
   await request('/users/profile', {
     method: 'PUT',
-    token: student.token,
+    token: studentToken,
     body: JSON.stringify({ profile: {
       grade_level: 'College',
       subjects_needed: ['Math'],
@@ -237,23 +249,23 @@ const main = async () => {
 
   const waitlist = await request('/community/waitlist/me', {
     method: 'PUT',
-    token: student.token,
+    token: studentToken,
     body: JSON.stringify({ subjects: ['Math'], gradeLevel: 'College', budgetPreference: 'free', tutoringMode: 'online' })
   });
   if (waitlist.status !== 'open') throw new Error('Student waitlist entry was not created');
 
-  const savedWaitlist = await request('/community/waitlist/me', { token: student.token });
+  const savedWaitlist = await request('/community/waitlist/me', { token: studentToken });
   if (!Array.isArray(savedWaitlist.subjects) || !savedWaitlist.subjects.includes('Math')) {
     throw new Error('Student waitlist entry was not returned');
   }
 
   await request(`/favorites/${tutor.user.id}`, {
     method: 'POST',
-    token: student.token
+    token: studentToken
   });
 
   const favorites = await request('/favorites', {
-    token: student.token
+    token: studentToken
   });
 
   if (!Array.isArray(favorites) || !favorites.some((item) => item.id === tutor.user.id)) {
@@ -262,11 +274,11 @@ const main = async () => {
 
   await request(`/favorites/${tutor.user.id}`, {
     method: 'DELETE',
-    token: student.token
+    token: studentToken
   });
 
   const favoritesAfterDelete = await request('/favorites', {
-    token: student.token
+    token: studentToken
   });
 
   if (favoritesAfterDelete.some((item) => item.id === tutor.user.id)) {
@@ -275,7 +287,7 @@ const main = async () => {
 
   const report = await request('/reports', {
     method: 'POST',
-    token: student.token,
+    token: studentToken,
     body: JSON.stringify({
       reportedUserId: tutor.user.id,
       reason: 'Smoke test report',
@@ -289,7 +301,7 @@ const main = async () => {
 
   const connection = await request('/connections/request', {
     method: 'POST',
-    token: student.token,
+    token: studentToken,
     body: JSON.stringify({ tutorId: tutor.user.id })
   });
 
@@ -321,7 +333,7 @@ const main = async () => {
 
   const session = await request('/sessions', {
     method: 'POST',
-    token: student.token,
+    token: studentToken,
     body: JSON.stringify({
       connectionId: connection.connectionId,
       title: 'Derivative practice',
@@ -340,24 +352,24 @@ const main = async () => {
     });
   }
 
-  const upcomingSessions = await request('/sessions/upcoming?limit=5', { token: student.token });
+  const upcomingSessions = await request('/sessions/upcoming?limit=5', { token: studentToken });
   if (!upcomingSessions.some((item) => item.id === session.id)) throw new Error('Scheduled session was missing from upcoming sessions');
 
-  const completedSession = await request(`/sessions/${session.id}/status`, {
+  const cancelledSession = await request(`/sessions/${session.id}/status`, {
     method: 'PATCH',
     token: tutor.token,
-    body: JSON.stringify({ status: 'completed', notes: 'Strong work on the power rule.' })
+    body: JSON.stringify({ status: 'cancelled', notes: 'Smoke-test cleanup.' })
   });
-  if (completedSession.status !== 'completed') throw new Error('Session status was not updated');
+  if (cancelledSession.status !== 'cancelled') throw new Error('Session cancellation was not saved');
 
-  const notifications = await request('/notifications?limit=20', { token: student.token });
+  const notifications = await request('/notifications?limit=20', { token: studentToken });
   if (!notifications.notifications.some((item) => item.type === 'session_update')) {
     throw new Error('Session update notification was not created');
   }
 
   await request('/messages/send', {
     method: 'POST',
-    token: student.token,
+    token: studentToken,
     body: JSON.stringify({
       connectionId: connection.connectionId,
       content: 'Hello from the smoke test.'
@@ -373,7 +385,7 @@ const main = async () => {
   }
 
   const messageStats = await request('/messages/stats', {
-    token: student.token
+    token: studentToken
   });
 
   if (!messageStats.messagesSent || !messageStats.activeConnections) {
@@ -381,12 +393,21 @@ const main = async () => {
   }
 
   const conversations = await request('/messages', {
-    token: student.token
+    token: studentToken
   });
 
   if (!conversations.some((item) => item.other_user_id === tutor.user.id)) {
     throw new Error('Expected conversations endpoint to include the other user id');
   }
+
+  await request('/users/account', {
+    method: 'DELETE', token: studentToken,
+    body: JSON.stringify({ currentPassword: studentPassword, confirmation: 'DELETE' })
+  });
+  await request('/users/account', {
+    method: 'DELETE', token: tutor.token,
+    body: JSON.stringify({ currentPassword: password, confirmation: 'DELETE' })
+  });
 
   console.log('Smoke test passed');
 };

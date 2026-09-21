@@ -47,10 +47,10 @@ Then run the complete API workflow:
 
 ```bash
 cd backend
-SMOKE_API_URL=https://nextdoorlearn-backend.onrender.com/api npm run smoke
+ALLOW_DIRECT_TUTOR_REGISTRATION=true SMOKE_API_URL=https://your-staging-api/api npm run smoke
 ```
 
-The smoke test creates disposable student and tutor accounts and exercises authentication, profiles, applications, waitlisting, connections, scheduling, progress, notifications, and messaging.
+The mutation smoke test creates and removes disposable student and tutor accounts and exercises authentication, profiles, applications, waitlisting, connections, scheduling, progress, notifications, and messaging. Run it only against local or staging deployments configured to allow direct tutor registration. Production is covered by the read-only `smoke:production` workflow.
 
 ## 3. Vercel Frontend
 
@@ -84,8 +84,20 @@ npm run dev
 
 Local URLs are `http://localhost:5173` for the frontend and `http://localhost:3001/api/health` for backend health.
 
-## 5. Remaining Storage Work
+## 5. Calendar, Video, And Email
 
-Neon makes accounts and application data persistent. Uploaded profile pictures still use Render's temporary filesystem and can disappear during a restart or deploy. Move uploads to Cloudinary, Amazon S3, or another object store before relying on them in production.
+Set the integration variables listed in `render.yaml`. Google OAuth must use this redirect URI:
 
-Also configure `RESEND_API_KEY` and `EMAIL_FROM` before requiring email verification or password-reset email delivery.
+```text
+https://nextdoorlearn-backend.onrender.com/api/google/callback
+```
+
+The Zoom app must be a Server-to-Server OAuth app with permission to create, read, update, and delete meetings for the configured host user. Confirmed sessions create managed rooms automatically; host start links are encrypted and are returned only to the assigned tutor.
+
+Set `RESEND_API_KEY`, `EMAIL_FROM`, and `RESEND_WEBHOOK_SECRET`, verify the sending domain, then change `REQUIRE_EMAIL_VERIFICATION` to `true`.
+
+## 6. Storage
+
+Neon makes accounts, applications, and uploaded profile pictures persistent. Images are currently stored in the database so they survive Render restarts. Move image blobs to S3-compatible object storage when traffic or storage volume warrants it.
+
+Database backups, retention settings, and restore drills still need to be configured in the Neon console.
