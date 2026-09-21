@@ -1,6 +1,7 @@
 const express = require('express');
 const { authenticateToken } = require('../middleware/auth');
 const db = require('../db/database');
+const { isPositiveInteger } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -20,14 +21,18 @@ router.post('/online', authenticateToken, async (req, res) => {
 // Get online users
 router.get('/online', authenticateToken, async (req, res) => {
   try {
-    // Get users who were active in the last 5 minutes
+    // Presence is private to accepted, unblocked connections.
     const onlineUsers = await db.prepare(`
-      SELECT id, name, avatar_url, last_seen, role
-      FROM users 
-      WHERE last_seen > datetime('now', '-5 minutes')
-      AND id != ?
+      SELECT DISTINCT u.id, u.name, u.avatar_url, u.last_seen, u.role
+      FROM users u
+      JOIN connections c ON (c.student_id = ? AND c.tutor_id = u.id)
+        OR (c.tutor_id = ? AND c.student_id = u.id)
+      WHERE u.last_seen > datetime('now', '-5 minutes') AND c.status = 'accepted'
+      AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE
+        (b.blocker_id = c.student_id AND b.blocked_user_id = c.tutor_id) OR
+        (b.blocker_id = c.tutor_id AND b.blocked_user_id = c.student_id))
       ORDER BY last_seen DESC
-    `).all(req.user.userId);
+    `).all(req.user.userId, req.user.userId);
 
     res.json({ onlineUsers });
   } catch (error) {
@@ -40,7 +45,18 @@ router.get('/online', authenticateToken, async (req, res) => {
 router.get('/user/:userId', authenticateToken, async (req, res) => {
   try {
     const { userId } = req.params;
-    
+    if (!isPositiveInteger(userId)) return res.status(400).json({ error: 'Valid user ID is required' });
+
+    const allowed = Number(userId) === Number(req.user.userId) || await db.prepare(`
+      SELECT id FROM connections
+      WHERE status = 'accepted'
+        AND ((student_id = ? AND tutor_id = ?) OR (student_id = ? AND tutor_id = ?))
+        AND NOT EXISTS (SELECT 1 FROM user_blocks b WHERE
+          (b.blocker_id = connections.student_id AND b.blocked_user_id = connections.tutor_id) OR
+          (b.blocker_id = connections.tutor_id AND b.blocked_user_id = connections.student_id))
+    `).get(req.user.userId, userId, userId, req.user.userId);
+    if (!allowed) return res.status(404).json({ error: 'User status not found' });
+
     const user = await db.prepare(`
       SELECT id, name, avatar_url, last_seen, role
       FROM users 

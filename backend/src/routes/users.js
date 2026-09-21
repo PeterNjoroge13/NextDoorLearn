@@ -3,9 +3,25 @@ const bcrypt = require('bcryptjs');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { getAvailabilitySlots } = require('../utils/availability');
-const { isPositiveInteger, isValidHttpUrl, isValidTimeZone, passwordValidationError, sanitizeText } = require('../utils/validation');
+const {
+  isPositiveInteger,
+  isValidHttpUrl,
+  isValidTimeZone,
+  normalizeStringArray,
+  passwordValidationError,
+  sanitizeText
+} = require('../utils/validation');
 
 const router = express.Router();
+
+const optionalNumber = (value, { min, max, integer = false }) => {
+  if (value === undefined) return { value: null };
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < min || numeric > max || (integer && !Number.isInteger(numeric))) {
+    return { error: `Value must be ${integer ? 'a whole number' : 'a number'} between ${min} and ${max}` };
+  }
+  return { value: numeric };
+};
 
 // Get user profile
 router.get('/profile', authenticateToken, async (req, res) => {
@@ -82,6 +98,18 @@ router.put('/profile', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { name, bio, phone, location, timezone, languages, website, linkedin, profile } = req.body;
+    if (name !== undefined && !sanitizeText(name, 120)) {
+      return res.status(400).json({ error: 'Name cannot be empty' });
+    }
+    if (languages !== undefined && !Array.isArray(languages)) {
+      return res.status(400).json({ error: 'Languages must be a list' });
+    }
+    if (profile !== undefined && (!profile || typeof profile !== 'object' || Array.isArray(profile))) {
+      return res.status(400).json({ error: 'Profile must be an object' });
+    }
+    const safeLanguages = languages === undefined
+      ? null
+      : normalizeStringArray(languages, { maxItems: 12, maxLength: 40 });
     const safeWebsite = website === undefined ? null : sanitizeText(website, 500);
     const safeLinkedin = linkedin === undefined ? null : sanitizeText(linkedin, 500);
     if ((safeWebsite && !isValidHttpUrl(safeWebsite)) || (safeLinkedin && !isValidHttpUrl(safeLinkedin))) {
@@ -111,7 +139,7 @@ router.put('/profile', authenticateToken, async (req, res) => {
       phone !== undefined ? sanitizeText(phone, 60) : null,
       location !== undefined ? sanitizeText(location, 160) : null,
       timezone !== undefined ? sanitizeText(timezone, 80) : null,
-      languages ? JSON.stringify(languages) : null,
+      safeLanguages ? JSON.stringify(safeLanguages) : null,
       safeWebsite,
       safeLinkedin,
       userId
@@ -125,6 +153,30 @@ router.put('/profile', authenticateToken, async (req, res) => {
           teaching_style, headline, motivation, tutoring_mode, service_area, max_students,
           availability_notes, age_groups, public_profile_enabled
         } = profile;
+        if (subjects !== undefined && !Array.isArray(subjects)) {
+          return res.status(400).json({ error: 'Subjects must be a list' });
+        }
+        if (certifications !== undefined && !Array.isArray(certifications)) {
+          return res.status(400).json({ error: 'Certifications must be a list' });
+        }
+        if (age_groups !== undefined && !Array.isArray(age_groups)) {
+          return res.status(400).json({ error: 'Age groups must be a list' });
+        }
+        if (availability !== undefined && (!availability || typeof availability !== 'object' || Array.isArray(availability))) {
+          return res.status(400).json({ error: 'Availability must be an object' });
+        }
+        if (availability !== undefined && Buffer.byteLength(JSON.stringify(availability), 'utf8') > 10000) {
+          return res.status(400).json({ error: 'Availability details are too large' });
+        }
+        const safeHourlyRate = optionalNumber(hourly_rate, { min: 0, max: 500 });
+        const safeExperienceYears = optionalNumber(experience_years, { min: 0, max: 80, integer: true });
+        const safeMaxStudents = optionalNumber(max_students, { min: 1, max: 100, integer: true });
+        if (safeHourlyRate.error || safeExperienceYears.error || safeMaxStudents.error) {
+          return res.status(400).json({ error: safeHourlyRate.error || safeExperienceYears.error || safeMaxStudents.error });
+        }
+        if (public_profile_enabled !== undefined && typeof public_profile_enabled !== 'boolean') {
+          return res.status(400).json({ error: 'Public profile setting must be true or false' });
+        }
         const updateTutorProfile = await db.prepare(`
           UPDATE tutor_profiles SET 
             subjects = COALESCE(?, subjects),
@@ -145,20 +197,20 @@ router.put('/profile', authenticateToken, async (req, res) => {
           WHERE user_id = ?
         `);
         await updateTutorProfile.run(
-          subjects ? JSON.stringify(subjects) : null,
-          availability ? JSON.stringify(availability) : null,
-          hourly_rate !== undefined ? hourly_rate : null,
-          experience_years !== undefined ? experience_years : null,
-          education !== undefined ? education : null,
-          certifications !== undefined ? JSON.stringify(Array.isArray(certifications) ? certifications : safeJsonArray(certifications)) : null,
-          teaching_style !== undefined ? teaching_style : null,
-          headline !== undefined ? headline : null,
-          motivation !== undefined ? motivation : null,
-          tutoring_mode !== undefined ? tutoring_mode : null,
-          service_area !== undefined ? service_area : null,
-          max_students !== undefined ? Math.max(1, Number(max_students) || 1) : null,
-          availability_notes !== undefined ? availability_notes : null,
-          age_groups ? JSON.stringify(age_groups) : null,
+          subjects !== undefined ? JSON.stringify(normalizeStringArray(subjects, { maxItems: 20, maxLength: 80 })) : null,
+          availability !== undefined ? JSON.stringify(availability) : null,
+          safeHourlyRate.value,
+          safeExperienceYears.value,
+          education !== undefined ? sanitizeText(education, 1000) : null,
+          certifications !== undefined ? JSON.stringify(normalizeStringArray(certifications, { maxItems: 20, maxLength: 160 })) : null,
+          teaching_style !== undefined ? sanitizeText(teaching_style, 1000) : null,
+          headline !== undefined ? sanitizeText(headline, 160) : null,
+          motivation !== undefined ? sanitizeText(motivation, 2000) : null,
+          tutoring_mode !== undefined ? sanitizeText(tutoring_mode, 40) : null,
+          service_area !== undefined ? sanitizeText(service_area, 160) : null,
+          safeMaxStudents.value,
+          availability_notes !== undefined ? sanitizeText(availability_notes, 1000) : null,
+          age_groups !== undefined ? JSON.stringify(normalizeStringArray(age_groups, { maxItems: 10, maxLength: 60 })) : null,
           public_profile_enabled !== undefined ? (public_profile_enabled ? 1 : 0) : null,
           userId
         );
@@ -168,6 +220,12 @@ router.put('/profile', authenticateToken, async (req, res) => {
           learning_style, support_needs, budget_preference, tutoring_mode,
           accessibility_needs, guardian_name, guardian_contact, intake_completed
         } = profile;
+        if (subjects_needed !== undefined && !Array.isArray(subjects_needed)) {
+          return res.status(400).json({ error: 'Subjects needed must be a list' });
+        }
+        if (intake_completed !== undefined && typeof intake_completed !== 'boolean') {
+          return res.status(400).json({ error: 'Intake completion must be true or false' });
+        }
         const updateStudentProfile = await db.prepare(`
           UPDATE student_profiles SET 
             grade_level = COALESCE(?, grade_level),
@@ -186,18 +244,18 @@ router.put('/profile', authenticateToken, async (req, res) => {
           WHERE user_id = ?
         `);
         await updateStudentProfile.run(
-          grade_level !== undefined ? grade_level : null,
-          subjects_needed ? JSON.stringify(subjects_needed) : null,
-          school !== undefined ? school : null,
-          learning_goals !== undefined ? learning_goals : null,
-          preferred_schedule !== undefined ? preferred_schedule : null,
-          learning_style !== undefined ? learning_style : null,
-          support_needs !== undefined ? support_needs : null,
-          budget_preference !== undefined ? budget_preference : null,
-          tutoring_mode !== undefined ? tutoring_mode : null,
-          accessibility_needs !== undefined ? accessibility_needs : null,
-          guardian_name !== undefined ? guardian_name : null,
-          guardian_contact !== undefined ? guardian_contact : null,
+          grade_level !== undefined ? sanitizeText(grade_level, 80) : null,
+          subjects_needed !== undefined ? JSON.stringify(normalizeStringArray(subjects_needed, { maxItems: 20, maxLength: 80 })) : null,
+          school !== undefined ? sanitizeText(school, 160) : null,
+          learning_goals !== undefined ? sanitizeText(learning_goals, 2000) : null,
+          preferred_schedule !== undefined ? sanitizeText(preferred_schedule, 1000) : null,
+          learning_style !== undefined ? sanitizeText(learning_style, 500) : null,
+          support_needs !== undefined ? sanitizeText(support_needs, 1000) : null,
+          budget_preference !== undefined ? sanitizeText(budget_preference, 40) : null,
+          tutoring_mode !== undefined ? sanitizeText(tutoring_mode, 40) : null,
+          accessibility_needs !== undefined ? sanitizeText(accessibility_needs, 1000) : null,
+          guardian_name !== undefined ? sanitizeText(guardian_name, 120) : null,
+          guardian_contact !== undefined ? sanitizeText(guardian_contact, 160) : null,
           intake_completed ? 1 : 0,
           userId
         );
@@ -410,10 +468,9 @@ router.get('/tutors/:tutorId', authenticateToken, async (req, res) => {
         r.rating,
         r.comment,
         r.created_at,
-        u.name as student_name,
-        u.avatar_url as student_avatar
+        'NextDoorLearn student' as student_name,
+        NULL as student_avatar
       FROM reviews r
-      JOIN users u ON r.student_id = u.id
       WHERE r.tutor_id = ?
       ORDER BY r.created_at DESC
       LIMIT 8

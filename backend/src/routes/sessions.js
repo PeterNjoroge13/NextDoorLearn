@@ -734,37 +734,12 @@ router.patch('/:id/status', async (req, res) => {
 
 // Delete a session
 router.delete('/:id', async (req, res) => {
-  try {
-    const sessionId = req.params.id;
-    const userId = req.user.userId;
-    
-    // Verify user can delete this session
-    const session = await db.prepare(`
-      SELECT * FROM sessions 
-      WHERE id = ? AND (tutor_id = ? OR student_id = ?)
-    `).get(sessionId, userId, userId);
-    
-    if (!session) {
-      return res.status(404).json({ error: 'Session not found' });
-    }
-    
-    // Only allow deletion of scheduled sessions
-    if (session.status !== 'scheduled') {
-      return res.status(400).json({ error: 'Only scheduled sessions can be deleted' });
-    }
-    
-    await syncSessionToGoogle(session, 'delete');
-    await deleteZoomMeeting(session).catch((error) => console.error('Zoom meeting deletion warning:', error.message || error));
-
-    // Delete session
-    const deleteSession = await db.prepare('DELETE FROM sessions WHERE id = ?');
-    await deleteSession.run(sessionId);
-    
-    res.json({ message: 'Session deleted successfully' });
-  } catch (error) {
-    console.error('Delete session error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  if (!isPositiveInteger(req.params.id)) return res.status(400).json({ error: 'Valid session ID is required' });
+  const session = await db.prepare(`
+    SELECT id FROM sessions WHERE id = ? AND (tutor_id = ? OR student_id = ?)
+  `).get(req.params.id, req.user.userId, req.user.userId);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  res.status(405).json({ error: 'Sessions are retained for safety. Cancel the session instead.' });
 });
 
 // Get session statistics

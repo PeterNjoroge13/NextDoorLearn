@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
+const { isPositiveInteger, isValidDate } = require('../utils/validation');
 const {
   getDayOfWeekFromDate,
   normalizeSlots,
@@ -73,7 +74,7 @@ router.get('/tutor/:tutorId', authenticateToken, async (req, res) => {
     const tutorId = Number(req.params.tutorId);
     const { date } = req.query;
 
-    if (!Number.isInteger(tutorId)) {
+    if (!isPositiveInteger(tutorId)) {
       return res.status(400).json({ error: 'Invalid tutor id' });
     }
 
@@ -87,6 +88,7 @@ router.get('/tutor/:tutorId', authenticateToken, async (req, res) => {
       return res.json({ slots });
     }
 
+    if (!isValidDate(date)) return res.status(400).json({ error: 'Date must use YYYY-MM-DD format' });
     const dayOfWeek = getDayOfWeekFromDate(date);
     const slotsForDate = slots.filter((slot) => Number(slot.dayOfWeek) === dayOfWeek);
 

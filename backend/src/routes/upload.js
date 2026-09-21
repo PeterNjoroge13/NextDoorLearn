@@ -6,7 +6,7 @@ const db = require('../db/database');
 const { createImageUpload, detectImageMime, handleSingleImage, removeUploadedFile, uploadRoot } = require('../utils/imageUpload');
 
 const router = express.Router();
-const upload = createImageUpload({ directory: 'avatars', prefix: (req) => `avatar-${req.user.userId}`, maxSizeMb: 10 });
+const upload = createImageUpload({ maxSizeMb: 5 });
 
 // Upload avatar endpoint
 router.post('/avatar', authenticateToken, handleSingleImage(upload, 'avatar'), async (req, res) => {
@@ -75,8 +75,5 @@ router.delete('/avatar', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Error removing profile picture' });
   }
 });
-
-// Serve uploaded files
-router.use('/uploads', express.static(uploadRoot));
 
 module.exports = router;

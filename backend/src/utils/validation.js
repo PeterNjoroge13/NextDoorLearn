@@ -32,6 +32,17 @@ const sanitizeText = (value, maxLength = 1000) => {
   return String(value).trim().slice(0, maxLength);
 };
 
+const normalizeStringArray = (value, { maxItems = 20, maxLength = 100 } = {}) => {
+  if (!Array.isArray(value)) return null;
+  const normalized = [];
+  for (const item of value) {
+    const text = sanitizeText(item, maxLength);
+    if (text && !normalized.includes(text)) normalized.push(text);
+    if (normalized.length >= maxItems) break;
+  }
+  return normalized;
+};
+
 const boundedInteger = (value, { min = 0, max = Number.MAX_SAFE_INTEGER, fallback = min } = {}) => {
   const numeric = Number.parseInt(value, 10);
   return Number.isInteger(numeric) ? Math.min(max, Math.max(min, numeric)) : fallback;
@@ -65,6 +76,7 @@ module.exports = {
   isValidHttpUrl,
   isValidTime,
   isValidTimeZone,
+  normalizeStringArray,
   passwordValidationError,
   sanitizeText
 };

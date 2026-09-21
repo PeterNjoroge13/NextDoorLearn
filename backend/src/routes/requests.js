@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db/database');
 const { authenticateToken, requireVerifiedEmail } = require('../middleware/auth');
 const { usersAreBlocked } = require('../services/safety');
+const { isPositiveInteger } = require('../utils/validation');
 
 const router = express.Router();
 router.use(authenticateToken, requireVerifiedEmail);
@@ -53,7 +54,7 @@ router.post('/:id/respond', async (req, res) => {
     const { action } = req.body; // 'accept' or 'reject'
     const userId = req.user.userId;
 
-    if (!action || !['accept', 'reject'].includes(action)) {
+    if (!isPositiveInteger(id) || !action || !['accept', 'reject'].includes(action)) {
       return res.status(400).json({ error: 'Invalid action. Must be "accept" or "reject"' });
     }
 

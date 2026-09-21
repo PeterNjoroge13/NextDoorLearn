@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const { randomUUID } = require('crypto');
 require('dotenv').config();
 const db = require('./db/database');
 const { providerConfigured } = require('./services/email');
@@ -58,6 +59,11 @@ app.set('trust proxy', 1);
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
+app.use((req, res, next) => {
+  req.requestId = randomUUID();
+  res.setHeader('X-Request-ID', req.requestId);
+  next();
+});
 
 const configuredOrigins = [
   process.env.FRONTEND_URL,
@@ -141,12 +147,43 @@ const publicFormLimiter = rateLimit({
   message: { error: 'Too many submissions. Please try again later.' }
 });
 
+const messageWriteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: Number(process.env.MESSAGE_RATE_LIMIT_MAX || 30),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many messages sent. Please wait a moment.' }
+});
+
+const safetyActionLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: Number(process.env.SAFETY_ACTION_RATE_LIMIT_MAX || 10),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many safety requests. Please try again later or contact support.' }
+});
+
+// Immutable profile media is public and cached; do not spend authenticated API quota on image rendering.
+app.use('/api/media', mediaRoutes);
+
 app.use('/api', apiLimiter);
 app.use('/api/community/tutor-applications', publicFormLimiter);
 app.use('/api/community/sponsor-inquiries', publicFormLimiter);
+app.use('/api/messages/send', messageWriteLimiter);
+app.use('/api/reports', safetyActionLimiter);
+app.use('/api/blocks', safetyActionLimiter);
 
 // Serve static files from uploads directory
-app.use('/uploads', express.static(uploadRoot));
+app.use('/uploads', express.static(uploadRoot, {
+  dotfiles: 'deny',
+  index: false,
+  maxAge: '1y',
+  immutable: true,
+  setHeaders(response) {
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'");
+  }
+}));
 
 // Routes
 app.use('/api/auth', authLimiter, authRoutes);
@@ -170,7 +207,6 @@ app.use('/api/blocks', blockRoutes);
 app.use('/api/recommendations', recommendationRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/devices', deviceRoutes);
-app.use('/api/media', mediaRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {
@@ -199,9 +235,10 @@ app.get('/api/health', async (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   const statusCode = Number(err.statusCode) || 500;
-  if (statusCode >= 500) console.error(err.stack);
+  if (statusCode >= 500) console.error(`[${req.requestId}]`, err.stack);
   res.status(statusCode).json({
-    error: statusCode === 403 ? 'Origin not allowed' : 'Something went wrong!'
+    error: statusCode === 403 ? 'Origin not allowed' : 'Something went wrong!',
+    requestId: req.requestId
   });
 });
 

@@ -127,6 +127,7 @@ router.post('/', authenticateToken, async (req, res) => {
 router.get('/tutor/:tutorId', async (req, res) => {
   try {
     const { tutorId } = req.params;
+    if (!isPositiveInteger(tutorId)) return res.status(400).json({ error: 'Valid tutor ID is required' });
 
     const reviews = await db.prepare(`
       SELECT 
@@ -154,6 +155,7 @@ router.get('/tutor/:tutorId', async (req, res) => {
 router.get('/tutor/:tutorId/average', async (req, res) => {
   try {
     const { tutorId } = req.params;
+    if (!isPositiveInteger(tutorId)) return res.status(400).json({ error: 'Valid tutor ID is required' });
 
     const result = await db.prepare(`
       SELECT 
@@ -178,6 +180,7 @@ router.get('/tutor/:tutorId/my-review', authenticateToken, async (req, res) => {
   try {
     const { tutorId } = req.params;
     const studentId = req.user.userId;
+    if (!isPositiveInteger(tutorId)) return res.status(400).json({ error: 'Valid tutor ID is required' });
 
     const review = await db.prepare(`
       SELECT * FROM reviews
@@ -200,6 +203,7 @@ router.delete('/:reviewId', authenticateToken, async (req, res) => {
   try {
     const { reviewId } = req.params;
     const userId = req.user.userId;
+    if (!isPositiveInteger(reviewId)) return res.status(400).json({ error: 'Valid review ID is required' });
 
     // Check if review exists and belongs to user
     const review = await db.prepare('SELECT * FROM reviews WHERE id = ? AND student_id = ?').get(reviewId, userId);

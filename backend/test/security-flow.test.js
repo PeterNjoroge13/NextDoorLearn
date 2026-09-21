@@ -55,6 +55,7 @@ const server = spawn(process.execPath, ['src/server.js'], {
     ZOOM_CLIENT_ID: 'test-client',
     ZOOM_CLIENT_SECRET: 'test-secret',
     ZOOM_HOST_USER_ID: 'host@example.com',
+    MESSAGE_RATE_LIMIT_MAX: '500',
     ZOOM_TOKEN_URL: `http://127.0.0.1:${zoomPort}/oauth/token`,
     ZOOM_API_BASE_URL: `http://127.0.0.1:${zoomPort}/v2`
   },
@@ -107,6 +108,8 @@ const registrationConsent = {
 
 test('secure tutor activation, matching, session outcomes, reviews, and blocking work end to end', async () => {
   await waitForServer();
+  const health = await fetch(`${base}/health`);
+  assert.match(health.headers.get('x-request-id') || '', /^[0-9a-f-]{36}$/i);
   const expoPreflight = await fetch(`${base}/auth/login`, {
     method: 'OPTIONS',
     headers: {
@@ -282,6 +285,27 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(tutorPhoto.status, 200);
   assert.equal(tutorPhoto.headers.get('content-type'), 'image/png');
 
+  const invalidLanguages = await request('/users/profile', {
+    method: 'PUT', token: adminResponse.body.token, body: { languages: 'English' }
+  });
+  assert.equal(invalidLanguages.status, 400);
+  const invalidTutorRate = await request('/users/profile', {
+    method: 'PUT', token: activated.body.token, body: { profile: { hourly_rate: -1 } }
+  });
+  assert.equal(invalidTutorRate.status, 400);
+  const invalidTutorSubjects = await request('/users/profile', {
+    method: 'PUT', token: activated.body.token, body: { profile: { subjects: 'Math' } }
+  });
+  assert.equal(invalidTutorSubjects.status, 400);
+  const validTutorProfile = await request('/users/profile', {
+    method: 'PUT', token: activated.body.token,
+    body: {
+      languages: ['English', 'English', 'Spanish'],
+      profile: { hourly_rate: 25, experience_years: 3, max_students: 8, subjects: ['Math', 'Physics'] }
+    }
+  });
+  assert.equal(validTutorProfile.status, 200);
+
   const reused = await request('/auth/tutor-activation', {
     method: 'POST', body: { token: approved.body.activationToken, password: 'newpassword123' }
   });
@@ -357,6 +381,10 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     method: 'POST', token: activated.body.token, body: { action: 'accept' }
   });
   assert.equal(accepted.status, 200);
+  const connectedPresence = await request(`/status/user/${activated.body.user.id}`, { token: adminResponse.body.token });
+  assert.equal(connectedPresence.status, 200);
+  const unrelatedPresence = await request(`/status/user/${activated.body.user.id}`, { token: changedPasswordLogin.body.token });
+  assert.equal(unrelatedPresence.status, 404);
 
   const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const scheduledDate = future.toISOString().slice(0, 10);
@@ -371,6 +399,15 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     body: { timezone: 'Not/A_Timezone', slots: [{ dayOfWeek, startTime: '09:00', endTime: '10:00' }] }
   });
   assert.equal(invalidTimezone.status, 400);
+  const oversizedAvailability = await request('/availability/me', {
+    method: 'PUT', token: activated.body.token,
+    body: { timezone: 'UTC', slots: Array.from({ length: 51 }, () => ({ dayOfWeek: 1, startTime: '09:00', endTime: '10:00' })) }
+  });
+  assert.equal(oversizedAvailability.status, 400);
+  const invalidAvailabilityDate = await request(`/availability/tutor/${activated.body.user.id}?date=not-a-date`, {
+    token: adminResponse.body.token
+  });
+  assert.equal(invalidAvailabilityDate.status, 400);
   const studentCustomMeeting = await request('/sessions', {
     method: 'POST', token: adminResponse.body.token,
     body: { connectionId, title: 'Unsafe link attempt', scheduledDate, startTime: '10:00', endTime: '11:00', meetingLink: 'https://student.example/room' }
@@ -453,6 +490,24 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     sessionHistory.body.map((event) => event.event_type),
     ['created', 'confirmed', 'rescheduled', 'confirmed']
   );
+  const outsiderHistory = await request(`/sessions/${session.body.id}/events`, { token: resetPasswordLogin.body.token });
+  assert.equal(outsiderHistory.status, 404);
+  const hardDeleteBlocked = await request(`/sessions/${session.body.id}`, {
+    method: 'DELETE', token: adminResponse.body.token
+  });
+  assert.equal(hardDeleteBlocked.status, 405);
+
+  for (let index = 0; index < 105; index += 1) {
+    const sent = await request('/messages/send', {
+      method: 'POST', token: adminResponse.body.token,
+      body: { connectionId, content: `Bounded message ${index + 1}` }
+    });
+    assert.equal(sent.status, 201);
+  }
+  const boundedMessages = await request(`/messages/${connectionId}`, { token: adminResponse.body.token });
+  assert.equal(boundedMessages.status, 200);
+  assert.equal(boundedMessages.body.length, 100);
+  assert.equal(boundedMessages.body[0].content, 'Bounded message 6');
 
   const earlyOutcome = await request(`/sessions/${session.body.id}/outcome`, {
     method: 'PATCH', token: activated.body.token,
@@ -513,6 +568,10 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(publicReviews.status, 200);
   assert.equal(publicReviews.body[0].student_name, 'NextDoorLearn student');
   assert.equal(publicReviews.body[0].student_id, undefined);
+  const tutorDetail = await request(`/users/tutors/${activated.body.user.id}`, { token: adminResponse.body.token });
+  assert.equal(tutorDetail.status, 200);
+  assert.equal(tutorDetail.body.reviews[0].student_name, 'NextDoorLearn student');
+  assert.equal(tutorDetail.body.reviews[0].student_avatar, null);
   const sessionStats = await request('/sessions/stats', { token: activated.body.token });
   assert.equal(sessionStats.status, 200);
   assert.equal(sessionStats.body.completed_sessions, 1);
@@ -534,6 +593,14 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.ok(outbox.body.emails.some((email) => email.template === 'session_requested'));
   assert.ok(outbox.body.emails.some((email) => email.template === 'session_confirmed'));
   assert.ok(outbox.body.emails.some((email) => email.template === 'session_cancelled'));
+  const readAllNotifications = await request('/notifications/read-all', {
+    method: 'PATCH', token: adminResponse.body.token
+  });
+  assert.equal(readAllNotifications.status, 200);
+  const clearReadNotifications = await request('/notifications/clear/read', {
+    method: 'DELETE', token: adminResponse.body.token
+  });
+  assert.equal(clearReadNotifications.status, 200);
   const audit = await request('/admin/audit-log', { token: adminResponse.body.token });
   assert.ok(audit.body.some((entry) => entry.action === 'tutor_application.approved'));
   assert.ok(audit.body.some((entry) => entry.action === 'waitlist.matched'));

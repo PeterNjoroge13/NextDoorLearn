@@ -18,14 +18,14 @@ This file tracks production work that can be completed without external account 
 
 ## Priority 1: Security Review
 
-- [ ] Audit every authenticated route for object-level authorization and role enforcement.
-- [ ] Validate all identifiers, status transitions, URLs, dates, times, pagination, and uploaded files.
-- [ ] Review authentication, refresh-token rotation, password recovery, logout, and session revocation.
-- [ ] Ensure private reflections, meeting host links, contact details, and integration tokens never leak.
-- [ ] Add request correlation IDs and safer structured production error logging.
-- [ ] Review rate limits for authentication, public forms, messaging, uploads, and reports.
-- [ ] Run dependency audits and resolve production-relevant vulnerabilities where upgrades are safe.
-- [ ] Add regression tests for cross-user access, blocked-user behavior, and sensitive fields.
+- [x] Audit authenticated routes for object-level authorization and role enforcement.
+- [x] Validate identifiers, status transitions, URLs, dates, times, pagination, profile inputs, and uploaded files.
+- [x] Review authentication, refresh-token rotation, password recovery, logout, and session revocation.
+- [x] Keep private reflections, meeting host links, student identities, contact details, and integration tokens out of unauthorized responses.
+- [x] Add request correlation IDs and safer structured production error logging.
+- [x] Add focused rate limits for authentication, public forms, messaging, uploads, reports, and blocks.
+- [x] Run dependency audits and avoid unsafe forced downgrades for transitive Expo tooling advisories.
+- [x] Add regression tests for cross-user access, blocked-user behavior, bounded history, and sensitive fields.
 
 ## Priority 1: Mobile Production Preparation
 

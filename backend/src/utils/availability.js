@@ -28,6 +28,9 @@ const normalizeSlots = (slots = [], timezone = null) => {
   if (!Array.isArray(slots)) {
     return { error: 'Slots must be an array' };
   }
+  if (slots.length > 50) {
+    return { error: 'Availability is limited to 50 weekly time slots' };
+  }
 
   const normalized = [];
   for (const slot of slots) {

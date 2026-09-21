@@ -136,11 +136,15 @@ router.get('/:connectionId', async (req, res) => {
 
     // Get messages with read status
     const messages = await db.prepare(`
-      SELECT m.id, m.content, m.timestamp, m.read_at, m.sender_id, u.name as sender_name
-      FROM messages m
-      JOIN users u ON m.sender_id = u.id
-      WHERE m.connection_id = ?
-      ORDER BY m.timestamp ASC
+      SELECT * FROM (
+        SELECT m.id, m.content, m.timestamp, m.read_at, m.sender_id, u.name as sender_name
+        FROM messages m
+        JOIN users u ON m.sender_id = u.id
+        WHERE m.connection_id = ?
+        ORDER BY m.timestamp DESC, m.id DESC
+        LIMIT 100
+      ) recent_messages
+      ORDER BY timestamp ASC, id ASC
     `).all(connectionId);
 
     // Mark messages as read for the current user (except their own messages)

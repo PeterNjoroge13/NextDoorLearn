@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
-const { boundedInteger } = require('../utils/validation');
+const { boundedInteger, isPositiveInteger } = require('../utils/validation');
 
 const router = express.Router();
 
@@ -72,11 +72,35 @@ router.get('/unread-count', authenticateToken, async (req, res) => {
   }
 });
 
+// Static collection routes must be declared before routes with ID parameters.
+router.patch('/read-all', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    await db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(userId);
+    res.json({ message: 'All notifications marked as read' });
+  } catch (error) {
+    console.error('Mark all read error:', error);
+    res.status(500).json({ error: 'Failed to mark all as read' });
+  }
+});
+
+router.delete('/clear/read', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    await db.prepare('DELETE FROM notifications WHERE user_id = ? AND is_read = 1').run(userId);
+    res.json({ message: 'Read notifications cleared' });
+  } catch (error) {
+    console.error('Clear read notifications error:', error);
+    res.status(500).json({ error: 'Failed to clear notifications' });
+  }
+});
+
 // Mark notification as read
 router.patch('/:id/read', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.userId;
+    if (!isPositiveInteger(id)) return res.status(400).json({ error: 'Valid notification ID is required' });
 
     const notification = await db.prepare(
       'SELECT * FROM notifications WHERE id = ? AND user_id = ?'
@@ -95,23 +119,12 @@ router.patch('/:id/read', authenticateToken, async (req, res) => {
   }
 });
 
-// Mark all notifications as read
-router.patch('/read-all', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    await db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(userId);
-    res.json({ message: 'All notifications marked as read' });
-  } catch (error) {
-    console.error('Mark all read error:', error);
-    res.status(500).json({ error: 'Failed to mark all as read' });
-  }
-});
-
 // Delete a notification
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.userId;
+    if (!isPositiveInteger(id)) return res.status(400).json({ error: 'Valid notification ID is required' });
 
     const notification = await db.prepare(
       'SELECT * FROM notifications WHERE id = ? AND user_id = ?'
@@ -122,23 +135,10 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     }
 
     await db.prepare('DELETE FROM notifications WHERE id = ?').run(id);
-
     res.json({ message: 'Notification deleted' });
   } catch (error) {
     console.error('Delete notification error:', error);
     res.status(500).json({ error: 'Failed to delete notification' });
-  }
-});
-
-// Delete all read notifications
-router.delete('/clear/read', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    await db.prepare('DELETE FROM notifications WHERE user_id = ? AND is_read = 1').run(userId);
-    res.json({ message: 'Read notifications cleared' });
-  } catch (error) {
-    console.error('Clear read notifications error:', error);
-    res.status(500).json({ error: 'Failed to clear notifications' });
   }
 });
 
