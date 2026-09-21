@@ -391,7 +391,7 @@ router.post('/', async (req, res) => {
       return res.status(403).json({ error: 'Only the tutor can provide a custom meeting link' });
     }
     
-    const { durationMinutes } = await getScheduleDetails({
+    const { durationMinutes, timezone } = await getScheduleDetails({
       tutorId: connection.tutor_id, scheduledDate, startTime, endTime
     });
     
@@ -404,12 +404,12 @@ router.post('/', async (req, res) => {
       const insertResult = await transaction.prepare(`
         INSERT INTO sessions (
           connection_id, tutor_id, student_id, title, description, subject,
-          scheduled_date, start_time, end_time, duration_minutes, meeting_link,
+          scheduled_date, start_time, end_time, session_timezone, duration_minutes, meeting_link,
           requested_by, confirmation_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         connectionId, connection.tutor_id, connection.student_id, safeTitle, safeDescription,
-        safeSubject, scheduledDate, startTime, endTime, durationMinutes, safeMeetingLink,
+        safeSubject, scheduledDate, startTime, endTime, timezone, durationMinutes, safeMeetingLink,
         userId, confirmationStatus
       );
       await recordSessionEvent(
@@ -498,7 +498,7 @@ router.patch('/:id/reschedule', async (req, res) => {
       return res.status(400).json({ error: 'Choose a different date or time' });
     }
 
-    const { durationMinutes } = await getScheduleDetails({
+    const { durationMinutes, timezone } = await getScheduleDetails({
       tutorId: session.tutor_id, scheduledDate, startTime, endTime
     });
     const confirmationStatus = Number(userId) === Number(session.tutor_id) ? 'confirmed' : 'pending';
@@ -509,12 +509,12 @@ router.patch('/:id/reschedule', async (req, res) => {
         scheduledDate, startTime, endTime, excludeSessionId: sessionId
       });
       await transaction.prepare(`
-        UPDATE sessions SET scheduled_date = ?, start_time = ?, end_time = ?, duration_minutes = ?,
+        UPDATE sessions SET scheduled_date = ?, start_time = ?, end_time = ?, session_timezone = ?, duration_minutes = ?,
           requested_by = ?, confirmation_status = ?, reschedule_count = COALESCE(reschedule_count, 0) + 1,
           last_rescheduled_at = CURRENT_TIMESTAMP, starts_at = NULL, ends_at = NULL,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(scheduledDate, startTime, endTime, durationMinutes, userId, confirmationStatus, sessionId);
+      `).run(scheduledDate, startTime, endTime, timezone, durationMinutes, userId, confirmationStatus, sessionId);
       await transaction.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
       await recordSessionEvent(
         transaction, sessionId, userId, 'rescheduled', sessionState(session),

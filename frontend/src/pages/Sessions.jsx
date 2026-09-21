@@ -31,6 +31,7 @@ const Sessions = () => {
   const [cancelSession, setCancelSession] = useState(null);
   const [outcomeSession, setOutcomeSession] = useState(null);
   const [reviewSession, setReviewSession] = useState(null);
+  const [availabilityPreview, setAvailabilityPreview] = useState({ loading: false, timezone: '', slots: [] });
   const [outcomeForm, setOutcomeForm] = useState({
     attendance: 'completed', tutorSummary: '', skillsPracticed: '', nextSteps: '',
     studentReflection: '', confidenceBefore: 3, confidenceAfter: 3,
@@ -81,6 +82,29 @@ const Sessions = () => {
   }, [fetchSessions]);
 
   useEffect(() => {
+    const isRescheduling = Boolean(rescheduleSession);
+    const date = isRescheduling ? rescheduleForm.scheduledDate : formData.scheduledDate;
+    const connection = connections.find((item) => Number(item.id) === Number(formData.connectionId));
+    const tutorId = isRescheduling
+      ? rescheduleSession?.tutor_id
+      : user?.role === 'tutor' ? user.id : connection?.tutor_id;
+    if ((!showCreateModal && !isRescheduling) || !tutorId || !/^\d{4}-\d{2}-\d{2}$/.test(date || '')) {
+      setAvailabilityPreview({ loading: false, timezone: '', slots: [] });
+      return undefined;
+    }
+    let active = true;
+    setAvailabilityPreview((current) => ({ ...current, loading: true }));
+    api.getTutorAvailability(tutorId, date, localStorage.getItem('token'))
+      .then((response) => {
+        if (!active) return;
+        if (response.error) setActionError(response.error);
+        else setAvailabilityPreview({ loading: false, timezone: response.timezone || 'UTC', slots: response.slots || [] });
+      })
+      .catch(() => { if (active) setActionError('Tutor availability could not be loaded.'); });
+    return () => { active = false; };
+  }, [connections, formData.connectionId, formData.scheduledDate, rescheduleForm.scheduledDate, rescheduleSession, showCreateModal, user?.id, user?.role]);
+
+  useEffect(() => {
     const url = new URL(window.location.href);
     const result = url.searchParams.get('googleSync');
     if (!result) return;
@@ -115,6 +139,15 @@ const Sessions = () => {
     } catch {
       setActionError('The session could not be scheduled. Please try again.');
     }
+  };
+
+  const choosePublishedSlot = (slot, target = 'create') => {
+    if (target === 'reschedule') {
+      setRescheduleForm((current) => ({ ...current, startTime: slot.startTime, endTime: slot.endTime }));
+    } else {
+      setFormData((current) => ({ ...current, startTime: slot.startTime, endTime: slot.endTime }));
+    }
+    setActionError('');
   };
 
   const openReschedule = (session) => {
@@ -423,7 +456,7 @@ const Sessions = () => {
                       <div>
                         <h2 style={{ fontSize: '1.18rem' }}>{session.title || session.subject || 'Tutoring session'}</h2>
                         <p className="muted">
-                          {session.scheduled_date} from {session.start_time} to {session.end_time}
+                          {session.scheduled_date} from {session.start_time} to {session.end_time} ({session.session_timezone || 'UTC'})
                         </p>
                         {session.description ? <p className="page-copy">{session.description}</p> : null}
                         <p className="muted">{user?.role === 'tutor' ? `Student: ${session.student_name}` : `Tutor: ${session.tutor_name}`}</p>
@@ -548,6 +581,11 @@ const Sessions = () => {
                   <input type="time" value={formData.endTime} onChange={(event) => setFormData((current) => ({ ...current, endTime: event.target.value }))} required />
                 </div>
               </div>
+              {formData.scheduledDate && formData.connectionId ? <div className="alert" role="status">
+                <strong>{availabilityPreview.loading ? 'Checking tutor availability...' : availabilityPreview.slots.length ? 'Published availability' : 'No published window for this day'}</strong>
+                {!availabilityPreview.loading ? <p>Times use the tutor&apos;s timezone: {availabilityPreview.timezone || 'UTC'}.</p> : null}
+                {availabilityPreview.slots.length ? <div className="button-row">{availabilityPreview.slots.map((slot, index) => <button className="btn btn-ghost btn-sm" type="button" key={slot.id || `${slot.startTime}-${index}`} onClick={() => choosePublishedSlot(slot)}>{slot.startTime} - {slot.endTime}</button>)}</div> : null}
+              </div> : null}
               {user?.role === 'tutor' ? <div className="field">
                 <label>Custom meeting link <span className="muted">(optional)</span></label>
                 <input value={formData.meetingLink} onChange={(event) => setFormData((current) => ({ ...current, meetingLink: event.target.value }))} placeholder="Leave blank to use the managed Zoom room" />
@@ -580,6 +618,11 @@ const Sessions = () => {
                 <div className="field"><label htmlFor="reschedule-start">Start</label><input id="reschedule-start" type="time" value={rescheduleForm.startTime} onChange={(event) => setRescheduleForm((current) => ({ ...current, startTime: event.target.value }))} required /></div>
                 <div className="field"><label htmlFor="reschedule-end">End</label><input id="reschedule-end" type="time" value={rescheduleForm.endTime} onChange={(event) => setRescheduleForm((current) => ({ ...current, endTime: event.target.value }))} required /></div>
               </div>
+              {rescheduleForm.scheduledDate ? <div className="alert" role="status">
+                <strong>{availabilityPreview.loading ? 'Checking tutor availability...' : availabilityPreview.slots.length ? 'Published availability' : 'No published window for this day'}</strong>
+                {!availabilityPreview.loading ? <p>Times use the tutor&apos;s timezone: {availabilityPreview.timezone || rescheduleSession.session_timezone || 'UTC'}.</p> : null}
+                {availabilityPreview.slots.length ? <div className="button-row">{availabilityPreview.slots.map((slot, index) => <button className="btn btn-ghost btn-sm" type="button" key={slot.id || `${slot.startTime}-${index}`} onClick={() => choosePublishedSlot(slot, 'reschedule')}>{slot.startTime} - {slot.endTime}</button>)}</div> : null}
+              </div> : null}
               <div className="field"><label htmlFor="reschedule-reason">Why are you changing the time?</label><textarea id="reschedule-reason" value={rescheduleForm.reason} onChange={(event) => setRescheduleForm((current) => ({ ...current, reason: event.target.value }))} maxLength="500" required placeholder="A brief reason helps the other person understand the change." /></div>
               {actionError ? <div className="alert alert-error" role="alert">{actionError}</div> : null}
               <div className="button-row"><button className="btn btn-primary" type="submit"><CalendarClock size={17} />Save new time</button><button className="btn btn-ghost" type="button" onClick={() => setRescheduleSession(null)}>Keep current time</button></div>

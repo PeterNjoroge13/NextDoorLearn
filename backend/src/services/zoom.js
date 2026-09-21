@@ -115,8 +115,8 @@ const provisionZoomMeeting = async (session, { force = false } = {}) => {
     if (existing?.provider_meeting_id && force) {
       await deleteZoomMeeting(session).catch(() => null);
     }
-    const tutor = await db.prepare('SELECT timezone FROM users WHERE id = ?').get(session.tutor_id);
-    const payload = buildZoomMeetingPayload(session, tutor?.timezone || 'UTC');
+    const timezone = session.session_timezone || (await db.prepare('SELECT timezone FROM users WHERE id = ?').get(session.tutor_id))?.timezone || 'UTC';
+    const payload = buildZoomMeetingPayload(session, timezone);
     const hostUser = encodeURIComponent(process.env.ZOOM_HOST_USER_ID);
     const meeting = await callZoomApi(`/users/${hostUser}/meetings`, {
       method: 'POST',

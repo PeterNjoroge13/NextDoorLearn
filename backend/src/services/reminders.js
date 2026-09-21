@@ -19,9 +19,9 @@ const zonedTimeToUtc = (date, time, timeZone = 'UTC') => {
 };
 
 const scheduleSessionReminders = async (session) => {
-  const tutor = await db.prepare('SELECT timezone FROM users WHERE id = ?').get(session.tutor_id);
-  const startsAt = zonedTimeToUtc(session.scheduled_date, session.start_time, tutor?.timezone || 'UTC');
-  const endsAt = zonedTimeToUtc(session.scheduled_date, session.end_time, tutor?.timezone || 'UTC');
+  const timezone = session.session_timezone || (await db.prepare('SELECT timezone FROM users WHERE id = ?').get(session.tutor_id))?.timezone || 'UTC';
+  const startsAt = zonedTimeToUtc(session.scheduled_date, session.start_time, timezone);
+  const endsAt = zonedTimeToUtc(session.scheduled_date, session.end_time, timezone);
   await db.prepare('UPDATE sessions SET starts_at = ?, ends_at = ? WHERE id = ?').run(startsAt.toISOString(), endsAt.toISOString(), session.id);
 
   for (const userId of [session.student_id, session.tutor_id]) {

@@ -22,7 +22,8 @@ router.get('/me', authenticateToken, async (req, res) => {
   try {
     if (!requireTutorRole(req, res)) return;
     const slots = await getAvailabilitySlots(req.user.userId);
-    res.json({ slots });
+    const user = await db.prepare('SELECT timezone FROM users WHERE id = ?').get(req.user.userId);
+    res.json({ slots, timezone: user?.timezone || slots[0]?.timezone || 'UTC' });
   } catch (error) {
     console.error('Get my availability error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -62,7 +63,7 @@ router.put('/me', authenticateToken, async (req, res) => {
     }
 
     const freshSlots = await getAvailabilitySlots(userId);
-    res.json({ message: 'Availability updated successfully', slots: freshSlots });
+    res.json({ message: 'Availability updated successfully', slots: freshSlots, timezone: timezone || freshSlots[0]?.timezone || 'UTC' });
   } catch (error) {
     console.error('Update availability error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -78,14 +79,14 @@ router.get('/tutor/:tutorId', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Invalid tutor id' });
     }
 
-    const tutor = await db.prepare('SELECT id, role FROM users WHERE id = ?').get(tutorId);
+    const tutor = await db.prepare('SELECT id, role, timezone FROM users WHERE id = ?').get(tutorId);
     if (!tutor || tutor.role !== 'tutor') {
       return res.status(404).json({ error: 'Tutor not found' });
     }
 
     const slots = await getAvailabilitySlots(tutorId);
     if (!date) {
-      return res.json({ slots });
+      return res.json({ slots, timezone: tutor.timezone || slots[0]?.timezone || 'UTC' });
     }
 
     if (!isValidDate(date)) return res.status(400).json({ error: 'Date must use YYYY-MM-DD format' });
@@ -95,6 +96,7 @@ router.get('/tutor/:tutorId', authenticateToken, async (req, res) => {
     res.json({
       date,
       dayOfWeek,
+      timezone: tutor.timezone || slots[0]?.timezone || 'UTC',
       slots: slotsForDate
     });
   } catch (error) {

@@ -178,8 +178,8 @@ const buildEventPayload = (session, timezone = null) => ({
     .filter(Boolean)
     .join('\n'),
   location: session.meeting_link || undefined,
-  start: { dateTime: toDateTime(session.scheduled_date, session.start_time), timeZone: timezone || 'UTC' },
-  end: { dateTime: toDateTime(session.scheduled_date, session.end_time), timeZone: timezone || 'UTC' }
+  start: { dateTime: toDateTime(session.scheduled_date, session.start_time), timeZone: session.session_timezone || timezone || 'UTC' },
+  end: { dateTime: toDateTime(session.scheduled_date, session.end_time), timeZone: session.session_timezone || timezone || 'UTC' }
 });
 
 const getSessionGoogleEvent = async (sessionId, userId) => await db.prepare(`
@@ -218,8 +218,7 @@ const syncSessionToGoogle = async (session, action = 'upsert') => {
         continue;
       }
 
-      const timezoneRecord = await db.prepare('SELECT timezone FROM users WHERE id = ?').get(participant.userId);
-      const eventPayload = buildEventPayload(session, timezoneRecord?.timezone || null);
+      const eventPayload = buildEventPayload(session);
       const calendarId = participant.client.integration.calendar_id || 'primary';
       const existingEvent = await getSessionGoogleEvent(session.id, participant.userId);
 

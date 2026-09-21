@@ -135,6 +135,7 @@ export default function SessionDetailScreen() {
       <View style={styles.heroCopy}>
         <Text style={styles.title}>{item.title}</Text>
         <Text style={styles.meta}>{String(item.scheduled_date).slice(0, 10)} · {String(item.start_time).slice(0, 5)}–{String(item.end_time).slice(0, 5)}</Text>
+        <Text style={styles.timezone}>Tutor timezone: {item.session_timezone || 'UTC'}</Text>
       </View>
       <Chip label={displayStatus} tone={item.confirmation_status === 'pending' ? 'gold' : item.status === 'cancelled' ? 'coral' : 'brand'} />
     </View>
@@ -227,6 +228,7 @@ const styles = StyleSheet.create({
   heroCopy: { flex: 1, gap: 3 },
   title: { color: colors.ink, fontFamily: typography.bold, fontSize: 23 },
   meta: { color: colors.muted, fontFamily: typography.regular, fontSize: 12 },
+  timezone: { color: colors.brandStrong, fontFamily: typography.medium, fontSize: 11 },
   notice: { color: colors.brandStrong, fontFamily: typography.medium },
   section: { color: colors.ink, fontFamily: typography.bold, fontSize: 17 },
   person: { color: colors.ink, fontFamily: typography.medium, fontSize: 15 },

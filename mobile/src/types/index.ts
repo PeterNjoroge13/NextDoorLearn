@@ -44,6 +44,7 @@ export type Session = {
   scheduled_date: string;
   start_time: string;
   end_time: string;
+  session_timezone?: string;
   status: string;
   confirmation_status?: string;
   meeting_link?: string;

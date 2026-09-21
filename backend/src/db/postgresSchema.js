@@ -169,6 +169,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   scheduled_date DATE NOT NULL,
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
+  session_timezone TEXT NOT NULL DEFAULT 'UTC',
   duration_minutes INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'completed', 'cancelled', 'no_show')),
   meeting_link TEXT,

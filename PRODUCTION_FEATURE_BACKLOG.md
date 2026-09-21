@@ -12,7 +12,7 @@ This file tracks production work that can be completed without external account 
 - [x] Notify the other participant and require confirmation when a student proposes a new time.
 - [x] Refresh reminders, Google Calendar events, and managed Zoom meetings after rescheduling.
 - [x] Add cancellation reasons and retain a useful audit trail.
-- [ ] Make time-zone ownership explicit throughout booking and session displays.
+- [x] Persist the tutor timezone on each booking and show it throughout availability, booking, and session displays.
 - [x] Improve session detail states for pending, confirmed, cancelled, completed, and no-show sessions.
 - [x] Add backend tests for overlapping sessions, invalid transitions, blocked users, and rescheduling.
 
@@ -44,19 +44,19 @@ This file tracks production work that can be completed without external account 
 - [ ] Verify responsive behavior across compact mobile, tablet, laptop, and wide desktop layouts.
 - [ ] Improve accessibility semantics, focus states, contrast, keyboard navigation, and reduced motion.
 - [ ] Remove layout shifts and text overflow in navigation, cards, dialogs, forms, and dashboards.
-- [ ] Make dates, times, time zones, prices, statuses, and role labels consistent everywhere.
+- [x] Make booking timezones, prices, statuses, and role labels explicit across web and mobile.
 - [ ] Add clear recovery paths when the API, integrations, or session data are unavailable.
 - [ ] Audit performance, image sizing, route loading, and unnecessary network requests.
 
 ## Priority 1: Tutor And Student Improvements
 
-- [ ] Keep student and tutor dashboards distinct, task-focused, and role appropriate.
-- [ ] Improve onboarding progress and explain the next useful action for each role.
-- [ ] Show transparent matching reasons without exposing private profile information.
-- [ ] Improve tutor availability management and student slot selection.
-- [ ] Expand learning goals, milestones, session notes, reflections, and progress history.
-- [ ] Improve tutor application, approval, activation, public profile, review, and trust indicators.
-- [ ] Add clear safety access to block, report, support, and moderation outcomes.
+- [x] Keep student and tutor dashboards distinct, task-focused, and role appropriate.
+- [x] Show onboarding progress and the next useful action for each role.
+- [x] Show transparent matching reasons without exposing private profile information.
+- [x] Improve tutor availability management and add published-window selection during booking.
+- [x] Support learning goals, milestones, session notes, private reflections, and progress history.
+- [x] Support tutor application, approval, activation, public profiles, reviews, and trust indicators.
+- [x] Add clear safety access to block, report, support, and moderation outcomes.
 - [ ] Improve notification preferences and reduce duplicate or low-value alerts.
 
 ## Continuous Release Quality

@@ -394,6 +394,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     body: { timezone: 'UTC', slots: [{ dayOfWeek, startTime: '00:00', endTime: '12:00' }] }
   });
   assert.equal(availability.status, 200);
+  assert.equal(availability.body.timezone, 'UTC');
   const invalidTimezone = await request('/availability/me', {
     method: 'PUT', token: activated.body.token,
     body: { timezone: 'Not/A_Timezone', slots: [{ dayOfWeek, startTime: '09:00', endTime: '10:00' }] }
@@ -424,6 +425,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   });
   assert.equal(session.status, 201);
   assert.equal(session.body.confirmation_status, 'pending');
+  assert.equal(session.body.session_timezone, 'UTC');
   const beforeConfirmation = await request('/sessions/upcoming', { token: adminResponse.body.token });
   assert.ok(!beforeConfirmation.body.some((item) => item.id === session.body.id));
   const confirmed = await request(`/sessions/${session.body.id}/confirmation`, {

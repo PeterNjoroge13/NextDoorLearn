@@ -334,6 +334,20 @@ const migrations = [
           ON session_events(session_id, created_at);
       `);
     }
+  },
+  {
+    version: '012_session_timezone',
+    async up(db) {
+      await addColumn(db, 'sessions', 'session_timezone', "TEXT NOT NULL DEFAULT 'UTC'");
+      await db.exec(`
+        UPDATE sessions
+        SET session_timezone = COALESCE(
+          (SELECT timezone FROM users WHERE users.id = sessions.tutor_id),
+          'UTC'
+        )
+        WHERE session_timezone IS NULL OR session_timezone = 'UTC'
+      `);
+    }
   }
 ];
 

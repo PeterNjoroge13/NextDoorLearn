@@ -8,7 +8,7 @@ const sessionUrl = () => `${process.env.FRONTEND_URL || 'http://localhost:5173'}
 const formatWhen = (session, timezone = 'UTC') => {
   const startsAt = session.starts_at
     ? new Date(session.starts_at)
-    : zonedTimeToUtc(session.scheduled_date, session.start_time, timezone);
+    : zonedTimeToUtc(session.scheduled_date, session.start_time, session.session_timezone || 'UTC');
   try {
     return startsAt.toLocaleString('en-US', {
       dateStyle: 'medium',
