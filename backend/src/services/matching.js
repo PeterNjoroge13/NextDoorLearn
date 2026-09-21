@@ -1,5 +1,6 @@
 const db = require('../db/database');
 const { getAvailabilitySlots } = require('../utils/availability');
+const { budgetLimit } = require('../utils/pricing');
 
 const parseList = (value) => {
   if (Array.isArray(value)) return value;
@@ -34,12 +35,14 @@ const scoreTutor = (tutor, student, slots) => {
     points += 12;
     reasons.push(`Supports ${student.grade_level} learners`);
   }
-  const wantsAffordable = /free|volunteer|low|under 20|affordable/i.test(student.budget_preference || '');
+  const maximumRate = budgetLimit(student.budget_preference);
+  const wantsAffordable = maximumRate < 25;
   if (Number(tutor.hourly_rate || 0) === 0) {
     points += wantsAffordable ? 16 : 10;
     reasons.push('Volunteer tutor');
-  } else if (!wantsAffordable) {
-    points += 7;
+  } else if (Number(tutor.hourly_rate || 0) <= maximumRate) {
+    points += wantsAffordable ? 10 : 7;
+    reasons.push(`Within your $${maximumRate}/hr budget`);
   }
   if (slots.length) {
     points += 8;
@@ -54,6 +57,7 @@ const scoreTutor = (tutor, student, slots) => {
 };
 
 const getTutorRecommendations = async ({ studentId, student = {}, limit = 12 }) => {
+  const maximumRate = budgetLimit(student.budget_preference);
   const tutors = await db.prepare(`
     SELECT u.id, u.name, u.bio, u.avatar_url, u.location, u.languages,
       tp.subjects, tp.hourly_rate, tp.experience_years, tp.education, tp.teaching_style,
@@ -75,6 +79,7 @@ const getTutorRecommendations = async ({ studentId, student = {}, limit = 12 }) 
 
   const recommendations = [];
   for (const tutor of tutors) {
+    if (Number(tutor.hourly_rate || 0) > maximumRate) continue;
     const slots = await getAvailabilitySlots(tutor.id);
     recommendations.push({
       ...tutor,

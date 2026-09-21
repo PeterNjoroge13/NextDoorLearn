@@ -255,6 +255,19 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   });
   assert.equal(bypass.status, 403);
 
+  const excessiveRateApplication = new FormData();
+  Object.entries({
+    name: 'Expensive Tutor', email: 'expensive@example.com', subjects: 'Math',
+    education: 'College student', motivation: 'I want to help students.', availability: 'Weekends',
+    tutoringMode: 'online', hourlyRate: '26', isAdult: 'true', termsAccepted: 'true',
+    privacyAccepted: 'true', safetyAccepted: 'true'
+  }).forEach(([key, value]) => excessiveRateApplication.append(key, value));
+  excessiveRateApplication.append('profilePicture', imageBlob(), 'profile.png');
+  const rejectedExpensiveApplication = await request('/community/tutor-applications', {
+    method: 'POST', body: excessiveRateApplication
+  });
+  assert.equal(rejectedExpensiveApplication.status, 400);
+
   const application = new FormData();
   Object.entries({
     name: 'Approved Tutor', email: 'approved@example.com', subjects: 'Math,Physics',
@@ -289,10 +302,18 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     method: 'PUT', token: adminResponse.body.token, body: { languages: 'English' }
   });
   assert.equal(invalidLanguages.status, 400);
+  const invalidStudentBudget = await request('/users/profile', {
+    method: 'PUT', token: adminResponse.body.token, body: { profile: { budget_preference: 'under-100' } }
+  });
+  assert.equal(invalidStudentBudget.status, 400);
   const invalidTutorRate = await request('/users/profile', {
     method: 'PUT', token: activated.body.token, body: { profile: { hourly_rate: -1 } }
   });
   assert.equal(invalidTutorRate.status, 400);
+  const excessiveTutorRate = await request('/users/profile', {
+    method: 'PUT', token: activated.body.token, body: { profile: { hourly_rate: 26 } }
+  });
+  assert.equal(excessiveTutorRate.status, 400);
   const invalidTutorSubjects = await request('/users/profile', {
     method: 'PUT', token: activated.body.token, body: { profile: { subjects: 'Math' } }
   });
@@ -314,6 +335,17 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   const recommendations = await request('/recommendations', { token: adminResponse.body.token });
   assert.ok(recommendations.body.recommendations.some((tutor) => tutor.id === activated.body.user.id));
 
+  const freeOnlyProfile = await request('/users/profile', {
+    method: 'PUT', token: adminResponse.body.token, body: { profile: { budget_preference: 'free' } }
+  });
+  assert.equal(freeOnlyProfile.status, 200);
+  const freeOnlyRecommendations = await request('/recommendations', { token: adminResponse.body.token });
+  assert.ok(!freeOnlyRecommendations.body.recommendations.some((tutor) => tutor.id === activated.body.user.id));
+  const flexibleProfile = await request('/users/profile', {
+    method: 'PUT', token: adminResponse.body.token, body: { profile: { budget_preference: 'flexible' } }
+  });
+  assert.equal(flexibleProfile.status, 200);
+
   const blocked = await request(`/blocks/${activated.body.user.id}`, {
     method: 'POST', token: adminResponse.body.token, body: { reason: 'Test block' }
   });
@@ -327,7 +359,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   const joinedWaitlist = await request('/community/waitlist/me', {
     method: 'PUT', token: adminResponse.body.token,
     body: {
-      subjects: ['Math'], gradeLevel: 'College', budgetPreference: 'Free or volunteer',
+      subjects: ['Math'], gradeLevel: 'College', budgetPreference: 'under-25',
       tutoringMode: 'online', preferredSchedule: 'Weekends', learningGoals: 'Build confidence in algebra.'
     }
   });

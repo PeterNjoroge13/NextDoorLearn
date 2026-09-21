@@ -7,6 +7,7 @@ const { createImageUpload, detectImageMime, handleSingleImage } = require('../ut
 const { queueEmail } = require('../services/email');
 const emailTemplates = require('../services/emailTemplates');
 const { POLICY_VERSION, validateTutorConsent } = require('../utils/policies');
+const { STUDENT_BUDGETS, validateTutorRate } = require('../utils/pricing');
 
 const router = express.Router();
 const applicationPhotoUpload = createImageUpload({ directory: 'tutor-applications', prefix: 'tutor-application', maxSizeMb: 5 });
@@ -22,9 +23,11 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
     const email = String(req.body.email || '').trim().toLowerCase();
     const subjects = list(req.body.subjects);
     const motivation = sanitizeText(req.body.motivation, 2000);
+    const hourlyRate = validateTutorRate(req.body.hourlyRate);
     const consent = validateTutorConsent(req.body);
 
     if (consent.error) return res.status(400).json({ error: consent.error });
+    if (hourlyRate.error) return res.status(400).json({ error: hourlyRate.error });
 
     if (!req.file) {
       return res.status(400).json({ error: 'A profile picture is required' });
@@ -68,7 +71,7 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
         motivation,
         sanitizeText(req.body.availability, 800),
         sanitizeText(req.body.tutoringMode, 40),
-        Math.max(0, Number(req.body.hourlyRate) || 0),
+        hourlyRate.value,
         profilePictureUrl,
         POLICY_VERSION
       );
@@ -151,6 +154,8 @@ router.put('/waitlist/me', authenticateToken, async (req, res) => {
     if (req.user.role !== 'student') return res.status(403).json({ error: 'Student access required' });
     const subjects = list(req.body.subjects);
     if (subjects.length === 0) return res.status(400).json({ error: 'Choose at least one subject' });
+    const budgetPreference = sanitizeText(req.body.budgetPreference, 80) || 'flexible';
+    if (!STUDENT_BUDGETS.has(budgetPreference)) return res.status(400).json({ error: 'Choose a valid budget preference' });
 
     await db.prepare(`
       INSERT INTO student_waitlist_entries
@@ -173,7 +178,7 @@ router.put('/waitlist/me', authenticateToken, async (req, res) => {
       req.user.userId,
       JSON.stringify(subjects),
       sanitizeText(req.body.gradeLevel, 80),
-      sanitizeText(req.body.budgetPreference, 80),
+      budgetPreference,
       sanitizeText(req.body.preferredSchedule, 500),
       sanitizeText(req.body.tutoringMode, 40),
       sanitizeText(req.body.learningGoals, 1500)

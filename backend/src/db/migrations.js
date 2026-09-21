@@ -348,6 +348,25 @@ const migrations = [
         WHERE session_timezone IS NULL OR session_timezone = 'UTC'
       `);
     }
+  },
+  {
+    version: '013_affordable_rate_cap',
+    async up(db) {
+      await db.exec('UPDATE tutor_profiles SET hourly_rate = 25 WHERE hourly_rate > 25');
+      await db.exec('UPDATE tutor_applications SET hourly_rate = 25 WHERE hourly_rate > 25');
+      await db.exec(`
+        UPDATE student_profiles
+        SET budget_preference = 'flexible'
+        WHERE budget_preference IS NOT NULL
+          AND LOWER(budget_preference) NOT IN ('free', 'under-10', 'under-15', 'under-20', 'under-25', 'flexible')
+      `);
+      await db.exec(`
+        UPDATE student_waitlist_entries
+        SET budget_preference = 'flexible'
+        WHERE budget_preference IS NOT NULL
+          AND LOWER(budget_preference) NOT IN ('free', 'under-10', 'under-15', 'under-20', 'under-25', 'flexible')
+      `);
+    }
   }
 ];
 

@@ -11,6 +11,7 @@ const {
   passwordValidationError,
   sanitizeText
 } = require('../utils/validation');
+const { STUDENT_BUDGETS, validateTutorRate } = require('../utils/pricing');
 
 const router = express.Router();
 
@@ -168,7 +169,7 @@ router.put('/profile', authenticateToken, async (req, res) => {
         if (availability !== undefined && Buffer.byteLength(JSON.stringify(availability), 'utf8') > 10000) {
           return res.status(400).json({ error: 'Availability details are too large' });
         }
-        const safeHourlyRate = optionalNumber(hourly_rate, { min: 0, max: 500 });
+        const safeHourlyRate = hourly_rate === undefined ? { value: null } : validateTutorRate(hourly_rate);
         const safeExperienceYears = optionalNumber(experience_years, { min: 0, max: 80, integer: true });
         const safeMaxStudents = optionalNumber(max_students, { min: 1, max: 100, integer: true });
         if (safeHourlyRate.error || safeExperienceYears.error || safeMaxStudents.error) {
@@ -225,6 +226,9 @@ router.put('/profile', authenticateToken, async (req, res) => {
         }
         if (intake_completed !== undefined && typeof intake_completed !== 'boolean') {
           return res.status(400).json({ error: 'Intake completion must be true or false' });
+        }
+        if (budget_preference !== undefined && !STUDENT_BUDGETS.has(String(budget_preference))) {
+          return res.status(400).json({ error: 'Choose a valid budget preference' });
         }
         const updateStudentProfile = await db.prepare(`
           UPDATE student_profiles SET 

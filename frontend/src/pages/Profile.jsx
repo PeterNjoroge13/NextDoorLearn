@@ -212,6 +212,10 @@ const Profile = () => {
 
   const handleSave = async (event) => {
     event.preventDefault();
+    if (user?.role === 'tutor' && (Number(formData.hourly_rate) < 0 || Number(formData.hourly_rate) > 25)) {
+      setMessage('Tutor rates must be between $0 and $25 per hour.');
+      return;
+    }
     setSaving(true);
     setMessage('');
     try {
@@ -268,8 +272,8 @@ const Profile = () => {
       setMessage('Choose a JPG, PNG, or WebP image.');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setMessage('Profile pictures must be 10 MB or smaller.');
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage('Profile pictures must be 5 MB or smaller.');
       return;
     }
 
@@ -438,7 +442,8 @@ const Profile = () => {
                     <div className="grid grid-2">
                       <div className="field">
                         <label>Hourly rate</label>
-                        <input type="number" min="0" value={formData.hourly_rate} onChange={(event) => setField('hourly_rate', event.target.value)} />
+                        <input type="number" min="0" max="25" step="0.01" value={formData.hourly_rate} onChange={(event) => setField('hourly_rate', event.target.value)} />
+                        <small className="muted">Use 0 to volunteer. NextDoorLearn caps tutoring at $25 per hour.</small>
                       </div>
                       <div className="field">
                         <label>Experience years</label>
@@ -489,7 +494,7 @@ const Profile = () => {
                     </div>
                     <div className="grid grid-2">
                       <div className="field"><label>Preferred format</label><select value={formData.tutoring_mode} onChange={(event) => setField('tutoring_mode', event.target.value)}><option value="online">Online</option><option value="in-person">In person</option><option value="hybrid">Either works</option></select></div>
-                      <div className="field"><label>Budget preference</label><select value={formData.budget_preference} onChange={(event) => setField('budget_preference', event.target.value)}><option value="free">Free only</option><option value="under-25">Up to $25/hour</option><option value="flexible">Flexible</option></select></div>
+                      <div className="field"><label>Budget preference</label><select value={formData.budget_preference} onChange={(event) => setField('budget_preference', event.target.value)}><option value="free">Free only</option><option value="under-10">Up to $10/hour</option><option value="under-15">Up to $15/hour</option><option value="under-20">Up to $20/hour</option><option value="under-25">Up to $25/hour</option><option value="flexible">Any rate up to $25/hour</option></select></div>
                     </div>
                     <div className="field"><label>How you learn best</label><input value={formData.learning_style} onChange={(event) => setField('learning_style', event.target.value)} placeholder="Visual examples, practice with feedback..." /></div>
                     <div className="field"><label>Preferred schedule</label><textarea value={formData.preferred_schedule} onChange={(event) => setField('preferred_schedule', event.target.value)} /></div>

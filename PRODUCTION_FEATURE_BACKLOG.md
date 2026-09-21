@@ -45,7 +45,7 @@ This file tracks production work that can be completed without external account 
 - [ ] Improve accessibility semantics, focus states, contrast, keyboard navigation, and reduced motion.
 - [ ] Remove layout shifts and text overflow in navigation, cards, dialogs, forms, and dashboards.
 - [x] Make booking timezones, prices, statuses, and role labels explicit across web and mobile.
-- [ ] Add clear recovery paths when the API, integrations, or session data are unavailable.
+- [x] Add clear recovery paths when the API, integrations, or session data are unavailable.
 - [ ] Audit performance, image sizing, route loading, and unnecessary network requests.
 
 ## Priority 1: Tutor And Student Improvements
@@ -53,6 +53,7 @@ This file tracks production work that can be completed without external account 
 - [x] Keep student and tutor dashboards distinct, task-focused, and role appropriate.
 - [x] Show onboarding progress and the next useful action for each role.
 - [x] Show transparent matching reasons without exposing private profile information.
+- [x] Enforce a $25/hour platform cap and let students filter and match by affordable price tiers.
 - [x] Improve tutor availability management and add published-window selection during booking.
 - [x] Support learning goals, milestones, session notes, private reflections, and progress history.
 - [x] Support tutor application, approval, activation, public profiles, reviews, and trust indicators.

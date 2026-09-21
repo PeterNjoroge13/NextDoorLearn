@@ -3,6 +3,30 @@ export const API_BASE_URL = configuredApiUrl || 'http://localhost:3001/api';
 
 let refreshRequest = null;
 
+const API_TIMEOUT_MS = 30000;
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+
+const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+const fetchWithTimeout = async (input, init = {}) => {
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(init.signal?.reason);
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  init.signal?.addEventListener('abort', abortFromCaller, { once: true });
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('NextDoorLearn took too long to respond. Check your connection and try again.');
+    }
+    throw new Error('We could not reach NextDoorLearn. Check your connection and try again.');
+  } finally {
+    clearTimeout(timer);
+    init.signal?.removeEventListener('abort', abortFromCaller);
+  }
+};
+
 const clearStoredSession = () => {
   localStorage.removeItem('token');
   localStorage.removeItem('refreshToken');
@@ -16,7 +40,7 @@ const refreshAccessToken = async () => {
 
   if (!refreshRequest) {
     refreshRequest = (async () => {
-      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken, deviceName: 'Web browser' }),
@@ -38,7 +62,19 @@ const refreshAccessToken = async () => {
 };
 
 const apiFetch = async (input, init = {}) => {
-  const response = await fetch(input, init);
+  const method = String(init.method || 'GET').toUpperCase();
+  let response;
+  try {
+    response = await fetchWithTimeout(input, init);
+  } catch (error) {
+    if (method !== 'GET') throw error;
+    await delay(750);
+    response = await fetchWithTimeout(input, init);
+  }
+  if (method === 'GET' && RETRYABLE_STATUSES.has(response.status)) {
+    await delay(750);
+    response = await fetchWithTimeout(input, init);
+  }
   const headers = new Headers(init.headers || {});
   if (response.status !== 401 || !headers.has('Authorization')) return response;
 
@@ -48,12 +84,15 @@ const apiFetch = async (input, init = {}) => {
   const token = await refreshAccessToken();
   if (!token) return response;
   headers.set('Authorization', `Bearer ${token}`);
-  return fetch(input, { ...init, headers });
+  return fetchWithTimeout(input, { ...init, headers });
 };
 
-export const isApiConfiguredForProduction = () =>
-  import.meta.env.DEV ||
-  Boolean(configuredApiUrl && !configuredApiUrl.includes('localhost') && !configuredApiUrl.includes('127.0.0.1'));
+export const isApiConfiguredForProduction = () => {
+  const localPreview = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  return import.meta.env.DEV || localPreview || Boolean(
+    configuredApiUrl && !configuredApiUrl.includes('localhost') && !configuredApiUrl.includes('127.0.0.1')
+  );
+};
 
 const api = {
   // Auth endpoints

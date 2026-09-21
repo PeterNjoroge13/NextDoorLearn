@@ -21,7 +21,7 @@ const TutorBrowse = () => {
   const [filters, setFilters] = useState({
     search: searchParams.get('search') || '',
     subject: '',
-    maxRate: '100',
+    maxRate: '25',
     minRating: '0',
     sortBy: 'rating',
   });
@@ -55,7 +55,7 @@ const TutorBrowse = () => {
 
   const filteredTutors = useMemo(() => {
     const search = filters.search.trim().toLowerCase();
-    const maxRate = Number(filters.maxRate || 100);
+    const maxRate = Number(filters.maxRate || 25);
     const minRating = Number(filters.minRating || 0);
 
     return tutors
@@ -183,11 +183,11 @@ const TutorBrowse = () => {
               value={filters.maxRate}
               onChange={(event) => setFilters((current) => ({ ...current, maxRate: event.target.value }))}
             >
-              <option value="25">$25/hr</option>
-              <option value="50">$50/hr</option>
-              <option value="75">$75/hr</option>
-              <option value="100">$100/hr</option>
-              <option value="999">Any rate</option>
+              <option value="0">Volunteer only</option>
+              <option value="10">Up to $10/hr</option>
+              <option value="15">Up to $15/hr</option>
+              <option value="20">Up to $20/hr</option>
+              <option value="25">Up to $25/hr</option>
             </select>
           </div>
           <div className="field">

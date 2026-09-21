@@ -44,6 +44,7 @@ const TutorApplication = () => {
     event.preventDefault();
     setError('');
     if (!form.motivation || !form.availability) return setError('Please share why you want to tutor and when you can help.');
+    if (Number(form.hourlyRate) < 0 || Number(form.hourlyRate) > 25) return setError('Tutor rates must be between $0 and $25 per hour.');
     if (!form.isAdult || !form.termsAccepted || !form.privacyAccepted || !form.safetyAccepted) {
       return setError('Confirm the age, legal, privacy, and safety requirements before submitting.');
     }
@@ -120,7 +121,7 @@ const TutorApplication = () => {
             </> : null}
             {step === 2 ? <>
               <div><span className="eyebrow">Step 3</span><h2>How would you like to help?</h2><p className="muted">Set honest expectations. You can update these later.</p></div>
-              <div className="grid grid-2"><div className="field"><label>Tutoring format</label><select value={form.tutoringMode} onChange={(e) => field('tutoringMode', e.target.value)}><option value="online">Online</option><option value="in-person">In person</option><option value="hybrid">Both</option></select></div><div className="field"><label>Hourly rate (0 for volunteer)</label><input type="number" min="0" value={form.hourlyRate} onChange={(e) => field('hourlyRate', e.target.value)} /></div></div>
+              <div className="grid grid-2"><div className="field"><label>Tutoring format</label><select value={form.tutoringMode} onChange={(e) => field('tutoringMode', e.target.value)}><option value="online">Online</option><option value="in-person">In person</option><option value="hybrid">Both</option></select></div><div className="field"><label>Hourly rate (0 for volunteer, $25 maximum)</label><input type="number" min="0" max="25" step="0.01" value={form.hourlyRate} onChange={(e) => field('hourlyRate', e.target.value)} /></div></div>
               <div className="field"><label>Typical availability</label><textarea value={form.availability} onChange={(e) => field('availability', e.target.value)} placeholder="Weekday evenings and Saturday mornings" required /></div>
               <div className="field"><label>Why do you want to tutor through NextDoorLearn?</label><textarea value={form.motivation} onChange={(e) => field('motivation', e.target.value)} required /></div>
               <div className="consent-stack">
