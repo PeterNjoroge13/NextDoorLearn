@@ -1615,6 +1615,39 @@ textarea:focus {
   align-items: start;
 }
 
+.payments-page { max-width: 1180px; }
+.payments-summary-grid { display: grid; grid-template-columns: 0.7fr 0.7fr 1.6fr; gap: 14px; margin-bottom: 18px; }
+.payment-total { display: block; margin-top: 16px; font-size: 1.9rem; line-height: 1; }
+.payout-card { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.payout-card h2 { margin: 5px 0; font-size: 1.15rem; }
+.payout-card p { margin: 0; color: var(--muted); }
+.payment-trust-band { display: flex; gap: 14px; align-items: flex-start; padding: 18px 20px; margin-bottom: 18px; border: 1px solid var(--border); background: var(--brand-soft); }
+.payment-trust-band p { margin: 4px 0 0; color: var(--muted); }
+.payment-list { display: grid; }
+.payment-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.payment-row:last-child { border-bottom: 0; }
+.payment-row-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.payment-row-main p { margin: 4px 0 0; color: var(--muted); font-size: 0.84rem; }
+.payment-row-icon { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 40px; color: var(--brand); background: var(--brand-soft); border-radius: 6px; }
+.payment-row-total { display: grid; justify-items: end; gap: 5px; }
+.payment-modal { max-width: 590px; }
+.payment-form { display: grid; gap: 18px; }
+.payment-security { display: flex; align-items: center; gap: 7px; margin: 16px 0 0; color: var(--muted); font-size: 0.78rem; }
+
+@media (max-width: 820px) {
+  .payments-summary-grid { grid-template-columns: 1fr 1fr; }
+  .payout-card { grid-column: 1 / -1; }
+  .payment-row { grid-template-columns: 1fr auto; }
+  .payment-row > .btn { grid-column: 1 / -1; width: 100%; }
+}
+
+@media (max-width: 540px) {
+  .payments-summary-grid { grid-template-columns: 1fr; }
+  .payout-card { grid-column: auto; align-items: flex-start; flex-direction: column; }
+  .payment-row { grid-template-columns: 1fr; align-items: flex-start; }
+  .payment-row-total { justify-items: start; }
+}
+
 .profile-sidebar {
   position: sticky;
   top: 100px;

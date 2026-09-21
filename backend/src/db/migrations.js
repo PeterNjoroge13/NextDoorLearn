@@ -392,6 +392,77 @@ const migrations = [
           ON user_notification_preferences(user_id);
       `);
     }
+  },
+  {
+    version: '015_marketplace_payments',
+    async up(db) {
+      const id = db.dialect === 'postgres' ? 'BIGSERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+      const userId = db.dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
+      const timestamp = db.dialect === 'postgres' ? 'TIMESTAMPTZ' : 'DATETIME';
+
+      await addColumn(db, 'sessions', 'agreed_hourly_rate_cents', 'INTEGER NOT NULL DEFAULT 0');
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS tutor_payment_accounts (
+          id ${id},
+          user_id ${userId} NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+          provider TEXT NOT NULL DEFAULT 'stripe',
+          provider_account_id TEXT NOT NULL UNIQUE,
+          onboarding_status TEXT NOT NULL DEFAULT 'pending',
+          charges_enabled INTEGER NOT NULL DEFAULT 0,
+          payouts_enabled INTEGER NOT NULL DEFAULT 0,
+          details_submitted INTEGER NOT NULL DEFAULT 0,
+          requirements_due TEXT,
+          created_at ${timestamp} DEFAULT CURRENT_TIMESTAMP,
+          updated_at ${timestamp} DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS session_payments (
+          id ${id},
+          session_id ${userId} NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+          student_id ${userId} NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          tutor_id ${userId} NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          provider TEXT NOT NULL DEFAULT 'stripe',
+          provider_payment_intent_id TEXT UNIQUE,
+          provider_charge_id TEXT,
+          amount_cents INTEGER NOT NULL,
+          platform_fee_cents INTEGER NOT NULL DEFAULT 0,
+          currency TEXT NOT NULL DEFAULT 'usd',
+          status TEXT NOT NULL DEFAULT 'pending',
+          failure_code TEXT,
+          failure_message TEXT,
+          paid_at ${timestamp},
+          refunded_at ${timestamp},
+          created_at ${timestamp} DEFAULT CURRENT_TIMESTAMP,
+          updated_at ${timestamp} DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS payment_events (
+          id ${id},
+          provider_event_id TEXT NOT NULL UNIQUE,
+          event_type TEXT NOT NULL,
+          object_id TEXT,
+          processed_at ${timestamp} DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_tutor_payment_accounts_status
+          ON tutor_payment_accounts(onboarding_status, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_session_payments_tutor
+          ON session_payments(tutor_id, status, created_at);
+        CREATE INDEX IF NOT EXISTS idx_session_payments_student
+          ON session_payments(student_id, status, created_at);
+      `);
+
+      const paidSessions = await db.prepare(`
+        SELECT sessions.id, tutor_profiles.hourly_rate
+        FROM sessions
+        LEFT JOIN tutor_profiles ON tutor_profiles.user_id = sessions.tutor_id
+      `).all();
+      for (const session of paidSessions) {
+        const rate = Math.max(0, Math.min(25, Number(session.hourly_rate) || 0));
+        await db.prepare('UPDATE sessions SET agreed_hourly_rate_cents = ? WHERE id = ?')
+          .run(Math.round(rate * 100), session.id);
+      }
+    }
   }
 ];
 

@@ -503,6 +503,9 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(session.status, 201);
   assert.equal(session.body.confirmation_status, 'pending');
   assert.equal(session.body.session_timezone, 'UTC');
+  assert.equal(session.body.agreed_hourly_rate_cents, 2500);
+  assert.ok(session.body.starts_at);
+  assert.ok(session.body.ends_at);
   const restoredSessionEmail = await request('/notifications/preferences', {
     method: 'PUT', token: activated.body.token, body: { emailEnabled: true }
   });
@@ -513,6 +516,26 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     method: 'PATCH', token: activated.body.token, body: { decision: 'confirmed' }
   });
   assert.equal(confirmed.status, 200);
+  const paymentSummary = await request(`/payments/sessions/${session.body.id}`, { token: adminResponse.body.token });
+  assert.equal(paymentSummary.status, 200);
+  assert.equal(paymentSummary.body.amountCents, 2500);
+  assert.equal(paymentSummary.body.status, 'unpaid');
+  assert.equal(paymentSummary.body.canPay, true);
+  assert.equal(paymentSummary.body.configured, false);
+  const tutorPaymentSummary = await request(`/payments/sessions/${session.body.id}`, { token: activated.body.token });
+  assert.equal(tutorPaymentSummary.status, 200);
+  assert.equal(tutorPaymentSummary.body.canPay, false);
+  const cannotPayWithoutTutorPayouts = await request(`/payments/sessions/${session.body.id}/intent`, {
+    method: 'POST', token: adminResponse.body.token
+  });
+  assert.equal(cannotPayWithoutTutorPayouts.status, 409);
+  const studentCannotStartTutorOnboarding = await request('/payments/account/onboarding-link', {
+    method: 'POST', token: adminResponse.body.token
+  });
+  assert.equal(studentCannotStartTutorOnboarding.status, 403);
+  const payoutStatus = await request('/payments/account', { token: activated.body.token });
+  assert.equal(payoutStatus.status, 200);
+  assert.equal(payoutStatus.body.onboardingStatus, 'not_started');
   const meetingAccess = await request(`/sessions/${session.body.id}/meeting`, { token: adminResponse.body.token });
   assert.equal(meetingAccess.status, 200);
   assert.equal(meetingAccess.body.status, 'ready');

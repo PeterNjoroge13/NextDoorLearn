@@ -565,6 +565,41 @@ const api = {
     return response.json();
   },
 
+  getPaymentHistory: async (token) => {
+    const response = await apiFetch(`${API_BASE_URL}/payments/history`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
+  getPaymentAccount: async (token) => {
+    const response = await apiFetch(`${API_BASE_URL}/payments/account`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
+  startPaymentOnboarding: async (token) => {
+    const response = await apiFetch(`${API_BASE_URL}/payments/account/onboarding-link`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
+  getTutorEarnings: async (token) => {
+    const response = await apiFetch(`${API_BASE_URL}/payments/earnings`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
+  createSessionPaymentIntent: async (sessionId, token) => {
+    const response = await apiFetch(`${API_BASE_URL}/payments/sessions/${sessionId}/intent`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
   getUpcomingSessions: async (token, limit = 5) => {
     const response = await apiFetch(`${API_BASE_URL}/sessions/upcoming?limit=${limit}`, {
       headers: {

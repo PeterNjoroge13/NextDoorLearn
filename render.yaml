@@ -56,3 +56,13 @@ services:
         generateValue: true
       - key: REQUIRE_EMAIL_VERIFICATION
         value: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_CONNECTED_ACCOUNT_COUNTRY
+        value: US
+      - key: STRIPE_PLATFORM_FEE_PERCENT
+        value: 0

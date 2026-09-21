@@ -33,6 +33,7 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "pg": "^8.16.3",
+    "stripe": "^22.6.2",
     "svix": "^1.99.1"
   },
   "devDependencies": {

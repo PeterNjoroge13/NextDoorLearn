@@ -9,6 +9,7 @@ const db = require('./db/database');
 const { providerConfigured } = require('./services/email');
 const { zoomConfigured } = require('./services/zoom');
 const { hasGoogleConfig } = require('./services/googleCalendar');
+const { publicPaymentConfig } = require('./services/payments');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -34,6 +35,7 @@ const jobRoutes = require('./routes/jobs');
 const resendWebhookRoutes = require('./routes/resendWebhook');
 const deviceRoutes = require('./routes/devices');
 const mediaRoutes = require('./routes/media');
+const paymentRoutes = require('./routes/payments');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -122,6 +124,7 @@ app.use(cors({
   credentials: true
 }));
 app.use('/api/webhooks/resend', resendWebhookRoutes);
+app.post('/api/webhooks/stripe', express.raw({ type: 'application/json', limit: '1mb' }), paymentRoutes.handleWebhook);
 app.use(express.json({ limit: '1mb' }));
 
 const apiLimiter = rateLimit({
@@ -207,6 +210,7 @@ app.use('/api/blocks', blockRoutes);
 app.use('/api/recommendations', recommendationRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/devices', deviceRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {
@@ -221,6 +225,7 @@ app.get('/api/health', async (req, res) => {
       zoom: zoomConfigured() ? 'configured' : 'not_configured',
       googleCalendar: hasGoogleConfig() ? 'configured' : 'not_configured',
       mediaStorage: 'database',
+      payments: publicPaymentConfig().configured ? 'configured' : 'not_configured',
       timestamp: new Date().toISOString()
     });
   } catch (error) {

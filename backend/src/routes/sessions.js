@@ -8,6 +8,7 @@ const { usersAreBlocked } = require('../services/safety');
 const { scheduleSessionReminders, zonedTimeToUtc } = require('../services/reminders');
 const { deleteZoomMeeting, getMeetingAccess, provisionZoomMeeting, zoomConfigured } = require('../services/zoom');
 const { queueSessionEmails } = require('../services/sessionCommunications');
+const { settleCancelledSessionPayment } = require('../services/paymentLedger');
 const { boundedInteger, isPositiveInteger, isValidDate, isValidHttpUrl, isValidTime, sanitizeText } = require('../utils/validation');
 
 const router = express.Router();
@@ -19,11 +20,13 @@ const getSessionWithOutcome = (sessionId) => db.prepare(`
     outcome.student_reflection, outcome.confidence_before, outcome.confidence_after,
     outcome.tutor_submitted_at, outcome.student_submitted_at,
     meeting.provider AS meeting_provider, meeting.status AS meeting_status
+    , payment.status AS payment_status, payment.amount_cents AS payment_amount_cents
   FROM sessions s
   JOIN users student ON student.id = s.student_id
   JOIN users tutor ON tutor.id = s.tutor_id
   LEFT JOIN session_outcomes outcome ON outcome.session_id = s.id
   LEFT JOIN session_meetings meeting ON meeting.session_id = s.id
+  LEFT JOIN session_payments payment ON payment.session_id = s.id
   WHERE s.id = ?
 `).get(sessionId);
 
@@ -114,7 +117,9 @@ router.get('/', async (req, res) => {
         review.rating as review_rating,
         review.comment as review_comment,
         meeting.provider as meeting_provider,
-        meeting.status as meeting_status
+        meeting.status as meeting_status,
+        payment.status as payment_status,
+        payment.amount_cents as payment_amount_cents
       FROM sessions s
       JOIN users u1 ON s.tutor_id = u1.id
       JOIN users u2 ON s.student_id = u2.id
@@ -122,6 +127,7 @@ router.get('/', async (req, res) => {
       LEFT JOIN session_outcomes outcome ON outcome.session_id = s.id
       LEFT JOIN reviews review ON review.student_id = s.student_id AND review.tutor_id = s.tutor_id
       LEFT JOIN session_meetings meeting ON meeting.session_id = s.id
+      LEFT JOIN session_payments payment ON payment.session_id = s.id
       WHERE (s.tutor_id = ? OR s.student_id = ?)
     `;
     
@@ -391,9 +397,12 @@ router.post('/', async (req, res) => {
       return res.status(403).json({ error: 'Only the tutor can provide a custom meeting link' });
     }
     
-    const { durationMinutes, timezone } = await getScheduleDetails({
+    const { durationMinutes, timezone, startsAt } = await getScheduleDetails({
       tutorId: connection.tutor_id, scheduledDate, startTime, endTime
     });
+    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
+    const tutorProfile = await db.prepare('SELECT hourly_rate FROM tutor_profiles WHERE user_id = ?').get(connection.tutor_id);
+    const agreedHourlyRateCents = Math.round(Math.max(0, Math.min(25, Number(tutorProfile?.hourly_rate) || 0)) * 100);
     
     const confirmationStatus = userId === connection.tutor_id ? 'confirmed' : 'pending';
     const result = await db.withTransaction(async (transaction) => {
@@ -405,12 +414,12 @@ router.post('/', async (req, res) => {
         INSERT INTO sessions (
           connection_id, tutor_id, student_id, title, description, subject,
           scheduled_date, start_time, end_time, session_timezone, duration_minutes, meeting_link,
-          requested_by, confirmation_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          requested_by, confirmation_status, starts_at, ends_at, agreed_hourly_rate_cents
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         connectionId, connection.tutor_id, connection.student_id, safeTitle, safeDescription,
         safeSubject, scheduledDate, startTime, endTime, timezone, durationMinutes, safeMeetingLink,
-        userId, confirmationStatus
+        userId, confirmationStatus, startsAt.toISOString(), endsAt.toISOString(), agreedHourlyRateCents
       );
       await recordSessionEvent(
         transaction, insertResult.lastInsertRowid, userId, 'created', null,
@@ -498,9 +507,14 @@ router.patch('/:id/reschedule', async (req, res) => {
       return res.status(400).json({ error: 'Choose a different date or time' });
     }
 
-    const { durationMinutes, timezone } = await getScheduleDetails({
+    const { durationMinutes, timezone, startsAt } = await getScheduleDetails({
       tutorId: session.tutor_id, scheduledDate, startTime, endTime
     });
+    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
+    const paidPayment = await db.prepare("SELECT id FROM session_payments WHERE session_id = ? AND status = 'succeeded'").get(sessionId);
+    if (paidPayment && Number(durationMinutes) !== Number(session.duration_minutes)) {
+      return res.status(409).json({ error: 'A paid session can move to a new time, but its duration cannot change. Cancel it for an automatic refund and create a new session instead.' });
+    }
     const confirmationStatus = Number(userId) === Number(session.tutor_id) ? 'confirmed' : 'pending';
 
     await db.withTransaction(async (transaction) => {
@@ -511,10 +525,10 @@ router.patch('/:id/reschedule', async (req, res) => {
       await transaction.prepare(`
         UPDATE sessions SET scheduled_date = ?, start_time = ?, end_time = ?, session_timezone = ?, duration_minutes = ?,
           requested_by = ?, confirmation_status = ?, reschedule_count = COALESCE(reschedule_count, 0) + 1,
-          last_rescheduled_at = CURRENT_TIMESTAMP, starts_at = NULL, ends_at = NULL,
+          last_rescheduled_at = CURRENT_TIMESTAMP, starts_at = ?, ends_at = ?,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(scheduledDate, startTime, endTime, timezone, durationMinutes, userId, confirmationStatus, sessionId);
+      `).run(scheduledDate, startTime, endTime, timezone, durationMinutes, userId, confirmationStatus, startsAt.toISOString(), endsAt.toISOString(), sessionId);
       await transaction.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
       await recordSessionEvent(
         transaction, sessionId, userId, 'rescheduled', sessionState(session),
@@ -719,13 +733,17 @@ router.patch('/:id/status', async (req, res) => {
     );
 
     await db.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
+    const paymentResolution = await settleCancelledSessionPayment(sessionId).catch((error) => {
+      console.error('Session payment cancellation warning:', error);
+      return { status: 'refund_failed' };
+    });
     await syncSessionToGoogle(updatedSession, 'delete');
     await deleteZoomMeeting(updatedSession).catch((error) => console.error('Zoom meeting deletion warning:', error.message || error));
     updatedSession = { ...updatedSession, meeting_link: null, meeting_provider: null, meeting_status: null };
     await queueSessionEmails(updatedSession, 'cancelled')
       .catch((error) => console.error('Session email warning:', error.message || error));
     
-    res.json(updatedSession);
+    res.json({ ...updatedSession, payment_status: paymentResolution.status });
   } catch (error) {
     console.error('Update session status error:', error);
     res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Internal server error' });
