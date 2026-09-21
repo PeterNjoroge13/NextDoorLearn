@@ -237,6 +237,17 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   });
   assert.equal(removedPushDevice.status, 200);
 
+  const defaultNotificationPreferences = await request('/notifications/preferences', {
+    token: adminResponse.body.token
+  });
+  assert.equal(defaultNotificationPreferences.status, 200);
+  assert.equal(defaultNotificationPreferences.body.messagesEnabled, true);
+  assert.equal(defaultNotificationPreferences.body.emailEnabled, true);
+  const invalidNotificationPreference = await request('/notifications/preferences', {
+    method: 'PUT', token: adminResponse.body.token, body: { pushEnabled: 'yes' }
+  });
+  assert.equal(invalidNotificationPreference.status, 400);
+
   const avatar = new FormData();
   avatar.append('avatar', imageBlob(), 'avatar.png');
   const uploadedAvatar = await request('/upload/avatar', {
@@ -413,6 +424,36 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     method: 'POST', token: activated.body.token, body: { action: 'accept' }
   });
   assert.equal(accepted.status, 200);
+
+  const mutedMessages = await request('/notifications/preferences', {
+    method: 'PUT', token: activated.body.token, body: { messagesEnabled: false }
+  });
+  assert.equal(mutedMessages.status, 200);
+  const mutedMessage = await request('/messages/send', {
+    method: 'POST', token: adminResponse.body.token,
+    body: { connectionId, content: 'This message should not create an alert.' }
+  });
+  assert.equal(mutedMessage.status, 201);
+  const notificationsWhileMuted = await request('/notifications?limit=100', { token: activated.body.token });
+  assert.ok(!notificationsWhileMuted.body.notifications.some((item) => item.message.includes('This message should not')));
+  const unmutedMessages = await request('/notifications/preferences', {
+    method: 'PUT', token: activated.body.token, body: { messagesEnabled: true }
+  });
+  assert.equal(unmutedMessages.status, 200);
+  const visibleMessage = await request('/messages/send', {
+    method: 'POST', token: adminResponse.body.token,
+    body: { connectionId, content: 'This message should create an alert.' }
+  });
+  assert.equal(visibleMessage.status, 201);
+  const latestVisibleMessage = await request('/messages/send', {
+    method: 'POST', token: adminResponse.body.token,
+    body: { connectionId, content: 'This newer message should replace the unread alert.' }
+  });
+  assert.equal(latestVisibleMessage.status, 201);
+  const notificationsAfterUnmute = await request('/notifications?limit=100', { token: activated.body.token });
+  const messageNotifications = notificationsAfterUnmute.body.notifications.filter((item) => item.type === 'message');
+  assert.equal(messageNotifications.length, 1);
+  assert.match(messageNotifications[0].message, /This newer message should replace/);
   const connectedPresence = await request(`/status/user/${activated.body.user.id}`, { token: adminResponse.body.token });
   assert.equal(connectedPresence.status, 200);
   const unrelatedPresence = await request(`/status/user/${activated.body.user.id}`, { token: changedPasswordLogin.body.token });
@@ -451,6 +492,10 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     body: { connectionId, title: 'Insecure room', scheduledDate, startTime: '10:00', endTime: '11:00', meetingLink: 'http://tutor.example/room' }
   });
   assert.equal(insecureTutorMeeting.status, 400);
+  const mutedSessionEmail = await request('/notifications/preferences', {
+    method: 'PUT', token: activated.body.token, body: { emailEnabled: false }
+  });
+  assert.equal(mutedSessionEmail.status, 200);
   const session = await request('/sessions', {
     method: 'POST', token: adminResponse.body.token,
     body: { connectionId, title: 'Algebra practice', subject: 'Math', scheduledDate, startTime: '10:00', endTime: '11:00' }
@@ -458,6 +503,10 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(session.status, 201);
   assert.equal(session.body.confirmation_status, 'pending');
   assert.equal(session.body.session_timezone, 'UTC');
+  const restoredSessionEmail = await request('/notifications/preferences', {
+    method: 'PUT', token: activated.body.token, body: { emailEnabled: true }
+  });
+  assert.equal(restoredSessionEmail.status, 200);
   const beforeConfirmation = await request('/sessions/upcoming', { token: adminResponse.body.token });
   assert.ok(!beforeConfirmation.body.some((item) => item.id === session.body.id));
   const confirmed = await request(`/sessions/${session.body.id}/confirmation`, {
@@ -624,7 +673,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   const outbox = await request('/admin/email-outbox', { token: adminResponse.body.token });
   assert.equal(outbox.status, 200);
   assert.ok(outbox.body.emails.some((email) => email.template === 'tutor_activation'));
-  assert.ok(outbox.body.emails.some((email) => email.template === 'session_requested'));
+  assert.ok(!outbox.body.emails.some((email) => email.template === 'session_requested' && email.recipient === 'approved@example.com'));
   assert.ok(outbox.body.emails.some((email) => email.template === 'session_confirmed'));
   assert.ok(outbox.body.emails.some((email) => email.template === 'session_cancelled'));
   const readAllNotifications = await request('/notifications/read-all', {

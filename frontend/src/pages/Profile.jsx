@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { CalendarClock, Camera, ClipboardCheck, ExternalLink, Globe2, Lock, Save, Settings, Trash2, UserRound, UserX } from 'lucide-react';
+import { BellRing, CalendarClock, Camera, ClipboardCheck, ExternalLink, Globe2, Lock, Save, Settings, Trash2, UserRound, UserX } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import AppShell, { Avatar, ErrorState, LoadingState } from '../components/AppShell';
@@ -9,6 +9,31 @@ import { parseList } from '../utils/format';
 const commonLanguages = ['English', 'Spanish', 'French', 'Mandarin', 'Arabic', 'Portuguese', 'Korean'];
 const timezones = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Europe/London', 'Asia/Tokyo'];
 const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const notificationPreferenceGroups = [
+  {
+    title: 'Delivery channels',
+    description: 'Choose where NextDoorLearn can send non-security updates.',
+    items: [
+      { key: 'emailEnabled', label: 'Email updates', help: 'Session changes and tutoring reminders.' },
+      { key: 'pushEnabled', label: 'Mobile push notifications', help: 'Alerts on devices where you enabled notifications.' },
+    ],
+  },
+  {
+    title: 'Alert categories',
+    description: 'These choices apply to in-app alerts and enabled delivery channels.',
+    items: [
+      { key: 'messagesEnabled', label: 'Messages', help: 'New messages from connected students or tutors.' },
+      { key: 'connectionsEnabled', label: 'Connections and matches', help: 'Requests, responses, and waitlist matches.' },
+      { key: 'sessionsEnabled', label: 'Session updates', help: 'Requests, confirmations, reschedules, cancellations, and notes.' },
+      { key: 'remindersEnabled', label: 'Session reminders', help: 'One-day and one-hour reminders for confirmed sessions.' },
+      { key: 'reviewsEnabled', label: 'Reviews', help: 'Feedback added after completed tutoring sessions.' },
+    ],
+  },
+];
+
+const defaultNotificationPreferences = Object.fromEntries(
+  notificationPreferenceGroups.flatMap((group) => group.items).map((item) => [item.key, true])
+);
 
 const Profile = () => {
   const { user, updateUser, logout } = useAuth();
@@ -26,6 +51,8 @@ const Profile = () => {
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [deletePassword, setDeletePassword] = useState('');
+  const [notificationPreferences, setNotificationPreferences] = useState(defaultNotificationPreferences);
+  const [savingNotifications, setSavingNotifications] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     bio: '',
@@ -66,8 +93,8 @@ const Profile = () => {
   useEffect(() => {
     const nextTab = requestedTab === 'availability' && user?.role === 'tutor'
       ? 'availability'
-      : requestedTab === 'security'
-        ? 'security'
+      : ['security', 'notifications'].includes(requestedTab)
+        ? requestedTab
         : 'profile';
     setActiveTab(nextTab);
   }, [requestedTab, user?.role]);
@@ -123,6 +150,8 @@ const Profile = () => {
         if (!completionResponse.error) setCompletion(completionResponse.percentage || 0);
         const blockedResponse = await api.getBlockedUsers(token);
         if (Array.isArray(blockedResponse)) setBlockedUsers(blockedResponse);
+        const preferencesResponse = await api.getNotificationPreferences(token);
+        if (!preferencesResponse.error) setNotificationPreferences(preferencesResponse);
 
         if (user?.role === 'tutor') {
           const availabilityResponse = await api.getMyAvailability(token);
@@ -257,6 +286,24 @@ const Profile = () => {
     navigate('/login', { replace: true });
   };
 
+  const handleNotificationPreference = async (key) => {
+    const nextValue = !notificationPreferences[key];
+    setNotificationPreferences((current) => ({ ...current, [key]: nextValue }));
+    setSavingNotifications(true);
+    setMessage('');
+    try {
+      const response = await api.updateNotificationPreferences({ [key]: nextValue }, localStorage.getItem('token'));
+      if (response.error) throw new Error(response.error);
+      setNotificationPreferences(response);
+      setMessage('Notification preferences saved.');
+    } catch (preferenceError) {
+      setNotificationPreferences((current) => ({ ...current, [key]: !nextValue }));
+      setMessage(preferenceError instanceof Error ? preferenceError.message : 'Notification preferences could not be saved.');
+    } finally {
+      setSavingNotifications(false);
+    }
+  };
+
   const handleUnblock = async (blockedUserId) => {
     const response = await api.unblockUser(blockedUserId, localStorage.getItem('token'));
     if (response.error) return setError(response.error);
@@ -378,6 +425,9 @@ const Profile = () => {
               ) : null}
               <button className={`tab${activeTab === 'security' ? ' active' : ''}`} onClick={() => selectTab('security')} type="button">
                 <Lock size={15} /> Security
+              </button>
+              <button className={`tab${activeTab === 'notifications' ? ' active' : ''}`} onClick={() => selectTab('notifications')} type="button">
+                <BellRing size={15} /> Notifications
               </button>
             </div>
           </aside>
@@ -579,6 +629,44 @@ const Profile = () => {
                 <input type="password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} />
               </div>
               <button className="btn btn-danger" type="button" disabled={!deletePassword || saving} onClick={handleDeleteAccount}>Permanently delete account</button>
+              </div>
+            ) : null}
+
+            {activeTab === 'notifications' ? (
+              <div className="form-grid">
+                <div className="section-head compact">
+                  <div>
+                    <h2>Notification preferences</h2>
+                    <p>Control routine alerts without affecting password, account-security, or policy emails.</p>
+                  </div>
+                  <BellRing size={22} />
+                </div>
+                {notificationPreferenceGroups.map((group) => (
+                  <section className="form-grid" key={group.title} aria-labelledby={`notification-${group.title.replaceAll(' ', '-').toLowerCase()}`}>
+                    <div>
+                      <h3 id={`notification-${group.title.replaceAll(' ', '-').toLowerCase()}`}>{group.title}</h3>
+                      <p className="muted">{group.description}</p>
+                    </div>
+                    {group.items.map((item) => (
+                      <div className="profile-visibility-panel" key={item.key}>
+                        <div>
+                          <strong>{item.label}</strong>
+                          <p>{item.help}</p>
+                        </div>
+                        <label className="switch">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(notificationPreferences[item.key])}
+                            onChange={() => handleNotificationPreference(item.key)}
+                            disabled={savingNotifications}
+                            aria-label={item.label}
+                          />
+                          <span />
+                        </label>
+                      </div>
+                    ))}
+                  </section>
+                ))}
               </div>
             ) : null}
           </div>

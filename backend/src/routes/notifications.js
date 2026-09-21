@@ -2,6 +2,12 @@ const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { boundedInteger, isPositiveInteger } = require('../utils/validation');
+const {
+  getNotificationPreferences,
+  notificationAllowed,
+  preferenceColumns,
+  updateNotificationPreferences
+} = require('../services/notificationPreferences');
 
 const router = express.Router();
 
@@ -81,6 +87,33 @@ router.get('/unread-count', authenticateToken, async (req, res) => {
   }
 });
 
+router.get('/preferences', authenticateToken, async (req, res) => {
+  try {
+    res.json(await getNotificationPreferences(req.user.userId));
+  } catch (error) {
+    console.error('Get notification preferences error:', error);
+    res.status(500).json({ error: 'Failed to get notification preferences' });
+  }
+});
+
+router.put('/preferences', authenticateToken, async (req, res) => {
+  try {
+    const updates = {};
+    for (const key of Object.keys(preferenceColumns)) {
+      if (req.body[key] === undefined) continue;
+      if (typeof req.body[key] !== 'boolean') {
+        return res.status(400).json({ error: `${key} must be true or false` });
+      }
+      updates[key] = req.body[key];
+    }
+    if (!Object.keys(updates).length) return res.status(400).json({ error: 'Choose at least one preference to update' });
+    res.json(await updateNotificationPreferences(req.user.userId, updates));
+  } catch (error) {
+    console.error('Update notification preferences error:', error);
+    res.status(500).json({ error: 'Failed to update notification preferences' });
+  }
+});
+
 // Static collection routes must be declared before routes with ID parameters.
 router.patch('/read-all', authenticateToken, async (req, res) => {
   try {
@@ -154,15 +187,36 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 // Helper function to create notifications (exported for use in other routes)
 const createNotification = async (userId, type, title, message, link = null, relatedId = null) => {
   try {
-    const stmt = await db.prepare(`
-      INSERT INTO notifications (user_id, type, title, message, link, related_id)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    const result = await stmt.run(userId, type, title, message, link, relatedId);
-    sendPushNotification(userId, title, message, link, relatedId).catch((error) => {
-      console.error('Push notification delivery error:', error.message);
-    });
-    return result.lastInsertRowid;
+    const preferences = await getNotificationPreferences(userId);
+    if (!notificationAllowed(preferences, type, 'inApp')) return null;
+    let notificationId = null;
+    if (type === 'message' && relatedId) {
+      const existing = await db.prepare(`
+        SELECT id FROM notifications
+        WHERE user_id = ? AND type = 'message' AND related_id = ? AND is_read = 0
+        ORDER BY created_at DESC LIMIT 1
+      `).get(userId, relatedId);
+      if (existing) {
+        await db.prepare(`
+          UPDATE notifications SET title = ?, message = ?, link = ?, created_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(title, message, link, existing.id);
+        notificationId = existing.id;
+      }
+    }
+    if (!notificationId) {
+      const result = await db.prepare(`
+        INSERT INTO notifications (user_id, type, title, message, link, related_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(userId, type, title, message, link, relatedId);
+      notificationId = result.lastInsertRowid;
+    }
+    if (notificationAllowed(preferences, type, 'push')) {
+      sendPushNotification(userId, title, message, link, relatedId).catch((error) => {
+        console.error('Push notification delivery error:', error.message);
+      });
+    }
+    return notificationId;
   } catch (error) {
     console.error('Create notification error:', error);
     return null;

@@ -813,6 +813,22 @@ const api = {
     return response.json();
   },
 
+  getNotificationPreferences: async (token) => {
+    const response = await apiFetch(`${API_BASE_URL}/notifications/preferences`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
+  updateNotificationPreferences: async (preferences, token) => {
+    const response = await apiFetch(`${API_BASE_URL}/notifications/preferences`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(preferences),
+    });
+    return response.json();
+  },
+
   markNotificationRead: async (notificationId, token) => {
     const response = await apiFetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
       method: 'PATCH',

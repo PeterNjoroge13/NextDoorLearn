@@ -2,6 +2,7 @@ const db = require('../db/database');
 const { queueEmail } = require('./email');
 const emailTemplates = require('./emailTemplates');
 const { zonedTimeToUtc } = require('./reminders');
+const { getNotificationPreferences, notificationAllowed } = require('./notificationPreferences');
 
 const sessionUrl = () => `${process.env.FRONTEND_URL || 'http://localhost:5173'}/sessions`;
 
@@ -32,6 +33,8 @@ const queueSessionEmails = async (session, event) => {
   const recipients = event === 'requested' ? [tutor] : [student, tutor];
   const results = [];
   for (const recipient of recipients) {
+    const preferences = await getNotificationPreferences(recipient.id);
+    if (!notificationAllowed(preferences, `session_${event}`, 'email')) continue;
     const other = Number(recipient.id) === Number(student.id) ? tutor : student;
     const content = emailTemplates.sessionUpdate({
       event,

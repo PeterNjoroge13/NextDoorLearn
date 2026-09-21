@@ -58,7 +58,7 @@ This file tracks production work that can be completed without external account 
 - [x] Support learning goals, milestones, session notes, private reflections, and progress history.
 - [x] Support tutor application, approval, activation, public profiles, reviews, and trust indicators.
 - [x] Add clear safety access to block, report, support, and moderation outcomes.
-- [ ] Improve notification preferences and reduce duplicate or low-value alerts.
+- [x] Improve notification preferences and reduce duplicate or low-value alerts.
 
 ## Continuous Release Quality
 

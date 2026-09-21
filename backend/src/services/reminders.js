@@ -1,6 +1,7 @@
 const db = require('../db/database');
 const { queueEmail } = require('./email');
 const emailTemplates = require('./emailTemplates');
+const { getNotificationPreferences, notificationAllowed } = require('./notificationPreferences');
 
 const zonedTimeToUtc = (date, time, timeZone = 'UTC') => {
   const [year, month, day] = String(date).slice(0, 10).split('-').map(Number);
@@ -54,6 +55,11 @@ const processSessionReminders = async (limit = 50) => {
 
   let sent = 0;
   for (const reminder of reminders) {
+    const preferences = await getNotificationPreferences(reminder.user_id);
+    if (!preferences.remindersEnabled || !notificationAllowed(preferences, 'session_reminder', 'email')) {
+      await db.prepare("UPDATE session_reminders SET status = 'skipped' WHERE id = ?").run(reminder.id);
+      continue;
+    }
     const otherName = Number(reminder.user_id) === Number(reminder.student_id) ? reminder.tutor_name : reminder.student_name;
     const reminderTimezone = reminder.recipient_timezone || 'UTC';
     const when = new Date(reminder.starts_at).toLocaleString('en-US', {

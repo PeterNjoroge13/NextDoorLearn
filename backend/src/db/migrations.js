@@ -367,6 +367,31 @@ const migrations = [
           AND LOWER(budget_preference) NOT IN ('free', 'under-10', 'under-15', 'under-20', 'under-25', 'flexible')
       `);
     }
+  },
+  {
+    version: '014_notification_preferences',
+    async up(db) {
+      const id = db.dialect === 'postgres' ? 'BIGSERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+      const userId = db.dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
+      const timestamp = db.dialect === 'postgres' ? 'TIMESTAMPTZ' : 'DATETIME';
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS user_notification_preferences (
+          id ${id},
+          user_id ${userId} NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+          email_enabled INTEGER NOT NULL DEFAULT 1,
+          push_enabled INTEGER NOT NULL DEFAULT 1,
+          messages_enabled INTEGER NOT NULL DEFAULT 1,
+          connections_enabled INTEGER NOT NULL DEFAULT 1,
+          sessions_enabled INTEGER NOT NULL DEFAULT 1,
+          reminders_enabled INTEGER NOT NULL DEFAULT 1,
+          reviews_enabled INTEGER NOT NULL DEFAULT 1,
+          created_at ${timestamp} DEFAULT CURRENT_TIMESTAMP,
+          updated_at ${timestamp} DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_notification_preferences_user
+          ON user_notification_preferences(user_id);
+      `);
+    }
   }
 ];
 
