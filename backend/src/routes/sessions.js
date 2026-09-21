@@ -511,9 +511,13 @@ router.patch('/:id/reschedule', async (req, res) => {
       tutorId: session.tutor_id, scheduledDate, startTime, endTime
     });
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
-    const paidPayment = await db.prepare("SELECT id FROM session_payments WHERE session_id = ? AND status = 'succeeded'").get(sessionId);
-    if (paidPayment && Number(durationMinutes) !== Number(session.duration_minutes)) {
-      return res.status(409).json({ error: 'A paid session can move to a new time, but its duration cannot change. Cancel it for an automatic refund and create a new session instead.' });
+    const startedPayment = await db.prepare(`
+      SELECT id, status FROM session_payments
+      WHERE session_id = ? AND provider_payment_intent_id IS NOT NULL
+        AND status NOT IN ('cancelled', 'refunded')
+    `).get(sessionId);
+    if (startedPayment && Number(durationMinutes) !== Number(session.duration_minutes)) {
+      return res.status(409).json({ error: 'Once checkout has started, a session can move to a new time but its duration cannot change. Cancel it for a refund or payment cancellation, then create a new session.' });
     }
     const confirmationStatus = Number(userId) === Number(session.tutor_id) ? 'confirmed' : 'pending';
 

@@ -60,6 +60,18 @@ This file tracks production work that can be completed without external account 
 - [x] Add clear safety access to block, report, support, and moderation outcomes.
 - [x] Improve notification preferences and reduce duplicate or low-value alerts.
 
+## Priority 1: Marketplace Payments
+
+- [x] Freeze the agreed tutor rate on each booking and calculate totals only on the server.
+- [x] Add Stripe Connect tutor onboarding and payout-readiness checks.
+- [x] Add embedded web checkout and native iOS/Android PaymentSheet checkout.
+- [x] Persist a provider-neutral payment ledger with idempotent PaymentIntent creation.
+- [x] Verify signed raw-body webhooks and ignore duplicate provider events.
+- [x] Restrict payment data and actions by role, session ownership, and booking state.
+- [x] Add cancellation refunds, transfer reversal, and visible refund states.
+- [x] Add student payment history and tutor earnings/payout workspaces.
+- [x] Add payment privacy, terms, deployment, and release documentation.
+
 ## Continuous Release Quality
 
 - [ ] Expand API workflow tests to cover every critical student/tutor journey.
@@ -77,3 +89,6 @@ This file tracks production work that can be completed without external account 
 - [ ] Create/verify Google Play Console and Apple App Store Connect records.
 - [ ] Obtain final legal review for Terms, Privacy Policy, youth-safety, and consent language.
 - [ ] Establish operational decisions for tutor screening, incident response, and support ownership.
+- [ ] Complete the Stripe Connect platform profile, business verification, branding, and live-mode review.
+- [ ] Add Stripe live secret/publishable keys and the production webhook signing secret in Render.
+- [ ] Run the test-mode payment, payout, cancellation, refund, dispute, and mobile physical-device release gates.

@@ -17,7 +17,7 @@ const getStripe = () => {
 };
 
 const publicPaymentConfig = () => ({
-  configured: paymentsConfigured() && Boolean(process.env.STRIPE_PUBLISHABLE_KEY),
+  configured: webhookConfigured() && Boolean(process.env.STRIPE_PUBLISHABLE_KEY),
   publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null,
   currency: 'usd',
   provider: 'stripe'

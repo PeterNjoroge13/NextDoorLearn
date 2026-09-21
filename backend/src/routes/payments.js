@@ -1,4 +1,5 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const db = require('../db/database');
 const { authenticateToken, requireVerifiedEmail } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
@@ -17,6 +18,13 @@ const { isPositiveInteger } = require('../utils/validation');
 
 const router = express.Router();
 router.use(authenticateToken, requireVerifiedEmail);
+const paymentWriteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: Number(process.env.PAYMENT_RATE_LIMIT_MAX || 20),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many payment attempts. Please wait before trying again.' }
+});
 
 const accountStatus = (account) => {
   const requirements = account.requirements || {};
@@ -79,7 +87,7 @@ router.get('/account', async (req, res) => {
   }
 });
 
-router.post('/account/onboarding-link', async (req, res) => {
+router.post('/account/onboarding-link', paymentWriteLimiter, async (req, res) => {
   if (req.user.role !== 'tutor') return res.status(403).json({ error: 'Tutor access is required' });
   try {
     const user = await db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(req.user.userId);
@@ -189,7 +197,7 @@ router.get('/sessions/:sessionId', async (req, res) => {
   });
 });
 
-router.post('/sessions/:sessionId/intent', async (req, res) => {
+router.post('/sessions/:sessionId/intent', paymentWriteLimiter, async (req, res) => {
   if (req.user.role !== 'student') return res.status(403).json({ error: 'Only the session student can pay' });
   if (!isPositiveInteger(req.params.sessionId)) return res.status(400).json({ error: 'Valid session ID is required' });
   try {

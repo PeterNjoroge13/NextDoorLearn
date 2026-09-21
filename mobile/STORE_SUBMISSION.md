@@ -10,12 +10,13 @@ The codebase is prepared for iOS and Android builds with Expo Application Servic
 4. Create a Google Play Console developer account and app with package `com.peternjoroge.nextdoorlearn`.
 5. Create dedicated student and tutor reviewer accounts in production. Put credentials only in App Store Connect and Play Console review notes, never in git.
 6. Confirm the production privacy, support, terms, and account-deletion URLs are live.
+7. Add Stripe live keys and the signed production webhook only after the test-mode payment release gate in `PAYMENT_OPERATIONS.md` passes.
 
 ## Test releases
 
 1. Run `npm run lint`, `npm run typecheck`, and `npm run export:web`.
 2. Run `npm run build:preview` and install the internal iOS/Android builds on physical devices.
-3. Test registration, login persistence, intake, tutor discovery, connection requests, messaging, scheduling, profile photo upload, notifications, reporting/blocking, and account deletion.
+3. Test registration, login persistence, intake, tutor discovery, connection requests, messaging, scheduling, a free session, tutor payout onboarding, a paid session, cancellation/refund, profile photo upload, notifications, reporting/blocking, and account deletion.
 4. Open a message and session push notification and confirm each one deep-links to the correct record.
 5. Capture current iPhone and Android screenshots from the signed preview builds.
 
@@ -26,4 +27,4 @@ The codebase is prepared for iOS and Android builds with Expo Application Servic
 3. Add store copy and screenshots, reviewer credentials, support URL, privacy URL, and account-deletion URL.
 4. Run `npm run submit:production` after the listings are complete.
 
-Do not submit until email delivery, push credentials, production monitoring, and both reviewer accounts have been verified on physical devices. Profile images are persistent in Neon for the initial release; move them to object storage as usage grows.
+Do not submit until email delivery, push credentials, Stripe test-mode payment/refund verification, production monitoring, and both reviewer accounts have been verified on physical devices. Profile images are persistent in Neon for the initial release; move them to object storage as usage grows.

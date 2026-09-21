@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, CalendarClock, CalendarDays, RefreshCw, Video } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, CalendarDays, CreditCard, RefreshCw, Video } from 'lucide-react-native';
 import { useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Chip, ErrorNotice, Field, LoadingState, Screen } from '@/components/ui';
@@ -155,6 +155,12 @@ export default function SessionDetailScreen() {
         ? <Text style={styles.copy}>The tutor is preparing the meeting room.</Text>
         : null}
     </Card>
+
+    {!tutor && Number(item.agreed_hourly_rate_cents || 0) > 0 ? <Card tone="brand">
+      <Text style={styles.section}>Session payment</Text>
+      <Text style={styles.copy}>{item.payment_status === 'succeeded' ? 'Paid and confirmed.' : `Total: $${((Number(item.payment_amount_cents) || Number(item.agreed_hourly_rate_cents) * Number(item.duration_minutes) / 60) / 100).toFixed(2)}. Payment uses the rate saved when this session was booked.`}</Text>
+      <Button label={item.payment_status === 'succeeded' ? 'View payment history' : 'Pay securely'} icon={CreditCard} variant={item.payment_status === 'succeeded' ? 'secondary' : 'primary'} onPress={() => router.push('/(app)/payments' as never)} />
+    </Card> : null}
 
     {tutor && item.confirmation_status === 'pending' ? <View style={styles.actions}>
       <Button label="Decline" variant="secondary" onPress={() => confirmation('declined')} disabled={actionBusy} style={styles.flex} />

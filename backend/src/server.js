@@ -53,6 +53,10 @@ const validateProductionConfig = () => {
   if (process.env.REQUIRE_EMAIL_VERIFICATION === 'true' && !providerConfigured()) {
     missing.push('RESEND_API_KEY and EMAIL_FROM (required when email verification is enabled)');
   }
+  const stripeValues = [process.env.STRIPE_SECRET_KEY, process.env.STRIPE_PUBLISHABLE_KEY, process.env.STRIPE_WEBHOOK_SECRET];
+  if (stripeValues.some(Boolean) && stripeValues.some((value) => !value)) {
+    missing.push('STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, and STRIPE_WEBHOOK_SECRET (all required when payments are enabled)');
+  }
   if (missing.length) throw new Error(`Missing production configuration: ${missing.join(', ')}`);
 };
 

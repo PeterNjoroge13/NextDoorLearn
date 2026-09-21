@@ -1,4 +1,4 @@
-const POLICY_VERSION = '2026-09-19';
+const POLICY_VERSION = '2026-09-21';
 const STUDENT_AGE_GROUPS = new Set(['13-17', '18+']);
 
 const booleanValue = (value) => value === true || value === 'true';

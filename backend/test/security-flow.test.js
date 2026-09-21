@@ -143,7 +143,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(adminResponse.status, 201);
   assert.equal(adminResponse.body.user.isAdmin, true);
   assert.ok(adminResponse.body.refreshToken);
-  assert.equal(adminResponse.body.user.policyVersion, '2026-09-19');
+  assert.equal(adminResponse.body.user.policyVersion, '2026-09-21');
   const adminProfile = await request('/users/profile', { token: adminResponse.body.token });
   assert.equal(adminProfile.body.age_group, '18+');
   assert.deepEqual(
