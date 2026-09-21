@@ -10,7 +10,9 @@ test('sensitive database fields are encrypted and authenticated', () => {
   assert.notEqual(encrypted, 'oauth-refresh-token');
   assert.equal(decryptField(encrypted), 'oauth-refresh-token');
 
-  const tampered = `${encrypted.slice(0, -1)}${encrypted.endsWith('a') ? 'b' : 'a'}`;
+  const payload = Buffer.from(encrypted.slice('enc:v1:'.length), 'base64url');
+  payload[20] ^= 1;
+  const tampered = `enc:v1:${payload.toString('base64url')}`;
   assert.throws(() => decryptField(tampered));
 });
 
