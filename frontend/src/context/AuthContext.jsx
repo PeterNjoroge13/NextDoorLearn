@@ -17,19 +17,56 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     const token = localStorage.getItem('token');
     const userData = localStorage.getItem('user');
-    
-    if (token && userData) {
-      try {
-        setUser(JSON.parse(userData));
-      } catch {
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
+
+    const restoreSession = async () => {
+      if (!token || !userData) {
+        if (active) setLoading(false);
+        return;
       }
-    }
-    setLoading(false);
+
+      try {
+        const cachedUser = JSON.parse(userData);
+        const result = await api.validateSession(token);
+        if (!active) return;
+
+        if (result.ok) {
+          const verifiedUser = {
+            ...cachedUser,
+            id: result.profile.id,
+            email: result.profile.email,
+            role: result.profile.role,
+            name: result.profile.name,
+            bio: result.profile.bio,
+            avatar_url: result.profile.avatar_url,
+          };
+          setUser(verifiedUser);
+          localStorage.setItem('user', JSON.stringify(verifiedUser));
+        } else if ([401, 403, 404].includes(result.status)) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
+        } else {
+          setUser(cachedUser);
+        }
+      } catch {
+        try {
+          if (active) setUser(JSON.parse(userData));
+        } catch {
+          localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+
+    };
+
+    restoreSession();
+    return () => { active = false; };
   }, []);
 
   const clearSession = useCallback(() => {

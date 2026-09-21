@@ -195,6 +195,14 @@ const api = {
     return response.json();
   },
 
+  validateSession: async (token) => {
+    const response = await apiFetch(`${API_BASE_URL}/users/profile`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    const profile = await response.json().catch(() => ({}));
+    return { ok: response.ok, status: response.status, profile };
+  },
+
   updateProfile: async (profileData, token) => {
     const response = await apiFetch(`${API_BASE_URL}/users/profile`, {
       method: 'PUT',

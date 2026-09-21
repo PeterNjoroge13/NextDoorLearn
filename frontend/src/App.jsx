@@ -1,26 +1,27 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import TutorBrowse from './pages/TutorBrowse';
-import TutorProfile from './pages/TutorProfile';
-import Profile from './pages/Profile';
-import Messages from './pages/Messages';
-import Requests from './pages/Requests';
-import Sessions from './pages/Sessions';
-import Admin from './pages/Admin';
-import LegalPage from './pages/LegalPage';
-import AuthUtilityPage from './pages/AuthUtilityPage';
-import TutorApplication from './pages/TutorApplication';
-import StudentIntake from './pages/StudentIntake';
-import Donate from './pages/Donate';
-import PublicTutorProfile from './pages/PublicTutorProfile';
-import LearningProgress from './pages/LearningProgress';
-import TutorActivation from './pages/TutorActivation';
-import Payments from './pages/Payments';
+
+const Admin = lazy(() => import('./pages/Admin'));
+const AuthUtilityPage = lazy(() => import('./pages/AuthUtilityPage'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Donate = lazy(() => import('./pages/Donate'));
+const LearningProgress = lazy(() => import('./pages/LearningProgress'));
+const LegalPage = lazy(() => import('./pages/LegalPage'));
+const Messages = lazy(() => import('./pages/Messages'));
+const Payments = lazy(() => import('./pages/Payments'));
+const Profile = lazy(() => import('./pages/Profile'));
+const PublicTutorProfile = lazy(() => import('./pages/PublicTutorProfile'));
+const Requests = lazy(() => import('./pages/Requests'));
+const Sessions = lazy(() => import('./pages/Sessions'));
+const StudentIntake = lazy(() => import('./pages/StudentIntake'));
+const TutorActivation = lazy(() => import('./pages/TutorActivation'));
+const TutorApplication = lazy(() => import('./pages/TutorApplication'));
+const TutorBrowse = lazy(() => import('./pages/TutorBrowse'));
+const TutorProfile = lazy(() => import('./pages/TutorProfile'));
 
 const LoadingScreen = () => (
   <div className="loading-wrap">
@@ -56,7 +57,10 @@ function App() {
     <AuthProvider>
       <Router>
         <div className="app-root">
-          <Routes>
+          <a className="skip-link" href="#main-content">Skip to main content</a>
+          <div id="main-content" tabIndex="-1">
+          <Suspense fallback={<LoadingScreen />}>
+            <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/apply/tutor" element={<TutorApplication />} />
             <Route path="/activate-tutor" element={<TutorActivation />} />
@@ -173,7 +177,9 @@ function App() {
             <Route path="/reset-password" element={<AuthUtilityPage mode="reset" />} />
             <Route path="/verify-email" element={<AuthUtilityPage mode="verify" />} />
             <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
+            </Routes>
+          </Suspense>
+          </div>
         </div>
       </Router>
     </AuthProvider>

@@ -84,6 +84,17 @@ npm run dev
 
 Local URLs are `http://localhost:5173` for the frontend and `http://localhost:3001/api/health` for backend health.
 
+Run the browser release suite from `frontend`:
+
+```bash
+npx playwright install chromium
+npm run test:e2e
+```
+
+The suite starts isolated local frontend and backend services, then verifies public, student, tutor, and administrator journeys at desktop and compact-mobile widths. CI installs Chromium and runs these checks on every pull request and push to `main`.
+
+The Vercel Content Security Policy intentionally permits Stripe.js, Stripe payment frames, and Stripe API connections. Keep both `vercel.json` files synchronized and run `npm run test:config` after changing production headers.
+
 ## 5. Calendar, Video, And Email
 
 Set the integration variables listed in `render.yaml`. Google OAuth must use this redirect URI:

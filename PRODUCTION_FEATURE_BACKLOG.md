@@ -42,11 +42,13 @@ This file tracks production work that can be completed without external account 
 
 - [ ] Standardize loading, empty, error, success, confirmation, and destructive-action patterns.
 - [ ] Verify responsive behavior across compact mobile, tablet, laptop, and wide desktop layouts.
-- [ ] Improve accessibility semantics, focus states, contrast, keyboard navigation, and reduced motion.
+- [x] Add global keyboard focus visibility, skip navigation, and reduced-motion support.
+- [ ] Complete a manual contrast and screen-reader audit across every workflow.
 - [ ] Remove layout shifts and text overflow in navigation, cards, dialogs, forms, and dashboards.
 - [x] Make booking timezones, prices, statuses, and role labels explicit across web and mobile.
 - [x] Add clear recovery paths when the API, integrations, or session data are unavailable.
-- [ ] Audit performance, image sizing, route loading, and unnecessary network requests.
+- [x] Split dashboard, payment, administration, and secondary routes into on-demand bundles.
+- [ ] Finish image sizing and unnecessary-request performance audits.
 
 ## Priority 1: Tutor And Student Improvements
 
@@ -75,7 +77,7 @@ This file tracks production work that can be completed without external account 
 ## Continuous Release Quality
 
 - [ ] Expand API workflow tests to cover every critical student/tutor journey.
-- [ ] Add browser-level tests for public, student, tutor, and administrator routes.
+- [x] Add browser-level tests for public, student, tutor, and administrator routes.
 - [ ] Keep frontend, backend, mobile, mutation smoke, and production smoke checks green.
 - [ ] Commit and push focused checkpoints to `main` after verification.
 - [ ] Keep deployment and operational documentation aligned with real behavior.
