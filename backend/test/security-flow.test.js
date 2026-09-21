@@ -411,6 +411,49 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(confirmedSession.meeting_link, 'https://zoom.example/j/1');
   assert.equal(confirmedSession.host_url, undefined);
 
+  const blockingSession = await request('/sessions', {
+    method: 'POST', token: activated.body.token,
+    body: { connectionId, title: 'Earlier practice', subject: 'Math', scheduledDate, startTime: '08:00', endTime: '09:00' }
+  });
+  assert.equal(blockingSession.status, 201);
+  assert.equal(blockingSession.body.confirmation_status, 'confirmed');
+  const conflictingReschedule = await request(`/sessions/${session.body.id}/reschedule`, {
+    method: 'PATCH', token: adminResponse.body.token,
+    body: { scheduledDate, startTime: '08:30', endTime: '09:30', reason: 'Trying a time that overlaps' }
+  });
+  assert.equal(conflictingReschedule.status, 409);
+  const cancellationWithoutReason = await request(`/sessions/${blockingSession.body.id}/status`, {
+    method: 'PATCH', token: activated.body.token, body: { status: 'cancelled', notes: '' }
+  });
+  assert.equal(cancellationWithoutReason.status, 400);
+  const clearBlockingSession = await request(`/sessions/${blockingSession.body.id}/status`, {
+    method: 'PATCH', token: activated.body.token,
+    body: { status: 'cancelled', notes: 'Clearing the test schedule' }
+  });
+  assert.equal(clearBlockingSession.status, 200);
+
+  const rescheduled = await request(`/sessions/${session.body.id}/reschedule`, {
+    method: 'PATCH', token: adminResponse.body.token,
+    body: { scheduledDate, startTime: '09:00', endTime: '10:00', reason: 'Student class schedule changed' }
+  });
+  assert.equal(rescheduled.status, 200);
+  assert.equal(rescheduled.body.confirmation_status, 'pending');
+  assert.equal(rescheduled.body.meeting_link, null);
+  assert.equal(rescheduled.body.reschedule_count, 1);
+  const pendingMeetingAccess = await request(`/sessions/${session.body.id}/meeting`, { token: adminResponse.body.token });
+  assert.equal(pendingMeetingAccess.status, 409);
+  const reconfirmed = await request(`/sessions/${session.body.id}/confirmation`, {
+    method: 'PATCH', token: activated.body.token, body: { decision: 'confirmed' }
+  });
+  assert.equal(reconfirmed.status, 200);
+  assert.equal(reconfirmed.body.meeting_link, 'https://zoom.example/j/3');
+  const sessionHistory = await request(`/sessions/${session.body.id}/events`, { token: adminResponse.body.token });
+  assert.equal(sessionHistory.status, 200);
+  assert.deepEqual(
+    sessionHistory.body.map((event) => event.event_type),
+    ['created', 'confirmed', 'rescheduled', 'confirmed']
+  );
+
   const earlyOutcome = await request(`/sessions/${session.body.id}/outcome`, {
     method: 'PATCH', token: activated.body.token,
     body: { attendance: 'completed', tutorSummary: 'Too early' }

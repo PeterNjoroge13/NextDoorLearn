@@ -37,6 +37,59 @@ const hidePrivateOutcomeFields = (session, role) => {
   return safeSession;
 };
 
+const sessionState = (session) => session.confirmation_status === 'pending'
+  ? 'pending_confirmation'
+  : session.status;
+
+const dateOnly = (value) => value instanceof Date
+  ? value.toISOString().slice(0, 10)
+  : String(value || '').slice(0, 10);
+
+const recordSessionEvent = async (database, sessionId, actorUserId, eventType, fromState, toState, details = {}) => {
+  await database.prepare(`
+    INSERT INTO session_events (session_id, actor_user_id, event_type, from_state, to_state, details)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(sessionId, actorUserId || null, eventType, fromState || null, toState || null, JSON.stringify(details));
+};
+
+const getScheduleDetails = async ({ tutorId, scheduledDate, startTime, endTime }) => {
+  if (!isValidDate(scheduledDate) || !isValidTime(startTime) || !isValidTime(endTime)) {
+    throw Object.assign(new Error('Choose a valid date, start time, and end time'), { statusCode: 400 });
+  }
+  const start = new Date(`2000-01-01T${startTime}:00`);
+  const end = new Date(`2000-01-01T${endTime}:00`);
+  const durationMinutes = Math.round((end - start) / (1000 * 60));
+  if (durationMinutes < 15 || durationMinutes > 240) {
+    throw Object.assign(new Error('Sessions must be between 15 minutes and 4 hours'), { statusCode: 400 });
+  }
+
+  const tutorSettings = await db.prepare('SELECT timezone FROM users WHERE id = ?').get(tutorId);
+  const timezone = tutorSettings?.timezone || 'UTC';
+  const startsAt = zonedTimeToUtc(scheduledDate, startTime, timezone);
+  if (process.env.NODE_ENV !== 'test' && startsAt.getTime() < Date.now() + 5 * 60 * 1000) {
+    throw Object.assign(new Error('Sessions must begin at least 5 minutes in the future'), { statusCode: 400 });
+  }
+  if (!(await isTimeRangeWithinAvailability(tutorId, scheduledDate, startTime, endTime))) {
+    throw Object.assign(new Error('Selected time is outside tutor availability for that day'), { statusCode: 400 });
+  }
+  return { durationMinutes, timezone, startsAt };
+};
+
+const assertNoScheduleConflict = async (database, { tutorId, studentId, scheduledDate, startTime, endTime, excludeSessionId = null }) => {
+  if (database.dialect === 'postgres') {
+    await database.prepare('SELECT pg_advisory_xact_lock(?)').get(Number(tutorId));
+  }
+  const conflict = await database.prepare(`
+    SELECT id FROM sessions
+    WHERE (tutor_id = ? OR student_id = ?) AND scheduled_date = ? AND status = 'scheduled'
+      AND start_time < ? AND end_time > ? AND id <> COALESCE(?, -1)
+    LIMIT 1
+  `).get(tutorId, studentId, scheduledDate, endTime, startTime, excludeSessionId);
+  if (conflict) {
+    throw Object.assign(new Error('Time conflict: Another session is scheduled at this time'), { statusCode: 409 });
+  }
+};
+
 // Get all sessions for a user (tutor or student)
 router.get('/', async (req, res) => {
   try {
@@ -163,6 +216,30 @@ router.post('/:id/meeting', async (req, res) => {
   }
 });
 
+router.get('/:id/events', async (req, res) => {
+  try {
+    if (!isPositiveInteger(req.params.id)) return res.status(400).json({ error: 'Valid session ID is required' });
+    const session = await db.prepare(`
+      SELECT id FROM sessions WHERE id = ? AND (student_id = ? OR tutor_id = ?)
+    `).get(req.params.id, req.user.userId, req.user.userId);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    const events = await db.prepare(`
+      SELECT event_type, from_state, to_state, details, created_at
+      FROM session_events WHERE session_id = ? ORDER BY created_at ASC, id ASC
+    `).all(req.params.id);
+    res.json(events.map((event) => {
+      try {
+        return { ...event, details: event.details ? JSON.parse(event.details) : {} };
+      } catch {
+        return { ...event, details: {} };
+      }
+    }));
+  } catch (error) {
+    console.error('Get session events error:', error);
+    res.status(500).json({ error: 'Unable to load session history' });
+  }
+});
+
 router.get('/:id/outcome', async (req, res) => {
   try {
     if (!isPositiveInteger(req.params.id)) return res.status(400).json({ error: 'Valid session ID is required' });
@@ -222,6 +299,10 @@ router.patch('/:id/outcome', async (req, res) => {
           WHERE id = ?
         `).run(attendance, tutorSummary || session.notes || null, attendance === 'completed' ? new Date().toISOString() : null, req.user.userId, sessionId);
         await transaction.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
+        await recordSessionEvent(
+          transaction, sessionId, req.user.userId, 'outcome_recorded', sessionState(session), attendance,
+          { attendance, hasSummary: Boolean(tutorSummary), hasNextSteps: Boolean(nextSteps) }
+        );
       });
 
       await createNotification(
@@ -251,6 +332,10 @@ router.patch('/:id/outcome', async (req, res) => {
           student_submitted_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
       `).run(sessionId, studentReflection, confidenceBefore, confidenceAfter);
+      await recordSessionEvent(
+        db, sessionId, req.user.userId, 'student_reflection_added', 'completed', 'completed',
+        { confidenceBefore, confidenceAfter }
+      );
     }
 
     const updatedSession = await getSessionWithOutcome(sessionId);
@@ -306,47 +391,17 @@ router.post('/', async (req, res) => {
       return res.status(403).json({ error: 'Only the tutor can provide a custom meeting link' });
     }
     
-    // Calculate duration
-    const start = new Date(`2000-01-01T${startTime}`);
-    const end = new Date(`2000-01-01T${endTime}`);
-    const durationMinutes = Math.round((end - start) / (1000 * 60));
-    
-    if (durationMinutes < 15 || durationMinutes > 240) {
-      return res.status(400).json({ error: 'Sessions must be between 15 minutes and 4 hours' });
-    }
-
-    const tutorSettings = await db.prepare('SELECT timezone FROM users WHERE id = ?').get(connection.tutor_id);
-    const sessionStartsAt = zonedTimeToUtc(scheduledDate, startTime, tutorSettings?.timezone || 'UTC');
-    if (process.env.NODE_ENV !== 'test' && sessionStartsAt.getTime() < Date.now() + 5 * 60 * 1000) {
-      return res.status(400).json({ error: 'Sessions must begin at least 5 minutes in the future' });
-    }
-
-    const isInAvailability = await isTimeRangeWithinAvailability(
-      connection.tutor_id,
-      scheduledDate,
-      startTime,
-      endTime
-    );
-
-    if (!isInAvailability) {
-      return res.status(400).json({
-        error: 'Selected time is outside tutor availability for that day'
-      });
-    }
+    const { durationMinutes } = await getScheduleDetails({
+      tutorId: connection.tutor_id, scheduledDate, startTime, endTime
+    });
     
     const confirmationStatus = userId === connection.tutor_id ? 'confirmed' : 'pending';
     const result = await db.withTransaction(async (transaction) => {
-      if (transaction.dialect === 'postgres') {
-        await transaction.prepare('SELECT pg_advisory_xact_lock(?)').get(Number(connection.tutor_id));
-      }
-      const conflict = await transaction.prepare(`
-        SELECT id FROM sessions
-        WHERE (tutor_id = ? OR student_id = ?) AND scheduled_date = ? AND status = 'scheduled'
-          AND start_time < ? AND end_time > ?
-        LIMIT 1
-      `).get(connection.tutor_id, connection.student_id, scheduledDate, endTime, startTime);
-      if (conflict) throw Object.assign(new Error('Time conflict: Another session is scheduled at this time'), { statusCode: 409 });
-      return transaction.prepare(`
+      await assertNoScheduleConflict(transaction, {
+        tutorId: connection.tutor_id, studentId: connection.student_id,
+        scheduledDate, startTime, endTime
+      });
+      const insertResult = await transaction.prepare(`
         INSERT INTO sessions (
           connection_id, tutor_id, student_id, title, description, subject,
           scheduled_date, start_time, end_time, duration_minutes, meeting_link,
@@ -357,6 +412,12 @@ router.post('/', async (req, res) => {
         safeSubject, scheduledDate, startTime, endTime, durationMinutes, safeMeetingLink,
         userId, confirmationStatus
       );
+      await recordSessionEvent(
+        transaction, insertResult.lastInsertRowid, userId, 'created', null,
+        confirmationStatus === 'pending' ? 'pending_confirmation' : 'scheduled',
+        { scheduledDate, startTime, endTime }
+      );
+      return insertResult;
     });
     
     // Get the created session with user details
@@ -405,6 +466,102 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.patch('/:id/reschedule', async (req, res) => {
+  try {
+    const sessionId = req.params.id;
+    const userId = req.user.userId;
+    const { scheduledDate, startTime, endTime } = req.body;
+    const reason = sanitizeText(req.body.reason, 500);
+    if (!isPositiveInteger(sessionId)) {
+      return res.status(400).json({ error: 'Valid session ID is required' });
+    }
+    if (!reason) {
+      return res.status(400).json({ error: 'Add a short reason for the schedule change' });
+    }
+
+    const session = await db.prepare(`
+      SELECT s.*, student.name AS student_name, tutor.name AS tutor_name, c.status AS connection_status
+      FROM sessions s
+      JOIN users student ON student.id = s.student_id
+      JOIN users tutor ON tutor.id = s.tutor_id
+      JOIN connections c ON c.id = s.connection_id
+      WHERE s.id = ? AND (s.student_id = ? OR s.tutor_id = ?)
+    `).get(sessionId, userId, userId);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.connection_status !== 'accepted' || await usersAreBlocked(session.student_id, session.tutor_id)) {
+      return res.status(403).json({ error: 'Scheduling is unavailable for this connection' });
+    }
+    if (session.status !== 'scheduled') {
+      return res.status(409).json({ error: 'Only active sessions can be rescheduled' });
+    }
+    if (dateOnly(session.scheduled_date) === scheduledDate && String(session.start_time).slice(0, 5) === startTime && String(session.end_time).slice(0, 5) === endTime) {
+      return res.status(400).json({ error: 'Choose a different date or time' });
+    }
+
+    const { durationMinutes } = await getScheduleDetails({
+      tutorId: session.tutor_id, scheduledDate, startTime, endTime
+    });
+    const confirmationStatus = Number(userId) === Number(session.tutor_id) ? 'confirmed' : 'pending';
+
+    await db.withTransaction(async (transaction) => {
+      await assertNoScheduleConflict(transaction, {
+        tutorId: session.tutor_id, studentId: session.student_id,
+        scheduledDate, startTime, endTime, excludeSessionId: sessionId
+      });
+      await transaction.prepare(`
+        UPDATE sessions SET scheduled_date = ?, start_time = ?, end_time = ?, duration_minutes = ?,
+          requested_by = ?, confirmation_status = ?, reschedule_count = COALESCE(reschedule_count, 0) + 1,
+          last_rescheduled_at = CURRENT_TIMESTAMP, starts_at = NULL, ends_at = NULL,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(scheduledDate, startTime, endTime, durationMinutes, userId, confirmationStatus, sessionId);
+      await transaction.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
+      await recordSessionEvent(
+        transaction, sessionId, userId, 'rescheduled', sessionState(session),
+        confirmationStatus === 'pending' ? 'pending_confirmation' : 'scheduled',
+        {
+          reason,
+          previous: { scheduledDate: dateOnly(session.scheduled_date), startTime: String(session.start_time).slice(0, 5), endTime: String(session.end_time).slice(0, 5) },
+          next: { scheduledDate, startTime, endTime }
+        }
+      );
+    });
+
+    await syncSessionToGoogle(session, 'delete');
+    await deleteZoomMeeting(session).catch((error) => console.error('Zoom meeting reschedule warning:', error.message || error));
+
+    let updatedSession = await getSessionWithOutcome(sessionId);
+    await scheduleSessionReminders(updatedSession).catch((error) => console.error('Unable to refresh session reminders:', error));
+    updatedSession = await getSessionWithOutcome(sessionId);
+    if (confirmationStatus === 'confirmed' && !updatedSession.meeting_link) {
+      try {
+        updatedSession = await provisionZoomMeeting(updatedSession);
+      } catch (error) {
+        console.error('Zoom meeting provisioning warning:', error.message || error);
+        updatedSession = { ...updatedSession, meeting_provider: 'zoom', meeting_status: 'error' };
+      }
+      await syncSessionToGoogle(updatedSession, 'upsert');
+    }
+
+    const recipientId = Number(userId) === Number(session.tutor_id) ? session.student_id : session.tutor_id;
+    const actorName = Number(userId) === Number(session.tutor_id) ? session.tutor_name : session.student_name;
+    await createNotification(
+      recipientId,
+      'session_rescheduled',
+      confirmationStatus === 'pending' ? 'New time needs confirmation' : 'Session rescheduled',
+      `${actorName} moved "${session.title}" to ${scheduledDate} at ${startTime}. Reason: ${reason}`,
+      '/sessions', sessionId
+    );
+    await queueSessionEmails(updatedSession, confirmationStatus === 'pending' ? 'reschedule_requested' : 'rescheduled')
+      .catch((error) => console.error('Session email warning:', error.message || error));
+
+    res.json(await getSessionWithOutcome(sessionId));
+  } catch (error) {
+    console.error('Reschedule session error:', error);
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to reschedule session' });
+  }
+});
+
 router.patch('/:id/confirmation', async (req, res) => {
   try {
     const sessionId = req.params.id;
@@ -418,9 +575,41 @@ router.patch('/:id/confirmation', async (req, res) => {
       WHERE s.id = ? AND s.tutor_id = ? AND s.confirmation_status = 'pending'
     `).get(sessionId, req.user.userId);
     if (!session) return res.status(404).json({ error: 'Pending session request not found' });
-    await db.prepare(`
-      UPDATE sessions SET confirmation_status = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-    `).run(decision, decision === 'declined' ? 'cancelled' : 'scheduled', sessionId);
+    if (decision === 'confirmed') {
+      await getScheduleDetails({
+        tutorId: session.tutor_id,
+        scheduledDate: dateOnly(session.scheduled_date),
+        startTime: String(session.start_time).slice(0, 5),
+        endTime: String(session.end_time).slice(0, 5)
+      });
+    }
+    await db.withTransaction(async (transaction) => {
+      if (decision === 'confirmed') {
+        await assertNoScheduleConflict(transaction, {
+          tutorId: session.tutor_id,
+          studentId: session.student_id,
+          scheduledDate: dateOnly(session.scheduled_date),
+          startTime: String(session.start_time).slice(0, 5),
+          endTime: String(session.end_time).slice(0, 5),
+          excludeSessionId: sessionId
+        });
+      }
+      await transaction.prepare(`
+        UPDATE sessions SET confirmation_status = ?, status = ?,
+          cancelled_by = ?, cancellation_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `).run(
+        decision,
+        decision === 'declined' ? 'cancelled' : 'scheduled',
+        decision === 'declined' ? req.user.userId : null,
+        decision === 'declined' ? 'Tutor declined the requested time' : null,
+        sessionId
+      );
+      await recordSessionEvent(
+        transaction, sessionId, req.user.userId,
+        decision === 'declined' ? 'declined' : 'confirmed',
+        'pending_confirmation', decision === 'declined' ? 'cancelled' : 'scheduled'
+      );
+    });
     let updatedSession = { ...session, confirmation_status: decision, status: decision === 'declined' ? 'cancelled' : 'scheduled' };
     if (decision === 'declined') {
       await db.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
@@ -452,7 +641,7 @@ router.patch('/:id/confirmation', async (req, res) => {
     `).get(sessionId));
   } catch (error) {
     console.error('Session confirmation error:', error);
-    res.status(500).json({ error: 'Unable to update session request' });
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to update session request' });
   }
 });
 
@@ -467,8 +656,8 @@ router.patch('/:id/status', async (req, res) => {
       return res.status(400).json({ error: 'Valid session ID is required' });
     }
 
-    if (!['scheduled', 'completed', 'cancelled', 'no_show'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
+    if (status !== 'cancelled') {
+      return res.status(400).json({ error: 'Use rescheduling or session outcomes for other status changes' });
     }
     
     // Verify user can update this session
@@ -480,21 +669,25 @@ router.patch('/:id/status', async (req, res) => {
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
     }
-    if (session.confirmation_status === 'pending' && status !== 'cancelled') {
-      return res.status(409).json({ error: 'The tutor must confirm this session request first' });
+    if (session.status !== 'scheduled') {
+      return res.status(409).json({ error: 'This session is already closed' });
     }
-    if (['completed', 'no_show'].includes(status)) {
-      return res.status(400).json({ error: 'Tutors must record a session outcome to use this status' });
+    const cancellationReason = sanitizeText(notes, 500);
+    if (!cancellationReason) {
+      return res.status(400).json({ error: 'Add a short cancellation reason' });
     }
-    
-    // Update session
-    const updateSession = await db.prepare(`
-      UPDATE sessions 
-      SET status = ?, notes = ?, updated_at = CURRENT_TIMESTAMP 
-      WHERE id = ?
-    `);
-    
-    await updateSession.run(status, sanitizeText(notes, 2000) || session.notes, sessionId);
+
+    await db.withTransaction(async (transaction) => {
+      await transaction.prepare(`
+        UPDATE sessions
+        SET status = 'cancelled', notes = ?, cancelled_by = ?, cancellation_reason = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(cancellationReason, userId, cancellationReason, sessionId);
+      await recordSessionEvent(
+        transaction, sessionId, userId, 'cancelled', sessionState(session), 'cancelled',
+        { reason: cancellationReason }
+      );
+    });
     
     // Get updated session
     let updatedSession = await db.prepare(`
@@ -513,10 +706,7 @@ router.patch('/:id/status', async (req, res) => {
     const updaterName = userId === session.tutor_id ? updatedSession.tutor_name : updatedSession.student_name;
     
     const statusMessages = {
-      'completed': `Your session "${session.title}" has been marked as completed`,
       'cancelled': `${updaterName} cancelled the session "${session.title}"`,
-      'no_show': `The session "${session.title}" was marked as no-show`,
-      'scheduled': `The session "${session.title}" has been rescheduled`
     };
 
     await createNotification(
@@ -528,21 +718,17 @@ router.patch('/:id/status', async (req, res) => {
       sessionId
     );
 
-    if (status === 'cancelled') {
-      await db.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
-      await syncSessionToGoogle(updatedSession, 'delete');
-      await deleteZoomMeeting(updatedSession).catch((error) => console.error('Zoom meeting deletion warning:', error.message || error));
-      updatedSession = { ...updatedSession, meeting_link: null, meeting_provider: null, meeting_status: null };
-      await queueSessionEmails(updatedSession, 'cancelled')
-        .catch((error) => console.error('Session email warning:', error.message || error));
-    } else {
-      await syncSessionToGoogle(updatedSession, 'upsert');
-    }
+    await db.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
+    await syncSessionToGoogle(updatedSession, 'delete');
+    await deleteZoomMeeting(updatedSession).catch((error) => console.error('Zoom meeting deletion warning:', error.message || error));
+    updatedSession = { ...updatedSession, meeting_link: null, meeting_provider: null, meeting_status: null };
+    await queueSessionEmails(updatedSession, 'cancelled')
+      .catch((error) => console.error('Session email warning:', error.message || error));
     
     res.json(updatedSession);
   } catch (error) {
     console.error('Update session status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Internal server error' });
   }
 });
 

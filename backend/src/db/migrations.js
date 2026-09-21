@@ -309,6 +309,31 @@ const migrations = [
           ON session_meetings(provider, provider_meeting_id);
       `);
     }
+  },
+  {
+    version: '011_session_lifecycle_history',
+    async up(db) {
+      const id = db.dialect === 'postgres' ? 'BIGSERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+      const userId = db.dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
+      const timestamp = db.dialect === 'postgres' ? 'TIMESTAMPTZ' : 'DATETIME';
+
+      await addColumn(db, 'sessions', 'reschedule_count', 'INTEGER NOT NULL DEFAULT 0');
+      await addColumn(db, 'sessions', 'last_rescheduled_at', timestamp);
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS session_events (
+          id ${id},
+          session_id ${userId} NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          actor_user_id ${userId} REFERENCES users(id) ON DELETE SET NULL,
+          event_type TEXT NOT NULL,
+          from_state TEXT,
+          to_state TEXT,
+          details TEXT,
+          created_at ${timestamp} DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_session_events_session
+          ON session_events(session_id, created_at);
+      `);
+    }
   }
 ];
 

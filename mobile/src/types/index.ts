@@ -49,6 +49,12 @@ export type Session = {
   meeting_link?: string;
   meeting_provider?: string;
   meeting_status?: string;
+  description?: string;
+  duration_minutes?: number;
+  cancellation_reason?: string;
+  cancelled_by?: number;
+  reschedule_count?: number;
+  last_rescheduled_at?: string;
   tutor_name?: string;
   student_name?: string;
   connection_id?: number;

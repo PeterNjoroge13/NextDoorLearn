@@ -547,6 +547,18 @@ const api = {
     return response.json();
   },
 
+  rescheduleSession: async (sessionId, schedule, token) => {
+    const response = await apiFetch(`${API_BASE_URL}/sessions/${sessionId}/reschedule`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(schedule),
+    });
+    return response.json();
+  },
+
   getSessionMeeting: async (sessionId, token) => {
     const response = await apiFetch(`${API_BASE_URL}/sessions/${sessionId}/meeting`, {
       headers: { 'Authorization': `Bearer ${token}` },

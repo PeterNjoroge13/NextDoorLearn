@@ -94,6 +94,20 @@ module.exports = {
         intro: `Hi ${name}, the session "${title}" with ${otherName}, previously planned for ${when}, was cancelled.`,
         actionLabel: 'View schedule',
         footer: 'The connected calendar event and managed meeting room have been removed.'
+      },
+      reschedule_requested: {
+        heading: 'A new session time needs confirmation',
+        subject: `New time requested: ${title}`,
+        intro: `Hi ${name}, ${otherName} proposed a new time for "${title}": ${when}. Open NextDoorLearn to confirm or decline it.`,
+        actionLabel: 'Review new time',
+        footer: 'Calendar and meeting details will be recreated after the tutor confirms the new time.'
+      },
+      rescheduled: {
+        heading: 'Your tutoring session was rescheduled',
+        subject: `Rescheduled: ${title}`,
+        intro: `Hi ${name}, "${title}" with ${otherName} is now scheduled for ${when}.${meetingReady ? ' The secure meeting room has been refreshed.' : ''}`,
+        actionLabel: 'View updated session',
+        footer: 'Your connected calendar and reminders have been updated.'
       }
     }[event];
     const email = actionEmail({

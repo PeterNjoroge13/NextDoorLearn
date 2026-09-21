@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, ExternalLink, FileText, List, Plus, RefreshCw, Star, Unplug, UserX, Video, X } from 'lucide-react';
+import { CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, ExternalLink, FileText, List, Plus, RefreshCw, Star, Unplug, UserX, Video, X } from 'lucide-react';
 import api from '../services/api';
 import AppShell, { EmptyState, ErrorState, LoadingState } from '../components/AppShell';
 import { useAuth } from '../context/AuthContext';
@@ -27,6 +27,8 @@ const Sessions = () => {
   const [integrationNotice, setIntegrationNotice] = useState('');
   const [meetingBusy, setMeetingBusy] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [rescheduleSession, setRescheduleSession] = useState(null);
+  const [cancelSession, setCancelSession] = useState(null);
   const [outcomeSession, setOutcomeSession] = useState(null);
   const [reviewSession, setReviewSession] = useState(null);
   const [outcomeForm, setOutcomeForm] = useState({
@@ -34,6 +36,8 @@ const Sessions = () => {
     studentReflection: '', confidenceBefore: 3, confidenceAfter: 3,
   });
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
+  const [rescheduleForm, setRescheduleForm] = useState({ scheduledDate: '', startTime: '', endTime: '', reason: '' });
+  const [cancellationReason, setCancellationReason] = useState('');
   const [view, setView] = useState('calendar');
   const [filters, setFilters] = useState({ status: '', month: new Date().getMonth() + 1, year: new Date().getFullYear() });
   const [formData, setFormData] = useState({
@@ -113,17 +117,53 @@ const Sessions = () => {
     }
   };
 
-  const handleUpdateStatus = async (sessionId, status) => {
+  const openReschedule = (session) => {
+    setRescheduleSession(session);
+    setRescheduleForm({
+      scheduledDate: String(session.scheduled_date || '').slice(0, 10),
+      startTime: String(session.start_time || '').slice(0, 5),
+      endTime: String(session.end_time || '').slice(0, 5),
+      reason: '',
+    });
+    setActionError('');
+  };
+
+  const handleReschedule = async (event) => {
+    event.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      const response = await api.updateSessionStatus(sessionId, status, '', token);
+      const response = await api.rescheduleSession(rescheduleSession.id, rescheduleForm, token);
       if (response.error) setActionError(response.error);
       else {
         setActionError('');
-        setSessions((current) => current.map((session) => (session.id === sessionId ? response : session)));
+        setSessions((current) => current.map((session) => (session.id === rescheduleSession.id ? { ...session, ...response } : session)));
+        setRescheduleSession(null);
       }
     } catch {
-      setActionError('The session status could not be updated.');
+      setActionError('The session could not be rescheduled.');
+    }
+  };
+
+  const openCancellation = (session) => {
+    setCancelSession(session);
+    setCancellationReason('');
+    setActionError('');
+  };
+
+  const handleCancellation = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await api.updateSessionStatus(
+        cancelSession.id, 'cancelled', cancellationReason, localStorage.getItem('token')
+      );
+      if (response.error) setActionError(response.error);
+      else {
+        setSessions((current) => current.map((session) => session.id === cancelSession.id ? { ...session, ...response } : session));
+        setActionError('');
+        setCancelSession(null);
+      }
+    } catch {
+      setActionError('The session could not be cancelled.');
     }
   };
 
@@ -387,6 +427,7 @@ const Sessions = () => {
                         </p>
                         {session.description ? <p className="page-copy">{session.description}</p> : null}
                         <p className="muted">{user?.role === 'tutor' ? `Student: ${session.student_name}` : `Tutor: ${session.tutor_name}`}</p>
+                        {session.status === 'cancelled' && session.cancellation_reason ? <p className="muted"><strong>Cancellation reason:</strong> {session.cancellation_reason}</p> : null}
                       </div>
                     </div>
                     <div className="button-row">
@@ -425,7 +466,13 @@ const Sessions = () => {
                       <button className="btn btn-ghost btn-sm" type="button" onClick={() => openReview(session)}><Star size={16} />{session.review_id ? `Update review (${session.review_rating}/5)` : 'Review tutor'}</button>
                     ) : null}
                     {session.status === 'scheduled' ? (
-                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUpdateStatus(session.id, 'cancelled')}>
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => openReschedule(session)}>
+                        <CalendarClock size={16} />
+                        Reschedule
+                      </button>
+                    ) : null}
+                    {session.status === 'scheduled' ? (
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => openCancellation(session)}>
                         <X size={16} />
                         Cancel
                       </button>
@@ -514,6 +561,45 @@ const Sessions = () => {
                 <button className="btn btn-primary" type="submit">Create session</button>
                 <button className="btn btn-ghost" type="button" onClick={() => setShowCreateModal(false)}>Cancel</button>
               </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {rescheduleSession ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="reschedule-title">
+          <div className="modal">
+            <div className="modal-head">
+              <div><span className="eyebrow">Schedule change</span><h2 id="reschedule-title">Choose a new time</h2><p className="muted">{rescheduleSession.title}</p></div>
+              <button className="icon-button" type="button" onClick={() => setRescheduleSession(null)} aria-label="Close reschedule form"><X size={18} /></button>
+            </div>
+            <form className="modal-body form-grid" onSubmit={handleReschedule}>
+              {user?.role === 'student' ? <div className="alert alert-warning">Your tutor will need to confirm the new time before the meeting room and calendar event are recreated.</div> : null}
+              <div className="grid grid-3">
+                <div className="field"><label htmlFor="reschedule-date">Date</label><input id="reschedule-date" type="date" value={rescheduleForm.scheduledDate} onChange={(event) => setRescheduleForm((current) => ({ ...current, scheduledDate: event.target.value }))} required /></div>
+                <div className="field"><label htmlFor="reschedule-start">Start</label><input id="reschedule-start" type="time" value={rescheduleForm.startTime} onChange={(event) => setRescheduleForm((current) => ({ ...current, startTime: event.target.value }))} required /></div>
+                <div className="field"><label htmlFor="reschedule-end">End</label><input id="reschedule-end" type="time" value={rescheduleForm.endTime} onChange={(event) => setRescheduleForm((current) => ({ ...current, endTime: event.target.value }))} required /></div>
+              </div>
+              <div className="field"><label htmlFor="reschedule-reason">Why are you changing the time?</label><textarea id="reschedule-reason" value={rescheduleForm.reason} onChange={(event) => setRescheduleForm((current) => ({ ...current, reason: event.target.value }))} maxLength="500" required placeholder="A brief reason helps the other person understand the change." /></div>
+              {actionError ? <div className="alert alert-error" role="alert">{actionError}</div> : null}
+              <div className="button-row"><button className="btn btn-primary" type="submit"><CalendarClock size={17} />Save new time</button><button className="btn btn-ghost" type="button" onClick={() => setRescheduleSession(null)}>Keep current time</button></div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {cancelSession ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cancel-session-title">
+          <div className="modal">
+            <div className="modal-head">
+              <div><span className="eyebrow">Cancel session</span><h2 id="cancel-session-title">Let the other person know why</h2><p className="muted">{cancelSession.title}</p></div>
+              <button className="icon-button" type="button" onClick={() => setCancelSession(null)} aria-label="Close cancellation form"><X size={18} /></button>
+            </div>
+            <form className="modal-body form-grid" onSubmit={handleCancellation}>
+              <div className="field"><label htmlFor="cancellation-reason">Cancellation reason</label><textarea id="cancellation-reason" value={cancellationReason} onChange={(event) => setCancellationReason(event.target.value)} maxLength="500" required placeholder="For example: My class schedule changed unexpectedly." /></div>
+              <p className="muted">The meeting room, reminders, and connected calendar events will be removed.</p>
+              {actionError ? <div className="alert alert-error" role="alert">{actionError}</div> : null}
+              <div className="button-row"><button className="btn btn-danger" type="submit">Cancel session</button><button className="btn btn-ghost" type="button" onClick={() => setCancelSession(null)}>Keep session</button></div>
             </form>
           </div>
         </div>
