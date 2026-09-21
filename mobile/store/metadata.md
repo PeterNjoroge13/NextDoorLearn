@@ -25,13 +25,13 @@ tutoring, education, volunteer, mentor, student, learning, homework, community
 Education
 
 ## Support URL
-https://next-door-learn.vercel.app/support
+https://nextdoorlearn.com/support
 
 ## Privacy URL
-https://next-door-learn.vercel.app/privacy
+https://nextdoorlearn.com/privacy
 
 ## Account deletion URL
-https://next-door-learn.vercel.app/delete-account
+https://nextdoorlearn.com/delete-account
 
 ## Review notes
 NextDoorLearn has separate student and tutor experiences. New public registrations create student accounts. Tutors submit an application with a profile photo and can sign in only after an administrator approves the application and the tutor activates the emailed invitation. Reviewer credentials must be created as active test accounts in the production database before submission.

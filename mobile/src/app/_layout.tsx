@@ -12,7 +12,8 @@ export default function RootLayout() {
     Notifications.setNotificationChannelAsync('default', { name: 'NextDoorLearn updates', importance: Notifications.AndroidImportance.DEFAULT }).catch(() => undefined);
     const openNotification = (response: Notifications.NotificationResponse | null) => {
       const link = response?.notification.request.content.data?.link;
-      const destination = typeof link === 'string' ? notificationRoute(link) : '/(app)/notifications';
+      const relatedId = response?.notification.request.content.data?.relatedId;
+      const destination = typeof link === 'string' ? notificationRoute(link, relatedId) : '/(app)/notifications';
       router.push(destination as never);
     };
     const subscription = Notifications.addNotificationResponseReceivedListener(openNotification);
@@ -22,9 +23,12 @@ export default function RootLayout() {
   return <AuthProvider><StatusBar style="dark" /><Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'slide_from_right' }} /></AuthProvider>;
 }
 
-const notificationRoute = (link: string) => {
-  if (link.startsWith('/messages')) return '/(app)/(tabs)/messages';
-  if (link.startsWith('/sessions')) return '/(app)/(tabs)/schedule';
+const notificationRoute = (link: string, relatedId?: unknown) => {
+  const id = typeof relatedId === 'number' || (typeof relatedId === 'string' && /^\d+$/.test(relatedId))
+    ? String(relatedId)
+    : '';
+  if (link.startsWith('/messages')) return id ? `/(app)/conversation/${id}` : '/(app)/(tabs)/messages';
+  if (link.startsWith('/sessions')) return id ? `/(app)/session/${id}` : '/(app)/(tabs)/schedule';
   if (link.startsWith('/requests')) return '/(app)/(tabs)/discover';
   if (link.startsWith('/profile')) return '/(app)/profile';
   return '/(app)/notifications';

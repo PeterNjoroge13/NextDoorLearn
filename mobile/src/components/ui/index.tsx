@@ -16,6 +16,8 @@ export function Screen({ children, scroll = true, refreshing, onRefresh, style }
   const content = scroll ? (
     <ScrollView
       keyboardShouldPersistTaps="handled"
+      contentInsetAdjustmentBehavior="automatic"
+      automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       contentContainerStyle={[styles.screenContent, style]}
       refreshControl={onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={colors.brand} /> : undefined}
     >{children}</ScrollView>
@@ -36,6 +38,8 @@ export function Button({ label, onPress, icon: Icon, variant = 'primary', loadin
 }) {
   return <Pressable
     accessibilityRole="button"
+    accessibilityLabel={label}
+    accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
     disabled={disabled || loading}
     onPress={() => { Haptics.selectionAsync(); onPress(); }}
     style={({ pressed }) => [styles.button, styles[`button_${variant}`], pressed && styles.pressed, (disabled || loading) && styles.disabled, style]}
@@ -44,6 +48,7 @@ export function Button({ label, onPress, icon: Icon, variant = 'primary', loadin
 
 export function Field({ label, error, multiline, ...props }: TextInputProps & { label: string; error?: string }) {
   return <View style={styles.fieldWrap}><Text style={styles.label}>{label}</Text><TextInput
+    accessibilityLabel={label}
     placeholderTextColor="#8A948F"
     multiline={multiline}
     textAlignVertical={multiline ? 'top' : 'center'}
@@ -55,7 +60,7 @@ export function Field({ label, error, multiline, ...props }: TextInputProps & { 
 export function Avatar({ uri, name, size = 48 }: { uri?: string | null; name: string; size?: number }) {
   const source = assetUrl(uri);
   const initials = name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
-  return source ? <Image source={{ uri: source }} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.brandSoft }} contentFit="cover" /> : <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}><Text style={[styles.avatarText, { fontSize: Math.max(12, size * 0.3) }]}>{initials}</Text></View>;
+  return source ? <Image accessibilityLabel={`${name} profile picture`} source={{ uri: source }} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.brandSoft }} contentFit="cover" /> : <View accessibilityLabel={`${name} profile picture`} style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}><Text style={[styles.avatarText, { fontSize: Math.max(12, size * 0.3) }]}>{initials}</Text></View>;
 }
 
 export function Chip({ label, tone = 'brand' }: { label: string; tone?: 'brand' | 'gold' | 'coral' | 'neutral' }) {
@@ -66,8 +71,8 @@ export function EmptyState({ icon: Icon, title, message, action }: { icon: Lucid
   return <View style={styles.empty}><View style={styles.emptyIcon}><Icon size={28} color={colors.brand} /></View><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyMessage}>{message}</Text>{action}</View>;
 }
 
-export function LoadingState() { return <View style={styles.loading}><ActivityIndicator size="large" color={colors.brand} /><Text style={styles.loadingText}>Loading your space...</Text></View>; }
-export function ErrorNotice({ message }: { message: string }) { return <View style={styles.errorNotice}><Text style={styles.errorNoticeText}>{message}</Text></View>; }
+export function LoadingState() { return <View accessibilityRole="progressbar" accessibilityLabel="Loading" style={styles.loading}><ActivityIndicator size="large" color={colors.brand} /><Text style={styles.loadingText}>Loading your space...</Text></View>; }
+export function ErrorNotice({ message }: { message: string }) { return <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorNotice}><Text style={styles.errorNoticeText}>{message}</Text></View>; }
 export const SectionTitle = ({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) => <View style={styles.sectionTitleRow}><Text style={styles.sectionTitle}>{children}</Text>{action}</View>;
 
 const styles = StyleSheet.create({

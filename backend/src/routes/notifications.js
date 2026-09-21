@@ -5,7 +5,7 @@ const { boundedInteger, isPositiveInteger } = require('../utils/validation');
 
 const router = express.Router();
 
-const sendPushNotification = async (userId, title, message, link) => {
+const sendPushNotification = async (userId, title, message, link, relatedId) => {
   const devices = await db.prepare(`
     SELECT expo_push_token FROM push_devices WHERE user_id = ? AND enabled = 1
   `).all(userId);
@@ -19,10 +19,19 @@ const sendPushNotification = async (userId, title, message, link) => {
       title,
       body: message,
       sound: 'default',
-      data: { link: link || '/notifications' }
+      data: { link: link || '/notifications', relatedId: relatedId || null }
     })))
   });
   if (!response.ok) throw new Error(`Expo push service returned ${response.status}`);
+  const delivery = await response.json().catch(() => null);
+  const tickets = Array.isArray(delivery?.data) ? delivery.data : [];
+  await Promise.all(tickets.map((ticket, index) => {
+    if (ticket?.details?.error !== 'DeviceNotRegistered' || !devices[index]) return null;
+    return db.prepare(`
+      UPDATE push_devices SET enabled = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE expo_push_token = ?
+    `).run(devices[index].expo_push_token);
+  }));
 };
 
 // Get all notifications for user
@@ -150,7 +159,7 @@ const createNotification = async (userId, type, title, message, link = null, rel
       VALUES (?, ?, ?, ?, ?, ?)
     `);
     const result = await stmt.run(userId, type, title, message, link, relatedId);
-    sendPushNotification(userId, title, message, link).catch((error) => {
+    sendPushNotification(userId, title, message, link, relatedId).catch((error) => {
       console.error('Push notification delivery error:', error.message);
     });
     return result.lastInsertRowid;

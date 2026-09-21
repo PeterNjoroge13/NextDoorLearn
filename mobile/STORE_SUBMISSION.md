@@ -4,8 +4,8 @@ The codebase is prepared for iOS and Android builds with Expo Application Servic
 
 ## One-time owner setup
 
-1. Create or sign in to an Expo account and run `npx eas-cli@latest login`.
-2. From `mobile/`, run `npx eas-cli@latest init`. This adds the generated EAS project ID to `app.json` and enables production push-token registration.
+1. The Expo owner is configured as `peternjo`. Confirm that account with `npx expo whoami`.
+2. From `mobile/`, run `npx eas-cli@latest init`. This is the remaining EAS link step: it creates or links the remote project, adds the generated project ID to `app.json`, and enables production push-token registration.
 3. Enroll in the Apple Developer Program and create the App Store Connect app for bundle ID `com.peternjoroge.nextdoorlearn`.
 4. Create a Google Play Console developer account and app with package `com.peternjoroge.nextdoorlearn`.
 5. Create dedicated student and tutor reviewer accounts in production. Put credentials only in App Store Connect and Play Console review notes, never in git.
@@ -16,7 +16,8 @@ The codebase is prepared for iOS and Android builds with Expo Application Servic
 1. Run `npm run lint`, `npm run typecheck`, and `npm run export:web`.
 2. Run `npm run build:preview` and install the internal iOS/Android builds on physical devices.
 3. Test registration, login persistence, intake, tutor discovery, connection requests, messaging, scheduling, profile photo upload, notifications, reporting/blocking, and account deletion.
-4. Capture current iPhone and Android screenshots from the signed preview builds.
+4. Open a message and session push notification and confirm each one deep-links to the correct record.
+5. Capture current iPhone and Android screenshots from the signed preview builds.
 
 ## Production submission
 

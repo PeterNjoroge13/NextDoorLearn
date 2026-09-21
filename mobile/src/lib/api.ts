@@ -16,12 +16,14 @@ export const assetUrl = (path?: string | null) => {
 export class ApiError extends Error {
   status: number;
   code?: string;
+  requestId?: string;
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, requestId?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.requestId = requestId;
   }
 }
 
@@ -50,17 +52,33 @@ const parseResponse = async <T>(response: Response): Promise<T> => {
     throw new ApiError(
       String(payload.error || payload.message || 'Something went wrong. Please try again.'),
       response.status,
-      typeof payload.code === 'string' ? payload.code : undefined
+      typeof payload.code === 'string' ? payload.code : undefined,
+      response.headers.get('x-request-id') || undefined
     );
   }
   return payload as T;
+};
+
+const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs = 20000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError('NextDoorLearn took too long to respond. Check your connection and try again.', 0, 'NETWORK_TIMEOUT');
+    }
+    throw new ApiError('We could not reach NextDoorLearn. Check your connection and try again.', 0, 'NETWORK_UNAVAILABLE');
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 const renewSession = async () => {
   if (!refreshToken) return null;
   if (!refreshing) {
     refreshing = (async () => {
-      const response = await fetch(`${API_URL}/auth/refresh`, {
+      const response = await fetchWithTimeout(`${API_URL}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken, deviceName: Constants.deviceName || undefined })
@@ -88,7 +106,7 @@ type RequestOptions = RequestInit & { authenticated?: boolean; retry?: boolean }
 export const request = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
   const { authenticated = true, retry = true, headers, ...init } = options;
   const isForm = init.body instanceof FormData;
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetchWithTimeout(`${API_URL}${path}`, {
     ...init,
     headers: {
       ...(isForm ? {} : init.body ? { 'Content-Type': 'application/json' } : {}),

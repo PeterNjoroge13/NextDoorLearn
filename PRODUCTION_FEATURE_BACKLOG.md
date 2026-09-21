@@ -29,14 +29,14 @@ This file tracks production work that can be completed without external account 
 
 ## Priority 1: Mobile Production Preparation
 
-- [ ] Complete iOS and Android identifiers, deep-link schemes, universal-link placeholders, and build profiles.
-- [ ] Add production-safe app metadata, versioning, privacy declarations, and permission descriptions.
-- [ ] Ensure every web workflow has an intentional mobile equivalent or safe handoff.
-- [ ] Improve offline, loading, retry, empty, expired-session, and API-unavailable states.
-- [ ] Verify keyboard handling, safe areas, dynamic text, touch targets, and screen-reader labels.
-- [ ] Add scheduling/rescheduling, calendar connection, meeting access, reporting, and account controls.
-- [ ] Produce repeatable EAS preview and store-build documentation.
-- [ ] Run lint, type checking, export, and mobile-sized visual smoke tests in CI.
+- [x] Configure iOS and Android identifiers, the custom deep-link scheme, adaptive icons, and build profiles.
+- [x] Add production-safe metadata, runtime versioning, permission descriptions, and store declarations.
+- [x] Give each critical web workflow an intentional mobile equivalent or policy handoff.
+- [x] Handle loading, retry, empty, expired-session, API-unavailable, and network-timeout states.
+- [x] Improve keyboard insets, safe areas, dynamic text behavior, touch targets, and shared screen-reader labels.
+- [x] Add scheduling/rescheduling, calendar connection, meeting access, reporting, and account controls.
+- [x] Produce repeatable EAS preview and store-build documentation.
+- [x] Run lint, type checking, and static mobile export in CI; retain physical-device smoke testing as an owner release gate.
 
 ## Priority 1: UX Polish
 

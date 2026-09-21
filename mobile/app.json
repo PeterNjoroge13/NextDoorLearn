@@ -2,7 +2,9 @@
   "expo": {
     "name": "NextDoorLearn",
     "slug": "nextdoorlearn",
+    "owner": "peternjo",
     "version": "1.0.0",
+    "runtimeVersion": { "policy": "appVersion" },
     "orientation": "portrait",
     "icon": "./assets/images/nextdoorlearn-icon.png",
     "scheme": "nextdoorlearn",
@@ -21,7 +23,8 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0F766E",
-        "foregroundImage": "./assets/images/nextdoorlearn-icon.png"
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "package": "com.peternjoroge.nextdoorlearn",
       "versionCode": 1,
@@ -36,7 +39,7 @@
       ["expo-splash-screen", { "backgroundColor": "#F7F4EE", "image": "./assets/images/nextdoorlearn-icon.png", "imageWidth": 150 }],
       ["expo-secure-store", { "configureAndroidBackup": true, "faceIDPermission": "Allow NextDoorLearn to securely access your saved session." }],
       ["expo-image-picker", { "photosPermission": "Choose a profile picture for your NextDoorLearn profile or tutor application.", "cameraPermission": false }],
-      ["expo-notifications", { "color": "#0F766E", "defaultChannel": "default" }]
+      ["expo-notifications", { "icon": "./assets/images/android-icon-monochrome.png", "color": "#0F766E", "defaultChannel": "default" }]
     ],
     "experiments": {
       "typedRoutes": true,
