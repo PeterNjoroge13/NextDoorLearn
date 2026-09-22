@@ -1,6 +1,6 @@
 # NextDoorLearn Production Feature Backlog
 
-Last updated: September 21, 2026
+Last updated: September 22, 2026
 
 This file tracks production work that can be completed without external account credentials. Items that require Peter to configure a third-party service are listed separately so engineering work can continue without blocking.
 
@@ -15,6 +15,7 @@ This file tracks production work that can be completed without external account 
 - [x] Persist the tutor timezone on each booking and show it throughout availability, booking, and session displays.
 - [x] Improve session detail states for pending, confirmed, cancelled, completed, and no-show sessions.
 - [x] Add backend tests for overlapping sessions, invalid transitions, blocked users, and rescheduling.
+- [x] Add atomic tutor-created weekly session series with per-occurrence conflicts, reminders, meetings, and calendar sync.
 
 ## Priority 1: Security Review
 
@@ -74,10 +75,11 @@ This file tracks production work that can be completed without external account 
 - [x] Add cancellation refunds, transfer reversal, and visible refund states.
 - [x] Add student payment history and tutor earnings/payout workspaces.
 - [x] Add payment privacy, terms, deployment, and release documentation.
+- [x] Add administrator payment health, failure visibility, guarded full refunds, member notifications, and refund audit history.
 
 ## Continuous Release Quality
 
-- [ ] Expand API workflow tests to cover every critical student/tutor journey.
+- [x] Expand API workflow tests across tutor activation, matching, safety, scheduling, recurring series, payments, and learning outcomes.
 - [x] Add browser-level tests for public, student, tutor, and administrator routes.
 - [ ] Keep frontend, backend, mobile, mutation smoke, and production smoke checks green.
 - [ ] Commit and push focused checkpoints to `main` after verification.

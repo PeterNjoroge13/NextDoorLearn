@@ -467,6 +467,7 @@ const Sessions = () => {
                       </div>
                     </div>
                     <div className="button-row">
+                      {session.series_count > 1 ? <span className="badge badge-blue">Weekly {session.series_index} of {session.series_count}</span> : null}
                       {session.confirmation_status === 'pending' ? <span className="badge badge-warning">Awaiting tutor confirmation</span> : null}
                       <span className={`badge ${statusClass[session.status] || 'badge'}`}>{session.status}</span>
                     </div>

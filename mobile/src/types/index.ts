@@ -60,6 +60,9 @@ export type Session = {
   tutor_name?: string;
   student_name?: string;
   connection_id?: number;
+  series_id?: string;
+  series_index?: number;
+  series_count?: number;
 };
 
 export type Conversation = {
