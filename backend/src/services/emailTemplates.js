@@ -48,6 +48,15 @@ module.exports = {
       footer: 'You do not need to create a separate tutor account while your application is under review.'
     });
   },
+  tutorApplicationAdminAlert({ name, email, subjects, location, hourlyRate, url }) {
+    const rate = Number(hourlyRate || 0) === 0 ? 'volunteer tutoring' : `$${Number(hourlyRate).toFixed(2)}/hour tutoring`;
+    return actionEmail({
+      heading: 'New tutor application to review',
+      intro: `${name} (${email}) applied to offer ${rate}${location ? ` from ${location}` : ''}. Subjects: ${subjects.join(', ') || 'not listed'}.`,
+      actionLabel: 'Review tutor application', actionUrl: url,
+      footer: 'Sign in with an administrator account to review, approve, request information, or decline this application.'
+    });
+  },
   tutorApplicationDecision(name, state, reason, url) {
     const needsInfo = state === 'needs_information';
     return actionEmail({

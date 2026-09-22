@@ -17,6 +17,11 @@ const list = (value, maxItems = 12) => {
   return items.map((item) => sanitizeText(item, 80)).filter(Boolean).slice(0, maxItems);
 };
 
+const adminEmails = () => [...new Set((process.env.ADMIN_EMAILS || '')
+  .split(',')
+  .map((email) => email.trim().toLowerCase())
+  .filter(isValidEmail))];
+
 router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'profilePicture'), async (req, res) => {
   try {
     const name = sanitizeText(req.body.name, 120);
@@ -91,6 +96,21 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
       ...content,
       idempotencyKey: `tutor_application_received_${applicationId}`
     });
+    const adminContent = emailTemplates.tutorApplicationAdminAlert({
+      name,
+      email,
+      subjects,
+      location: sanitizeText(req.body.location, 160),
+      hourlyRate: hourlyRate.value,
+      url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/admin`,
+    });
+    await Promise.all(adminEmails().map((adminEmail) => queueEmail({
+      to: adminEmail,
+      template: 'tutor_application_admin_alert',
+      subject: 'New NextDoorLearn tutor application',
+      ...adminContent,
+      idempotencyKey: `tutor_application_admin_alert_${applicationId}_${adminEmail}`,
+    })));
 
     res.status(201).json({
       applicationId,

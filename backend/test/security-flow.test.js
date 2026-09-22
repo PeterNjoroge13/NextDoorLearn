@@ -736,6 +736,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   const outbox = await request('/admin/email-outbox', { token: adminResponse.body.token });
   assert.equal(outbox.status, 200);
   assert.ok(outbox.body.emails.some((email) => email.template === 'tutor_activation'));
+  assert.ok(outbox.body.emails.some((email) => email.template === 'tutor_application_admin_alert' && email.recipient === 'admin@example.com'));
   assert.ok(!outbox.body.emails.some((email) => email.template === 'session_requested' && email.recipient === 'approved@example.com'));
   assert.ok(outbox.body.emails.some((email) => email.template === 'session_confirmed'));
   assert.ok(outbox.body.emails.some((email) => email.template === 'session_cancelled'));
