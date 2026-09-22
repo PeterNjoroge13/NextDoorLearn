@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, ClipboardList, HandCoins, Mail, RefreshCw, Search, ShieldCheck, Sparkles, UserCheck, UserPlus, Users } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, ClipboardList, HandCoins, Mail, RefreshCw, RotateCcw, Search, ShieldCheck, Sparkles, UserCheck, UserPlus, Users, WalletCards } from 'lucide-react';
 import api from '../services/api';
 import AppShell, { Avatar, EmptyState, ErrorState, LoadingState } from '../components/AppShell';
 
 const reportStatuses = ['open', 'reviewing', 'resolved', 'dismissed'];
 const inquiryStatuses = ['new', 'contacted', 'closed'];
+const money = (amountCents = 0, currency = 'usd') => new Intl.NumberFormat('en-US', {
+  style: 'currency', currency: String(currency).toUpperCase(),
+}).format(Number(amountCents) / 100);
 
 const Admin = () => {
   const [users, setUsers] = useState([]);
@@ -15,6 +18,9 @@ const Admin = () => {
   const [overview, setOverview] = useState(null);
   const [auditLog, setAuditLog] = useState([]);
   const [emailDelivery, setEmailDelivery] = useState({ providerConfigured: false, emails: [] });
+  const [paymentOperations, setPaymentOperations] = useState({ configured: false, summary: {}, payments: [], pagination: {} });
+  const [refundDrafts, setRefundDrafts] = useState({});
+  const [refundBusy, setRefundBusy] = useState(null);
   const [reviewDrafts, setReviewDrafts] = useState({});
   const [moderationDrafts, setModerationDrafts] = useState({});
   const [waitlistDrafts, setWaitlistDrafts] = useState({});
@@ -28,7 +34,7 @@ const Admin = () => {
   const fetchAdminData = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const [overviewResponse, usersResponse, reportsResponse, applicationsResponse, inquiriesResponse, waitlistResponse, auditResponse, emailResponse] = await Promise.all([
+      const [overviewResponse, usersResponse, reportsResponse, applicationsResponse, inquiriesResponse, waitlistResponse, auditResponse, emailResponse, paymentsResponse] = await Promise.all([
         api.getAdminOverview(token),
         api.getAdminUsers(token),
         api.getAdminReports(token),
@@ -37,10 +43,11 @@ const Admin = () => {
         api.getAdminWaitlist(token),
         api.getAdminAuditLog(token),
         api.getAdminEmailOutbox(token),
+        api.getAdminPayments(token),
       ]);
 
-      if (overviewResponse.error || usersResponse.error || reportsResponse.error || applicationsResponse.error || inquiriesResponse.error || waitlistResponse.error || auditResponse.error || emailResponse.error) {
-        setError(overviewResponse.error || usersResponse.error || reportsResponse.error || applicationsResponse.error || inquiriesResponse.error || waitlistResponse.error || auditResponse.error || emailResponse.error);
+      if (overviewResponse.error || usersResponse.error || reportsResponse.error || applicationsResponse.error || inquiriesResponse.error || waitlistResponse.error || auditResponse.error || emailResponse.error || paymentsResponse.error) {
+        setError(overviewResponse.error || usersResponse.error || reportsResponse.error || applicationsResponse.error || inquiriesResponse.error || waitlistResponse.error || auditResponse.error || emailResponse.error || paymentsResponse.error);
         return;
       }
 
@@ -52,6 +59,7 @@ const Admin = () => {
       setOverview(overviewResponse);
       setAuditLog(Array.isArray(auditResponse) ? auditResponse : []);
       setEmailDelivery(emailResponse?.emails ? emailResponse : { providerConfigured: false, emails: [] });
+      setPaymentOperations(paymentsResponse?.payments ? paymentsResponse : { configured: false, summary: {}, payments: [], pagination: {} });
       setError('');
     } catch {
       setError('Admin data could not be loaded.');
@@ -130,6 +138,31 @@ const Admin = () => {
     if (response.error) return showToast(response.error);
     setInquiries((current) => current.map((item) => item.id === response.id ? { ...item, ...response } : item));
     showToast('Sponsor inquiry updated.');
+  };
+
+  const updateRefundDraft = (paymentId, field, value) => {
+    setRefundDrafts((current) => ({ ...current, [paymentId]: { ...current[paymentId], [field]: value } }));
+  };
+
+  const handleRefundPayment = async (payment) => {
+    const draft = refundDrafts[payment.id] || {};
+    if (!draft.reason?.trim() || draft.reason.trim().length < 8) return showToast('Add a clear refund reason of at least 8 characters.');
+    if (draft.confirmation !== 'REFUND') return showToast('Type REFUND exactly to confirm.');
+    setRefundBusy(payment.id);
+    const response = await api.refundAdminPayment(payment.id, draft.reason, draft.confirmation, localStorage.getItem('token'));
+    setRefundBusy(null);
+    if (response.error) return showToast(response.error);
+    setPaymentOperations((current) => ({
+      ...current,
+      payments: current.payments.map((item) => item.id === payment.id ? { ...item, ...response } : item),
+      summary: {
+        ...current.summary,
+        collected_cents: Math.max(0, Number(current.summary.collected_cents || 0) - Number(payment.amount_cents || 0)),
+        refunded_cents: Number(current.summary.refunded_cents || 0) + Number(payment.amount_cents || 0),
+      },
+    }));
+    setRefundDrafts((current) => ({ ...current, [payment.id]: {} }));
+    showToast(response.status === 'refunded' ? 'Payment refunded and both members notified.' : 'Refund submitted to the payment provider.');
   };
 
   const updateWaitlistDraft = (entryId, value) => {
@@ -238,6 +271,9 @@ const Admin = () => {
             </button>
             <button className={`tab${activeTab === 'delivery' ? ' active' : ''}`} type="button" onClick={() => setActiveTab('delivery')}>
               Email delivery
+            </button>
+            <button className={`tab${activeTab === 'payments' ? ' active' : ''}`} type="button" onClick={() => setActiveTab('payments')}>
+              Payments
             </button>
             <button className={`tab${activeTab === 'audit' ? ' active' : ''}`} type="button" onClick={() => setActiveTab('audit')}>
               Audit log
@@ -387,6 +423,46 @@ const Admin = () => {
                 Safety reports submitted by users will appear here.
               </EmptyState>
             )
+          ) : activeTab === 'payments' ? (
+            <div>
+              {!paymentOperations.configured ? (
+                <div className="alert" style={{ marginBottom: 16 }}>
+                  Payment history is available, but Stripe must be configured before refunds or new charges can be processed.
+                </div>
+              ) : null}
+              <div className="grid grid-4" style={{ marginBottom: 20 }}>
+                <div className="card stat"><span className="stat-icon"><WalletCards size={21} /></span><strong>{money(paymentOperations.summary.collected_cents)}</strong><span>Successfully collected</span></div>
+                <div className="card stat"><span className="stat-icon"><HandCoins size={21} /></span><strong>{money(paymentOperations.summary.platform_fee_cents)}</strong><span>Platform fees</span></div>
+                <div className="card stat"><span className="stat-icon"><RotateCcw size={21} /></span><strong>{money(paymentOperations.summary.refunded_cents)}</strong><span>Refunded</span></div>
+                <div className="card stat"><span className="stat-icon"><AlertTriangle size={21} /></span><strong>{Number(paymentOperations.summary.failed || 0)}</strong><span>Failed actions</span></div>
+              </div>
+              {paymentOperations.payments.length ? <div className="admin-list">{paymentOperations.payments.map((payment) => {
+                const refundable = ['succeeded', 'refund_failed'].includes(payment.status);
+                const draft = refundDrafts[payment.id] || {};
+                return (
+                  <article className="card card-pad admin-row" key={payment.id}>
+                    <div>
+                      <div className="button-row">
+                        <span className={`badge ${payment.status === 'succeeded' ? 'badge-success' : payment.status === 'refunded' ? 'badge-blue' : payment.status.includes('failed') ? 'badge-error' : 'badge-warning'}`}>{payment.status.replaceAll('_', ' ')}</span>
+                        <span className="badge">Session #{payment.session_id}</span>
+                        {payment.provider_reference ? <span className="badge">Stripe {payment.provider_reference}</span> : null}
+                      </div>
+                      <h2>{money(payment.amount_cents, payment.currency)} · {payment.title}</h2>
+                      <p className="muted">{payment.student_name} paid {payment.tutor_name} · {new Date(payment.created_at).toLocaleString()}</p>
+                      <p className="page-copy">{payment.scheduled_date} at {payment.start_time} · Platform fee {money(payment.platform_fee_cents, payment.currency)}</p>
+                      {payment.failure_message ? <p className="alert">{payment.failure_message}</p> : null}
+                    </div>
+                    {refundable ? (
+                      <div className="admin-actions">
+                        <label className="field"><span>Refund reason</span><textarea rows="2" value={draft.reason || ''} onChange={(event) => updateRefundDraft(payment.id, 'reason', event.target.value)} placeholder="Required for the audit trail" /></label>
+                        <label className="field"><span>Type REFUND to confirm</span><input value={draft.confirmation || ''} onChange={(event) => updateRefundDraft(payment.id, 'confirmation', event.target.value)} autoComplete="off" /></label>
+                        <button className="btn btn-danger btn-sm" type="button" disabled={!paymentOperations.configured || refundBusy === payment.id} onClick={() => handleRefundPayment(payment)}><RotateCcw size={16} />{refundBusy === payment.id ? 'Refunding...' : 'Issue full refund'}</button>
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}</div> : <EmptyState icon={WalletCards} title="No payment activity yet">Completed and attempted session payments will appear here.</EmptyState>}
+            </div>
           ) : activeTab === 'delivery' ? (
             <div>
               <div className="section-head" style={{ marginBottom: 16 }}>

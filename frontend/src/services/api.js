@@ -1023,6 +1023,25 @@ const api = {
     return response.json();
   },
 
+  getAdminPayments: async (token, filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.status) params.set('status', filters.status);
+    if (filters.query) params.set('query', filters.query);
+    const response = await apiFetch(`${API_BASE_URL}/admin/payments?${params}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
+  refundAdminPayment: async (paymentId, reason, confirmation, token) => {
+    const response = await apiFetch(`${API_BASE_URL}/admin/payments/${paymentId}/refund`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ reason, confirmation }),
+    });
+    return response.json();
+  },
+
   getBlockedUsers: async (token) => {
     const response = await apiFetch(`${API_BASE_URL}/blocks`, { headers: { 'Authorization': `Bearer ${token}` } });
     return response.json();

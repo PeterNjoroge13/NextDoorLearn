@@ -31,6 +31,8 @@ export default defineConfig({
         ALLOW_DIRECT_TUTOR_REGISTRATION: 'true',
         ADMIN_EMAILS: 'browser.admin@example.com',
         FRONTEND_URL: frontendUrl,
+        RATE_LIMIT_MAX: '5000',
+        AUTH_RATE_LIMIT_MAX: '500',
       },
     },
     {

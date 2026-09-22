@@ -463,6 +463,18 @@ const migrations = [
           .run(Math.round(rate * 100), session.id);
       }
     }
+  },
+  {
+    version: '016_recurring_sessions',
+    async up(db) {
+      await addColumn(db, 'sessions', 'series_id', 'TEXT');
+      await addColumn(db, 'sessions', 'series_index', 'INTEGER');
+      await addColumn(db, 'sessions', 'series_count', 'INTEGER');
+      await db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_sessions_series
+          ON sessions(series_id, series_index);
+      `);
+    }
   }
 ];
 

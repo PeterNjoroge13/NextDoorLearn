@@ -29,7 +29,7 @@ export default function NewSessionScreen() {
   const [selected, setSelected] = useState<number | null>(null);
   const [availability, setAvailability] = useState<Availability | null>(null);
   const [form, setForm] = useState({
-    title: '', subject: '', scheduledDate: '', startTime: '', endTime: '', description: '', meetingLink: '',
+    title: '', subject: '', scheduledDate: '', startTime: '', endTime: '', description: '', meetingLink: '', recurrenceCount: '1',
   });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -61,7 +61,7 @@ export default function NewSessionScreen() {
     setSaving(true);
     setError('');
     try {
-      await request('/sessions', { method: 'POST', body: JSON.stringify({ ...form, connectionId: selected }) });
+      await request('/sessions', { method: 'POST', body: JSON.stringify({ ...form, recurrenceCount: Number(form.recurrenceCount), connectionId: selected }) });
       router.replace('/(app)/(tabs)/schedule');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to schedule session');
@@ -93,7 +93,7 @@ export default function NewSessionScreen() {
     </Card> : null}
     <View style={styles.times}><View style={styles.flex}><Field label="Start (HH:MM)" value={form.startTime} onChangeText={(value) => set('startTime', value)} placeholder="16:00" /></View><View style={styles.flex}><Field label="End (HH:MM)" value={form.endTime} onChangeText={(value) => set('endTime', value)} placeholder="17:00" /></View></View>
     <Field label="What will you work on?" value={form.description} onChangeText={(value) => set('description', value)} multiline />
-    {user?.role === 'tutor' ? <><Field label="Custom meeting link (optional)" value={form.meetingLink} onChangeText={(value) => set('meetingLink', value)} placeholder="Leave blank for a managed Zoom room" autoCapitalize="none" /><Text style={styles.copy}>A secure Zoom room is prepared automatically after confirmation when the integration is connected.</Text></> : null}
+    {user?.role === 'tutor' ? <><Text style={styles.label}>Repeat weekly</Text><View style={styles.repeatOptions}>{['1', '2', '4', '6', '8', '12'].map((count) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: form.recurrenceCount === count }} key={count} onPress={() => set('recurrenceCount', count)} style={[styles.repeatOption, form.recurrenceCount === count && styles.slotSelected]}><Text style={[styles.slotText, form.recurrenceCount === count && styles.slotTextSelected]}>{count === '1' ? 'Once' : `${count}x`}</Text></Pressable>)}</View><Text style={styles.copy}>Every weekly date must fit your published availability and be conflict-free.</Text><Field label="Custom meeting link (optional)" value={form.meetingLink} onChangeText={(value) => set('meetingLink', value)} placeholder="Leave blank for managed Zoom" autoCapitalize="none" /><Text style={styles.copy}>A separate secure Zoom room is prepared for each session when the integration is connected.</Text></> : null}
     <Button label={user?.role === 'tutor' ? 'Schedule session' : 'Request session'} onPress={create} loading={saving} disabled={!selected || !form.title || !form.scheduledDate || !form.startTime || !form.endTime} />
   </Screen>;
 }
@@ -119,4 +119,6 @@ const styles = StyleSheet.create({
   slotSelected: { backgroundColor: colors.brand, borderColor: colors.brand },
   slotText: { color: colors.brandStrong, fontFamily: typography.bold },
   slotTextSelected: { color: colors.white },
+  repeatOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  repeatOption: { minWidth: 54, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
 });

@@ -1,14 +1,23 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const db = require('../db/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
-const { isPositiveInteger, sanitizeText } = require('../utils/validation');
+const { boundedInteger, isPositiveInteger, sanitizeText } = require('../utils/validation');
 const { createSecurityToken, hashSecurityToken } = require('../utils/securityTokens');
 const { queueEmail, processEmailOutbox, providerConfigured } = require('../services/email');
 const emailTemplates = require('../services/emailTemplates');
 const { getTutorRecommendations, parseList } = require('../services/matching');
 const { createNotification } = require('./notifications');
+const { paymentsConfigured, refundPaymentIntent } = require('../services/payments');
 
 const router = express.Router();
+const sensitiveActionLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: Number(process.env.ADMIN_SENSITIVE_ACTION_RATE_LIMIT_MAX || 20),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many sensitive administration actions. Please wait before trying again.' },
+});
 
 router.use(authenticateToken, requireAdmin);
 
@@ -31,6 +40,152 @@ router.get('/overview', async (req, res) => {
   } catch (error) {
     console.error('Admin overview error:', error);
     res.status(500).json({ error: 'Unable to load administration overview' });
+  }
+});
+
+router.get('/payments', async (req, res) => {
+  try {
+    const allowedStatuses = new Set(['pending', 'processing', 'requires_action', 'succeeded', 'failed', 'cancelled', 'refund_pending', 'refunded', 'refund_failed']);
+    const status = sanitizeText(req.query.status, 40);
+    const query = sanitizeText(req.query.query, 120);
+    const limit = boundedInteger(req.query.limit, { min: 1, max: 100, fallback: 50 });
+    const offset = boundedInteger(req.query.offset, { min: 0, max: 10000, fallback: 0 });
+    if (status && !allowedStatuses.has(status)) return res.status(400).json({ error: 'Invalid payment status' });
+
+    const clauses = [];
+    const parameters = [];
+    if (status) {
+      clauses.push('payment.status = ?');
+      parameters.push(status);
+    }
+    if (query) {
+      clauses.push('(LOWER(student.name) LIKE ? OR LOWER(student.email) LIKE ? OR LOWER(tutor.name) LIKE ? OR LOWER(tutor.email) LIKE ? OR CAST(payment.session_id AS TEXT) LIKE ?)');
+      const pattern = `%${query.toLowerCase()}%`;
+      parameters.push(pattern, pattern, pattern, pattern, `%${query}%`);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const count = await db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM session_payments payment
+      JOIN users student ON student.id = payment.student_id
+      JOIN users tutor ON tutor.id = payment.tutor_id
+      ${where}
+    `).get(...parameters);
+    const payments = await db.prepare(`
+      SELECT payment.id, payment.session_id, payment.amount_cents, payment.platform_fee_cents,
+        payment.currency, payment.status, payment.failure_code, payment.failure_message,
+        payment.paid_at, payment.refunded_at, payment.created_at, payment.updated_at,
+        payment.provider_payment_intent_id, session.title, session.scheduled_date, session.start_time,
+        student.id AS student_id, student.name AS student_name, student.email AS student_email,
+        tutor.id AS tutor_id, tutor.name AS tutor_name, tutor.email AS tutor_email
+      FROM session_payments payment
+      JOIN sessions session ON session.id = payment.session_id
+      JOIN users student ON student.id = payment.student_id
+      JOIN users tutor ON tutor.id = payment.tutor_id
+      ${where}
+      ORDER BY payment.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...parameters, limit, offset);
+    const summary = await db.prepare(`
+      SELECT COUNT(*) AS total,
+        COALESCE(SUM(CASE WHEN status = 'succeeded' THEN amount_cents ELSE 0 END), 0) AS collected_cents,
+        COALESCE(SUM(CASE WHEN status = 'succeeded' THEN platform_fee_cents ELSE 0 END), 0) AS platform_fee_cents,
+        COALESCE(SUM(CASE WHEN status = 'refunded' THEN amount_cents ELSE 0 END), 0) AS refunded_cents,
+        SUM(CASE WHEN status IN ('failed', 'refund_failed') THEN 1 ELSE 0 END) AS failed,
+        SUM(CASE WHEN status IN ('pending', 'processing', 'requires_action', 'refund_pending') THEN 1 ELSE 0 END) AS pending
+      FROM session_payments
+    `).get();
+
+    res.json({
+      configured: paymentsConfigured(),
+      summary,
+      payments: payments.map((payment) => ({
+        ...payment,
+        provider_reference: payment.provider_payment_intent_id
+          ? `...${payment.provider_payment_intent_id.slice(-10)}`
+          : null,
+        provider_payment_intent_id: undefined,
+      })),
+      pagination: { total: Number(count.total) || 0, limit, offset },
+    });
+  } catch (error) {
+    console.error('Admin payments error:', error);
+    res.status(500).json({ error: 'Unable to load payment operations' });
+  }
+});
+
+router.post('/payments/:id/refund', sensitiveActionLimiter, async (req, res) => {
+  const paymentId = req.params.id;
+  const reason = sanitizeText(req.body.reason, 1000);
+  const confirmation = sanitizeText(req.body.confirmation, 20);
+  if (!isPositiveInteger(paymentId)) return res.status(400).json({ error: 'Valid payment ID is required' });
+  if (!reason || reason.length < 8) return res.status(400).json({ error: 'Add a refund reason of at least 8 characters' });
+  if (confirmation !== 'REFUND') return res.status(400).json({ error: 'Type REFUND to confirm this action' });
+  if (!paymentsConfigured()) return res.status(503).json({ error: 'Payments must be configured before issuing a refund' });
+
+  let payment;
+  try {
+    payment = await db.prepare(`
+      SELECT payment.*, session.title, student.name AS student_name, tutor.name AS tutor_name
+      FROM session_payments payment
+      JOIN sessions session ON session.id = payment.session_id
+      JOIN users student ON student.id = payment.student_id
+      JOIN users tutor ON tutor.id = payment.tutor_id
+      WHERE payment.id = ?
+    `).get(paymentId);
+    if (!payment) return res.status(404).json({ error: 'Payment not found' });
+    if (!payment.provider_payment_intent_id) return res.status(409).json({ error: 'This payment has no provider charge to refund' });
+    if (!['succeeded', 'refund_failed'].includes(payment.status)) {
+      return res.status(409).json({ error: payment.status === 'refunded' ? 'This payment has already been refunded' : 'Only completed payments can be refunded' });
+    }
+
+    const claimed = await db.prepare(`
+      UPDATE session_payments SET status = 'refund_pending', failure_code = NULL,
+        failure_message = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND status = ?
+    `).run(paymentId, payment.status);
+    if (!claimed.changes) return res.status(409).json({ error: 'This payment is already being updated' });
+
+    const refund = await refundPaymentIntent(
+      payment.provider_payment_intent_id,
+      `nextdoorlearn-admin-refund-${payment.id}`,
+      Number(payment.platform_fee_cents) > 0
+    );
+    const finalStatus = refund.status === 'succeeded' ? 'refunded' : 'refund_pending';
+    await db.withTransaction(async (transaction) => {
+      await transaction.prepare(`
+        UPDATE session_payments SET status = ?, refunded_at = CASE WHEN ? = 'refunded' THEN CURRENT_TIMESTAMP ELSE refunded_at END,
+          failure_code = NULL, failure_message = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `).run(finalStatus, finalStatus, paymentId);
+      await audit(req.user.userId, 'payment.refund_requested', 'payment', paymentId, {
+        sessionId: payment.session_id,
+        amountCents: payment.amount_cents,
+        reason,
+        providerRefundId: refund.id,
+        providerStatus: refund.status,
+      }, transaction);
+    });
+    await Promise.all([
+      createNotification(payment.student_id, 'payment', 'Your tutoring payment was refunded', `A $${(Number(payment.amount_cents) / 100).toFixed(2)} refund was issued for ${payment.title}.`, '/payments', payment.session_id),
+      createNotification(payment.tutor_id, 'payment', 'A session payment was refunded', `The payment for ${payment.title} was refunded by platform support.`, '/payments', payment.session_id),
+    ]);
+    res.json({ id: payment.id, session_id: payment.session_id, status: finalStatus, refunded_at: finalStatus === 'refunded' ? new Date().toISOString() : null });
+  } catch (error) {
+    console.error('Admin payment refund error:', error);
+    if (payment) {
+      await db.withTransaction(async (transaction) => {
+        await transaction.prepare(`
+          UPDATE session_payments SET status = 'refund_failed', failure_code = ?,
+            failure_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'refund_pending'
+        `).run(sanitizeText(error.code, 80) || 'provider_error', 'The payment provider could not complete this refund.', paymentId);
+        await audit(req.user.userId, 'payment.refund_failed', 'payment', paymentId, {
+          sessionId: payment.session_id,
+          reason,
+          providerCode: sanitizeText(error.code, 80) || 'provider_error',
+        }, transaction);
+      }).catch((auditError) => console.error('Refund failure audit error:', auditError));
+    }
+    res.status(error.statusCode || 502).json({ error: error.statusCode === 503 ? error.message : 'The payment provider could not complete this refund' });
   }
 });
 

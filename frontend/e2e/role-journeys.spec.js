@@ -56,6 +56,9 @@ test('tutor sees the teaching and earnings workspaces', async ({ page, request }
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Your time can change');
   await page.getByRole('link', { name: 'Earnings' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Get paid without chasing invoices');
+  await page.goto('/sessions', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: /new session/i }).click();
+  await expect(page.getByLabel('Repeat weekly')).toBeVisible();
 });
 
 test('administrator can open the protected moderation console', async ({ page, request }) => {
@@ -64,6 +67,8 @@ test('administrator can open the protected moderation console', async ({ page, r
   await signIn(page, email);
   await page.getByRole('link', { name: 'Admin' }).click();
   await expect(page.getByRole('heading', { name: 'Run the community with care.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Payments', exact: true }).click();
+  await expect(page.getByText('Stripe must be configured before refunds or new charges can be processed.')).toBeVisible();
 });
 
 test('stale saved credentials recover to sign in instead of a broken dashboard', async ({ page }) => {

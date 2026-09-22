@@ -1,4 +1,5 @@
 const express = require('express');
+const { randomUUID } = require('crypto');
 const db = require('../db/database');
 const { authenticateToken, requireVerifiedEmail } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
@@ -47,6 +48,12 @@ const sessionState = (session) => session.confirmation_status === 'pending'
 const dateOnly = (value) => value instanceof Date
   ? value.toISOString().slice(0, 10)
   : String(value || '').slice(0, 10);
+
+const addDays = (date, days) => {
+  const parsed = new Date(`${date}T12:00:00Z`);
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+};
 
 const recordSessionEvent = async (database, sessionId, actorUserId, eventType, fromState, toState, details = {}) => {
   await database.prepare(`
@@ -363,7 +370,8 @@ router.post('/', async (req, res) => {
       scheduledDate,
       startTime,
       endTime,
-      meetingLink
+      meetingLink,
+      recurrenceCount: requestedRecurrenceCount = 1,
     } = req.body;
     
     const userId = req.user.userId;
@@ -377,6 +385,10 @@ router.post('/', async (req, res) => {
     const safeDescription = sanitizeText(description, 2000);
     const safeSubject = sanitizeText(subject, 120);
     const safeMeetingLink = sanitizeText(meetingLink, 500);
+    const recurrenceCount = Number(requestedRecurrenceCount);
+    if (!Number.isInteger(recurrenceCount) || recurrenceCount < 1 || recurrenceCount > 12) {
+      return res.status(400).json({ error: 'Weekly session series must contain between 1 and 12 sessions' });
+    }
     if (safeMeetingLink && (!isValidHttpUrl(safeMeetingLink) || !safeMeetingLink.toLowerCase().startsWith('https://'))) {
       return res.status(400).json({ error: 'Meeting link must be a secure https:// URL' });
     }
@@ -396,41 +408,62 @@ router.post('/', async (req, res) => {
     if (safeMeetingLink && Number(userId) !== Number(connection.tutor_id)) {
       return res.status(403).json({ error: 'Only the tutor can provide a custom meeting link' });
     }
-    
-    const { durationMinutes, timezone, startsAt } = await getScheduleDetails({
-      tutorId: connection.tutor_id, scheduledDate, startTime, endTime
-    });
-    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60 * 1000);
+    if (recurrenceCount > 1 && Number(userId) !== Number(connection.tutor_id)) {
+      return res.status(403).json({ error: 'Tutors can create recurring series after agreeing on a weekly time with the student' });
+    }
+
+    const schedule = [];
+    for (let index = 0; index < recurrenceCount; index += 1) {
+      const occurrenceDate = addDays(scheduledDate, index * 7);
+      const details = await getScheduleDetails({
+        tutorId: connection.tutor_id, scheduledDate: occurrenceDate, startTime, endTime
+      });
+      schedule.push({
+        scheduledDate: occurrenceDate,
+        ...details,
+        endsAt: new Date(details.startsAt.getTime() + details.durationMinutes * 60 * 1000),
+      });
+    }
     const tutorProfile = await db.prepare('SELECT hourly_rate FROM tutor_profiles WHERE user_id = ?').get(connection.tutor_id);
     const agreedHourlyRateCents = Math.round(Math.max(0, Math.min(25, Number(tutorProfile?.hourly_rate) || 0)) * 100);
-    
+
     const confirmationStatus = userId === connection.tutor_id ? 'confirmed' : 'pending';
-    const result = await db.withTransaction(async (transaction) => {
-      await assertNoScheduleConflict(transaction, {
-        tutorId: connection.tutor_id, studentId: connection.student_id,
-        scheduledDate, startTime, endTime
-      });
-      const insertResult = await transaction.prepare(`
-        INSERT INTO sessions (
-          connection_id, tutor_id, student_id, title, description, subject,
-          scheduled_date, start_time, end_time, session_timezone, duration_minutes, meeting_link,
-          requested_by, confirmation_status, starts_at, ends_at, agreed_hourly_rate_cents
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        connectionId, connection.tutor_id, connection.student_id, safeTitle, safeDescription,
-        safeSubject, scheduledDate, startTime, endTime, timezone, durationMinutes, safeMeetingLink,
-        userId, confirmationStatus, startsAt.toISOString(), endsAt.toISOString(), agreedHourlyRateCents
-      );
-      await recordSessionEvent(
-        transaction, insertResult.lastInsertRowid, userId, 'created', null,
-        confirmationStatus === 'pending' ? 'pending_confirmation' : 'scheduled',
-        { scheduledDate, startTime, endTime }
-      );
-      return insertResult;
+    const seriesId = recurrenceCount > 1 ? randomUUID() : null;
+    const sessionIds = await db.withTransaction(async (transaction) => {
+      const ids = [];
+      for (let index = 0; index < schedule.length; index += 1) {
+        const occurrence = schedule[index];
+        await assertNoScheduleConflict(transaction, {
+          tutorId: connection.tutor_id, studentId: connection.student_id,
+          scheduledDate: occurrence.scheduledDate, startTime, endTime
+        });
+        const insertResult = await transaction.prepare(`
+          INSERT INTO sessions (
+            connection_id, tutor_id, student_id, title, description, subject,
+            scheduled_date, start_time, end_time, session_timezone, duration_minutes, meeting_link,
+            requested_by, confirmation_status, starts_at, ends_at, agreed_hourly_rate_cents,
+            series_id, series_index, series_count
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          connectionId, connection.tutor_id, connection.student_id, safeTitle, safeDescription,
+          safeSubject, occurrence.scheduledDate, startTime, endTime, occurrence.timezone,
+          occurrence.durationMinutes, safeMeetingLink, userId, confirmationStatus,
+          occurrence.startsAt.toISOString(), occurrence.endsAt.toISOString(), agreedHourlyRateCents,
+          seriesId, seriesId ? index + 1 : null, seriesId ? recurrenceCount : null
+        );
+        ids.push(insertResult.lastInsertRowid);
+        await recordSessionEvent(
+          transaction, insertResult.lastInsertRowid, userId, 'created', null,
+          confirmationStatus === 'pending' ? 'pending_confirmation' : 'scheduled',
+          { scheduledDate: occurrence.scheduledDate, startTime, endTime, seriesId, seriesIndex: seriesId ? index + 1 : null }
+        );
+      }
+      return ids;
     });
-    
-    // Get the created session with user details
-    let newSession = await db.prepare(`
+
+    const createdSessions = [];
+    for (const sessionId of sessionIds) {
+      let createdSession = await db.prepare(`
       SELECT 
         s.*,
         u1.name as tutor_name,
@@ -439,36 +472,39 @@ router.post('/', async (req, res) => {
       JOIN users u1 ON s.tutor_id = u1.id
       JOIN users u2 ON s.student_id = u2.id
       WHERE s.id = ?
-    `).get(result.lastInsertRowid);
+      `).get(sessionId);
 
-    await scheduleSessionReminders(newSession).catch((error) => console.error('Unable to schedule session reminders:', error));
-    if (confirmationStatus === 'confirmed' && !newSession.meeting_link) {
-      try {
-        newSession = await provisionZoomMeeting(newSession);
-      } catch (error) {
-        console.error('Zoom meeting provisioning warning:', error.message || error);
-        newSession = { ...newSession, meeting_provider: 'zoom', meeting_status: 'error' };
+      await scheduleSessionReminders(createdSession).catch((error) => console.error('Unable to schedule session reminders:', error));
+      if (confirmationStatus === 'confirmed' && !createdSession.meeting_link) {
+        try {
+          createdSession = await provisionZoomMeeting(createdSession);
+        } catch (error) {
+          console.error('Zoom meeting provisioning warning:', error.message || error);
+          createdSession = { ...createdSession, meeting_provider: 'zoom', meeting_status: 'error' };
+        }
       }
+      if (confirmationStatus === 'confirmed') await syncSessionToGoogle(createdSession, 'upsert');
+      await queueSessionEmails(createdSession, confirmationStatus === 'confirmed' ? 'confirmed' : 'requested')
+        .catch((error) => console.error('Session email warning:', error.message || error));
+      createdSessions.push(createdSession);
     }
 
-    // Notify the other participant
     const recipientId = userId === connection.tutor_id ? connection.student_id : connection.tutor_id;
-    const creatorName = userId === connection.tutor_id ? newSession.tutor_name : newSession.student_name;
-    
+    const creatorName = userId === connection.tutor_id ? createdSessions[0].tutor_name : createdSessions[0].student_name;
+    const seriesLabel = recurrenceCount > 1 ? `${recurrenceCount} weekly sessions beginning` : 'a session on';
     await createNotification(
       recipientId,
       'session_created',
-      confirmationStatus === 'pending' ? 'New session request' : 'New session scheduled',
-      `${creatorName} ${confirmationStatus === 'pending' ? 'requested' : 'scheduled'} a session: "${safeTitle}" on ${scheduledDate} at ${startTime}`,
+      confirmationStatus === 'pending' ? 'New session request' : recurrenceCount > 1 ? 'New weekly session series' : 'New session scheduled',
+      `${creatorName} ${confirmationStatus === 'pending' ? 'requested' : 'scheduled'} ${seriesLabel} ${scheduledDate} at ${startTime}: "${safeTitle}"`,
       '/sessions',
-      result.lastInsertRowid
+      sessionIds[0]
     );
 
-    if (confirmationStatus === 'confirmed') await syncSessionToGoogle(newSession, 'upsert');
-    await queueSessionEmails(newSession, confirmationStatus === 'confirmed' ? 'confirmed' : 'requested')
-      .catch((error) => console.error('Session email warning:', error.message || error));
-    
-    res.status(201).json(newSession);
+    res.status(201).json({
+      ...createdSessions[0],
+      series_sessions: recurrenceCount > 1 ? createdSessions : undefined,
+    });
   } catch (error) {
     console.error('Create session error:', error);
     res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Internal server error' });

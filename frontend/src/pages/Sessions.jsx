@@ -50,6 +50,7 @@ const Sessions = () => {
     startTime: '',
     endTime: '',
     meetingLink: '',
+    recurrenceCount: 1,
   });
 
   const fetchSessions = useCallback(async () => {
@@ -122,7 +123,8 @@ const Sessions = () => {
       if (response.error) {
         setActionError(response.error);
       } else {
-        setSessions((current) => [response, ...current]);
+        const created = Array.isArray(response.series_sessions) ? response.series_sessions : [response];
+        setSessions((current) => [...created, ...current]);
         setActionError('');
         setShowCreateModal(false);
         setFormData({
@@ -134,6 +136,7 @@ const Sessions = () => {
           startTime: '',
           endTime: '',
           meetingLink: '',
+          recurrenceCount: 1,
         });
       }
     } catch {
@@ -586,10 +589,20 @@ const Sessions = () => {
                 {!availabilityPreview.loading ? <p>Times use the tutor&apos;s timezone: {availabilityPreview.timezone || 'UTC'}.</p> : null}
                 {availabilityPreview.slots.length ? <div className="button-row">{availabilityPreview.slots.map((slot, index) => <button className="btn btn-ghost btn-sm" type="button" key={slot.id || `${slot.startTime}-${index}`} onClick={() => choosePublishedSlot(slot)}>{slot.startTime} - {slot.endTime}</button>)}</div> : null}
               </div> : null}
-              {user?.role === 'tutor' ? <div className="field">
-                <label>Custom meeting link <span className="muted">(optional)</span></label>
-                <input value={formData.meetingLink} onChange={(event) => setFormData((current) => ({ ...current, meetingLink: event.target.value }))} placeholder="Leave blank to use the managed Zoom room" />
-                <small className="muted">For confirmed online sessions, NextDoorLearn prepares a secure room automatically when Zoom is connected.</small>
+              {user?.role === 'tutor' ? <div className="grid grid-2">
+                <div className="field">
+                  <label htmlFor="session-recurrence">Repeat weekly</label>
+                  <select id="session-recurrence" value={formData.recurrenceCount} onChange={(event) => setFormData((current) => ({ ...current, recurrenceCount: Number(event.target.value) }))}>
+                    <option value={1}>One session</option>
+                    {[2, 4, 6, 8, 10, 12].map((count) => <option key={count} value={count}>{count} weekly sessions</option>)}
+                  </select>
+                  <small className="muted">Every date must fit your published availability and be conflict-free.</small>
+                </div>
+                <div className="field">
+                  <label>Custom meeting link <span className="muted">(optional)</span></label>
+                  <input value={formData.meetingLink} onChange={(event) => setFormData((current) => ({ ...current, meetingLink: event.target.value }))} placeholder="Leave blank to use managed Zoom" />
+                  <small className="muted">A separate secure Zoom room is prepared for each session when connected.</small>
+                </div>
               </div> : null}
               <div className="field">
                 <label>Description</label>

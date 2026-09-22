@@ -522,6 +522,23 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(paymentSummary.body.status, 'unpaid');
   assert.equal(paymentSummary.body.canPay, true);
   assert.equal(paymentSummary.body.configured, false);
+  const adminPayments = await request('/admin/payments', { token: adminResponse.body.token });
+  assert.equal(adminPayments.status, 200);
+  assert.equal(adminPayments.body.configured, false);
+  assert.deepEqual(adminPayments.body.payments, []);
+  assert.equal(adminPayments.body.summary.collected_cents, 0);
+  const tutorCannotReviewPayments = await request('/admin/payments', { token: activated.body.token });
+  assert.equal(tutorCannotReviewPayments.status, 403);
+  const unsafeRefund = await request('/admin/payments/1/refund', {
+    method: 'POST', token: adminResponse.body.token,
+    body: { reason: 'Student requested a refund', confirmation: 'yes' }
+  });
+  assert.equal(unsafeRefund.status, 400);
+  const unconfiguredRefund = await request('/admin/payments/1/refund', {
+    method: 'POST', token: adminResponse.body.token,
+    body: { reason: 'Student requested a refund', confirmation: 'REFUND' }
+  });
+  assert.equal(unconfiguredRefund.status, 503);
   const tutorPaymentSummary = await request(`/payments/sessions/${session.body.id}`, { token: activated.body.token });
   assert.equal(tutorPaymentSummary.status, 200);
   assert.equal(tutorPaymentSummary.body.canPay, false);
@@ -544,6 +561,29 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   const tutorMeetingAccess = await request(`/sessions/${session.body.id}/meeting`, { token: activated.body.token });
   assert.equal(tutorMeetingAccess.status, 200);
   assert.equal(tutorMeetingAccess.body.startUrl, 'https://zoom.example/s/1?zak=refreshed');
+  const studentCannotCreateSeries = await request('/sessions', {
+    method: 'POST', token: adminResponse.body.token,
+    body: { connectionId, title: 'Weekly student request', subject: 'Math', scheduledDate, startTime: '13:00', endTime: '14:00', recurrenceCount: 3 }
+  });
+  assert.equal(studentCannotCreateSeries.status, 403);
+  const recurringSessions = await request('/sessions', {
+    method: 'POST', token: activated.body.token,
+    body: { connectionId, title: 'Weekly algebra series', subject: 'Math', scheduledDate, startTime: '11:00', endTime: '12:00', recurrenceCount: 3 }
+  });
+  assert.equal(recurringSessions.status, 201);
+  assert.equal(recurringSessions.body.series_count, 3);
+  assert.equal(recurringSessions.body.series_index, 1);
+  assert.equal(recurringSessions.body.series_sessions.length, 3);
+  assert.ok(recurringSessions.body.series_sessions.every((item) => item.series_id === recurringSessions.body.series_id));
+  assert.deepEqual(
+    recurringSessions.body.series_sessions.map((item) => item.series_index),
+    [1, 2, 3]
+  );
+  const invalidSeries = await request('/sessions', {
+    method: 'POST', token: activated.body.token,
+    body: { connectionId, title: 'Too many sessions', subject: 'Math', scheduledDate, startTime: '14:00', endTime: '15:00', recurrenceCount: 13 }
+  });
+  assert.equal(invalidSeries.status, 400);
   const studentCannotProvisionMeeting = await request(`/sessions/${session.body.id}/meeting`, {
     method: 'POST', token: adminResponse.body.token
   });
@@ -589,7 +629,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     method: 'PATCH', token: activated.body.token, body: { decision: 'confirmed' }
   });
   assert.equal(reconfirmed.status, 200);
-  assert.equal(reconfirmed.body.meeting_link, 'https://zoom.example/j/3');
+  assert.equal(reconfirmed.body.meeting_link, 'https://zoom.example/j/6');
   const sessionHistory = await request(`/sessions/${session.body.id}/events`, { token: adminResponse.body.token });
   assert.equal(sessionHistory.status, 200);
   assert.deepEqual(
