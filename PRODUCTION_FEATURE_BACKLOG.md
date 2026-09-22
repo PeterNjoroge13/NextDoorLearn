@@ -41,7 +41,8 @@ This file tracks production work that can be completed without external account 
 ## Priority 1: UX Polish
 
 - [ ] Standardize loading, empty, error, success, confirmation, and destructive-action patterns.
-- [ ] Verify responsive behavior across compact mobile, tablet, laptop, and wide desktop layouts.
+- [x] Add automated compact-phone, standard-phone, tablet, and desktop responsive checks for critical web routes.
+- [ ] Complete manual physical-device and wide-desktop visual review before store submission.
 - [x] Add global keyboard focus visibility, skip navigation, and reduced-motion support.
 - [ ] Complete a manual contrast and screen-reader audit across every workflow.
 - [ ] Remove layout shifts and text overflow in navigation, cards, dialogs, forms, and dashboards.

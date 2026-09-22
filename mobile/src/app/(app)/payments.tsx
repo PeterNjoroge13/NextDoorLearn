@@ -78,7 +78,7 @@ export default function PaymentsScreen() {
 
     <View style={styles.heading}><WalletCards size={21} color={colors.brand} /><Text style={styles.section}>{tutor ? 'Earnings activity' : 'Your sessions'}</Text></View>
     {history.data?.length ? history.data.map((item) => <Card key={item.session_id}>
-      <View style={styles.row}><View style={styles.icon}><CreditCard size={20} color={colors.brand} /></View><View style={styles.flex}><Text style={styles.itemTitle}>{item.title || 'Tutoring session'}</Text><Text style={styles.muted}>{tutor ? item.student_name : item.tutor_name} · {String(item.scheduled_date).slice(0, 10)} at {String(item.start_time).slice(0, 5)}</Text></View><Text style={styles.amount}>{money(item.amount_cents)}</Text></View>
+      <View style={styles.row}><View style={styles.icon}><CreditCard size={20} color={colors.brand} /></View><View style={styles.flex}><Text style={styles.itemTitle} numberOfLines={2}>{item.title || 'Tutoring session'}</Text><Text style={styles.muted} numberOfLines={2}>{tutor ? item.student_name : item.tutor_name} · {String(item.scheduled_date).slice(0, 10)} at {String(item.start_time).slice(0, 5)}</Text></View><Text style={styles.amount}>{money(item.amount_cents)}</Text></View>
       <Chip label={labels[item.payment_status] || item.payment_status} tone={item.payment_status === 'succeeded' || item.payment_status === 'free' ? 'brand' : item.payment_status.includes('refund') ? 'gold' : 'neutral'} />
       {!tutor && item.payment_status === 'unpaid' ? <Button label={item.payout_ready ? 'Pay tutor securely' : 'Tutor payout setup pending'} onPress={() => pay(item)} loading={busyId === item.session_id} disabled={!item.can_pay} /> : null}
     </Card>) : <EmptyState icon={CreditCard} title="No session payments yet" message="Payment details will appear after a tutoring session is scheduled." />}
@@ -90,10 +90,10 @@ export default function PaymentsScreen() {
 const styles = StyleSheet.create({
   back: { width: 44, height: 44, justifyContent: 'center' },
   refresh: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brandSoft },
-  summary: { flexDirection: 'row', gap: spacing.md }, summaryCard: { flex: 1 }, total: { color: colors.ink, fontFamily: typography.bold, fontSize: 24 },
+  summary: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }, summaryCard: { flex: 1, minWidth: 140 }, total: { color: colors.ink, fontFamily: typography.bold, fontSize: 24 },
   muted: { color: colors.muted, fontFamily: typography.regular, fontSize: 12, lineHeight: 18 }, section: { color: colors.ink, fontFamily: typography.bold, fontSize: 17 },
   copy: { color: colors.muted, fontFamily: typography.regular, lineHeight: 21 }, notice: { color: colors.brandStrong, fontFamily: typography.medium },
-  trust: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }, flex: { flex: 1 }, heading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  trust: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }, flex: { flex: 1, minWidth: 0 }, heading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md }, icon: { width: 42, height: 42, borderRadius: 8, backgroundColor: colors.brandSoft, alignItems: 'center', justifyContent: 'center' },
-  itemTitle: { color: colors.ink, fontFamily: typography.bold, fontSize: 15 }, amount: { color: colors.ink, fontFamily: typography.bold, fontSize: 16 },
+  itemTitle: { color: colors.ink, fontFamily: typography.bold, fontSize: 15 }, amount: { flexShrink: 0, color: colors.ink, fontFamily: typography.bold, fontSize: 16 },
 });

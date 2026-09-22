@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { api, configureApiSession } from '@/lib/api';
 import type { AuthResponse, User } from '@/types';
@@ -38,6 +38,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const restoredSessionChecked = useRef(false);
 
   const persist = useCallback(async (next: StoredSession | null) => {
     setSession(next);
@@ -60,6 +61,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       router.replace('/(auth)/welcome');
     });
   }, [persist, session]);
+
+  useEffect(() => {
+    if (loading || !session || restoredSessionChecked.current) return;
+    restoredSessionChecked.current = true;
+    api.profile()
+      .then((profile) => persist({
+        ...session,
+        user: {
+          ...session.user,
+          id: profile.id,
+          email: profile.email,
+          role: profile.role,
+          name: profile.name,
+          bio: profile.bio,
+          avatar_url: profile.avatar_url,
+        },
+      }))
+      .catch(() => undefined);
+  }, [loading, persist, session]);
 
   const acceptAuth = useCallback(async (response: AuthResponse) => {
     await persist({ token: response.token, refreshToken: response.refreshToken, user: response.user });

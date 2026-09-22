@@ -30,6 +30,8 @@ const notificationRoute = (link: string, relatedId?: unknown) => {
   if (link.startsWith('/messages')) return id ? `/(app)/conversation/${id}` : '/(app)/(tabs)/messages';
   if (link.startsWith('/sessions')) return id ? `/(app)/session/${id}` : '/(app)/(tabs)/schedule';
   if (link.startsWith('/requests')) return '/(app)/(tabs)/discover';
+  if (link.startsWith('/payments')) return '/(app)/payments';
+  if (link.startsWith('/progress')) return '/(app)/progress';
   if (link.startsWith('/profile')) return '/(app)/profile';
   return '/(app)/notifications';
 };

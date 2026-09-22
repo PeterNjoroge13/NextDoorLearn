@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookOpen,
@@ -10,6 +10,7 @@ import {
   LogOut,
   MessageCircle,
   MailCheck,
+  Menu,
   Search,
   ShieldCheck,
   Settings,
@@ -17,6 +18,7 @@ import {
   ClipboardCheck,
   Target,
   WalletCards,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
@@ -65,16 +67,40 @@ const AppShell = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [verificationMessage, setVerificationMessage] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navItems = [...(user?.role === 'tutor' ? tutorNavItems : studentNavItems)];
+  const mobilePrimaryItems = user?.role === 'tutor'
+    ? tutorNavItems.filter(({ to }) => ['/dashboard', '/requests', '/messages', '/sessions'].includes(to))
+    : studentNavItems.filter(({ to }) => ['/dashboard', '/tutors', '/messages', '/sessions'].includes(to));
 
   if (isAdminUser(user)) {
     navItems.push({ to: '/admin', label: 'Admin', icon: ShieldCheck });
   }
+  const mobileSecondaryItems = navItems.filter(({ to }) => !mobilePrimaryItems.some((item) => item.to === to));
 
   const handleLogout = () => {
+    setMobileMenuOpen(false);
     logout();
     navigate('/login', { replace: true });
   };
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setMobileMenuOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [mobileMenuOpen]);
 
   const resendVerification = async () => {
     const response = await api.resendVerification(user.email);
@@ -137,6 +163,37 @@ const AppShell = ({ children }) => {
         </div>
       ) : null}
       {children}
+      {mobileMenuOpen ? (
+        <div className="mobile-menu-layer">
+          <button className="mobile-menu-backdrop" type="button" aria-label="Close navigation menu" onClick={() => setMobileMenuOpen(false)} />
+          <section className="mobile-menu-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-menu-title">
+            <div className="mobile-menu-head">
+              <div><span className="eyebrow">Your workspace</span><h2 id="mobile-menu-title">More</h2></div>
+              <button className="icon-button" type="button" aria-label="Close navigation menu" onClick={() => setMobileMenuOpen(false)}><X size={20} /></button>
+            </div>
+            <div className="mobile-menu-grid">
+              {mobileSecondaryItems.map(({ to, label, icon }) => (
+                <NavLink key={to} to={to} className="mobile-menu-link">
+                  {React.createElement(icon, { size: 20 })}<span>{label}</span>
+                </NavLink>
+              ))}
+              <button className="mobile-menu-link mobile-menu-logout" type="button" onClick={handleLogout}>
+                <LogOut size={20} /><span>Log out</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      <nav className="mobile-tabbar" aria-label="Mobile navigation">
+        {mobilePrimaryItems.map(({ to, label, icon, end }) => (
+          <NavLink key={to} to={to} end={end} className={({ isActive }) => `mobile-tab${isActive ? ' active' : ''}`}>
+            {React.createElement(icon, { size: 21 })}<span>{label === 'Find tutors' ? 'Tutors' : label === 'Students' ? 'Messages' : label}</span>
+          </NavLink>
+        ))}
+        <button className={`mobile-tab${mobileMenuOpen ? ' active' : ''}`} type="button" aria-expanded={mobileMenuOpen} aria-label="More navigation options" onClick={() => setMobileMenuOpen((open) => !open)}>
+          <Menu size={21} /><span>More</span>
+        </button>
+      </nav>
     </div>
   );
 };

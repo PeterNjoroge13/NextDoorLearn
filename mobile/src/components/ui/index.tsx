@@ -18,10 +18,10 @@ export function Screen({ children, scroll = true, refreshing, onRefresh, style }
       keyboardShouldPersistTaps="handled"
       contentInsetAdjustmentBehavior="automatic"
       automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
-      contentContainerStyle={[styles.screenContent, style]}
+      contentContainerStyle={[styles.screenContent, styles.contentWidth, style]}
       refreshControl={onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={colors.brand} /> : undefined}
     >{children}</ScrollView>
-  ) : <View style={[styles.screenContent, styles.fill, style]}>{children}</View>;
+  ) : <View style={[styles.screenContent, styles.contentWidth, styles.fill, style]}>{children}</View>;
   return <SafeAreaView edges={['top']} style={styles.safe}><KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>{content}</KeyboardAvoidingView></SafeAreaView>;
 }
 
@@ -41,7 +41,7 @@ export function Button({ label, onPress, icon: Icon, variant = 'primary', loadin
     accessibilityLabel={label}
     accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
     disabled={disabled || loading}
-    onPress={() => { Haptics.selectionAsync(); onPress(); }}
+    onPress={() => { Haptics.selectionAsync().catch(() => undefined); onPress(); }}
     style={({ pressed }) => [styles.button, styles[`button_${variant}`], pressed && styles.pressed, (disabled || loading) && styles.disabled, style]}
   >{loading ? <ActivityIndicator color={variant === 'primary' || variant === 'danger' ? colors.white : colors.brand} /> : <>{Icon ? <Icon size={18} strokeWidth={2} color={variant === 'primary' || variant === 'danger' ? colors.white : colors.brandStrong} /> : null}<Text style={[styles.buttonLabel, styles[`buttonLabel_${variant}`]]}>{label}</Text></>}</Pressable>;
 }
@@ -77,7 +77,7 @@ export const SectionTitle = ({ children, action }: { children: React.ReactNode; 
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background }, fill: { flex: 1 },
-  screenContent: { padding: spacing.lg, paddingBottom: 120, gap: spacing.lg },
+  screenContent: { padding: spacing.lg, paddingBottom: 120, gap: spacing.lg }, contentWidth: { width: '100%', maxWidth: 760, alignSelf: 'center' },
   header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md, marginTop: spacing.sm },
   headerText: { flex: 1, gap: spacing.xs }, eyebrow: { color: colors.brand, fontFamily: typography.bold, fontSize: 11, letterSpacing: 0 },
   title: { color: colors.ink, fontFamily: typography.bold, fontSize: 30, lineHeight: 36, letterSpacing: 0 },
