@@ -24,10 +24,12 @@ const TutorBrowse = lazy(() => import('./pages/TutorBrowse'));
 const TutorProfile = lazy(() => import('./pages/TutorProfile'));
 
 const LoadingScreen = () => (
-  <div className="loading-wrap">
-    <div>
-      <div className="spinner" />
-      <p className="muted">Loading NextDoorLearn...</p>
+  <div className="loading-wrap" role="status" aria-live="polite">
+    <div className="loading-stage">
+      <div className="loading-brand"><span className="brand-mark loading-mark">N</span><span>Loading NextDoorLearn</span></div>
+      <div className="loading-skeleton loading-skeleton-wide" />
+      <div className="loading-skeleton" />
+      <div className="loading-skeleton loading-skeleton-short" />
     </div>
   </div>
 );

@@ -11,7 +11,7 @@ export default function WelcomeScreen() {
     <View style={styles.scrim} />
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} bounces={false}>
-        <View style={styles.brand}><View style={styles.mark}><BookOpen size={20} color={colors.white} /></View><Text style={styles.brandText}>NextDoorLearn</Text></View>
+        <View style={styles.brand}><View style={styles.mark}><BookOpen size={20} color={colors.white} /></View><View><Text style={styles.brandText}>NextDoorLearn</Text><Text style={styles.brandLine}>BALTIMORE-BUILT · COMMUNITY-LED</Text></View></View>
         <View style={styles.main}>
           <View style={styles.copy}><Text style={styles.eyebrow}>TUTORING WITHIN REACH</Text><Text style={styles.title}>The right help can change what feels possible.</Text><Text style={styles.body}>We connect students who face cost and access barriers with caring tutors ready to teach for free or at a low cost.</Text></View>
           <View style={styles.actions}>
@@ -26,8 +26,8 @@ export default function WelcomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.ink }, hero: { ...StyleSheet.absoluteFill }, scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(16, 28, 24, 0.55)' }, safe: { flex: 1 }, content: { flexGrow: 1, padding: spacing.xl }, main: { marginTop: 'auto', gap: spacing.xl },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 10 }, mark: { width: 38, height: 38, borderRadius: radii.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brand }, brandText: { color: colors.white, fontFamily: typography.bold, fontSize: 18 },
+  page: { flex: 1, backgroundColor: colors.ink }, hero: { ...StyleSheet.absoluteFill }, scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(12, 27, 23, 0.62)' }, safe: { flex: 1 }, content: { flexGrow: 1, padding: spacing.xl }, main: { marginTop: 'auto', gap: spacing.xl },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 10 }, mark: { width: 40, height: 40, borderRadius: radii.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.brand, borderBottomWidth: 3, borderBottomColor: colors.gold }, brandText: { color: colors.white, fontFamily: typography.bold, fontSize: 18 }, brandLine: { marginTop: 2, color: '#D5EAE4', fontFamily: typography.medium, fontSize: 9, letterSpacing: 0 },
   copy: { gap: spacing.md, marginTop: spacing.xxl }, eyebrow: { color: '#BFE8E1', fontFamily: typography.bold, fontSize: 12, letterSpacing: 0 }, title: { color: colors.white, fontFamily: typography.bold, fontSize: 39, lineHeight: 44, letterSpacing: 0 }, body: { color: '#F4F1EA', fontFamily: typography.regular, fontSize: 17, lineHeight: 25 },
   actions: { gap: spacing.md }, primary: { minHeight: 54, borderRadius: radii.md, backgroundColor: colors.coral, alignItems: 'center', justifyContent: 'center' }, primaryText: { color: colors.white, fontFamily: typography.bold, fontSize: 16 }, secondary: { minHeight: 54, borderRadius: radii.md, backgroundColor: colors.white, flexDirection: 'row', gap: spacing.sm, alignItems: 'center', justifyContent: 'center' }, secondaryText: { color: colors.ink, fontFamily: typography.bold, fontSize: 16 }, inline: { minHeight: 36, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: spacing.sm }, sponsorLink: { flexDirection: 'row', alignItems: 'center', gap: 5 }, link: { color: colors.white, fontFamily: typography.medium, fontSize: 14, textDecorationLine: 'underline' }, dot: { color: colors.white },
 });

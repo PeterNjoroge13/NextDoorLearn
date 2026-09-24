@@ -7,7 +7,7 @@ import { colors, typography } from '@/theme';
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth(); const tutor = user?.role === 'tutor';
-  return <Tabs screenOptions={{ headerShown: false, tabBarHideOnKeyboard: true, tabBarActiveTintColor: colors.brand, tabBarInactiveTintColor: colors.muted, tabBarStyle: { height: 62 + insets.bottom, paddingTop: 7, paddingBottom: Math.max(insets.bottom, 7), backgroundColor: colors.surface, borderTopColor: colors.line }, tabBarItemStyle: { minHeight: 52 }, tabBarLabelStyle: { fontFamily: typography.medium, fontSize: 11 } }}>
+  return <Tabs screenOptions={{ headerShown: false, tabBarHideOnKeyboard: true, tabBarActiveTintColor: colors.brandStrong, tabBarInactiveTintColor: colors.muted, tabBarActiveBackgroundColor: colors.brandSoft, tabBarStyle: { height: 68 + insets.bottom, paddingTop: 8, paddingHorizontal: 8, paddingBottom: Math.max(insets.bottom, 8), backgroundColor: colors.surface, borderTopColor: colors.line, borderTopWidth: 1 }, tabBarItemStyle: { minHeight: 50, marginHorizontal: 2, borderRadius: 7 }, tabBarLabelStyle: { fontFamily: typography.medium, fontSize: 10 } }}>
     <Tabs.Screen name="home" options={{ title: 'Home', tabBarIcon: ({ color, size }) => <Home size={size} color={color} /> }} />
     <Tabs.Screen name="discover" options={{ title: tutor ? 'Requests' : 'Tutors', tabBarIcon: ({ color, size }) => tutor ? <Inbox size={size} color={color} /> : <Compass size={size} color={color} /> }} />
     <Tabs.Screen name="messages" options={{ title: 'Messages', tabBarIcon: ({ color, size }) => <MessageCircle size={size} color={color} /> }} />

@@ -111,12 +111,15 @@ const AppShell = ({ children }) => {
     <div className="app-shell">
       <header className="topbar">
         <div className="topbar-inner">
-          <Link to="/dashboard" className="brand-link" aria-label="NextDoorLearn dashboard">
-            <span className="brand-mark">
-              <BookOpen size={22} strokeWidth={2.4} />
-            </span>
-            <span>NextDoorLearn</span>
-          </Link>
+          <div className="shell-brand-group">
+            <Link to="/dashboard" className="brand-link" aria-label="NextDoorLearn dashboard">
+              <span className="brand-mark">
+                <BookOpen size={22} strokeWidth={2.4} />
+              </span>
+              <span>NextDoorLearn</span>
+            </Link>
+            <span className="workspace-label">{user?.role === 'tutor' ? 'Tutor workspace' : 'Student workspace'}</span>
+          </div>
 
           <nav className="nav-links" aria-label="Main navigation">
             {navItems.map(({ to, label, icon, end }) => (
@@ -199,10 +202,12 @@ const AppShell = ({ children }) => {
 };
 
 export const LoadingState = ({ label = 'Loading...' }) => (
-  <div className="loading-wrap">
-    <div>
-      <div className="spinner" />
-      <p className="muted">{label}</p>
+  <div className="loading-wrap" role="status" aria-live="polite">
+    <div className="loading-stage">
+      <div className="loading-brand"><BookOpen size={19} /><span>{label}</span></div>
+      <div className="loading-skeleton loading-skeleton-wide" />
+      <div className="loading-skeleton" />
+      <div className="loading-skeleton loading-skeleton-short" />
     </div>
   </div>
 );

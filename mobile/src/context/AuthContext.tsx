@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { api, configureApiSession } from '@/lib/api';
 import type { AuthResponse, User } from '@/types';
@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     configureApiSession(session, async (tokens) => {
       if (session) await persist({ ...session, ...tokens });
     }, async () => {

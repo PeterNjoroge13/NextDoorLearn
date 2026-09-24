@@ -39,7 +39,9 @@ const Sessions = () => {
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
   const [rescheduleForm, setRescheduleForm] = useState({ scheduledDate: '', startTime: '', endTime: '', reason: '' });
   const [cancellationReason, setCancellationReason] = useState('');
-  const [view, setView] = useState('calendar');
+  const [view, setView] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches ? 'list' : 'calendar'
+  ));
   const [filters, setFilters] = useState({ status: '', month: new Date().getMonth() + 1, year: new Date().getFullYear() });
   const [formData, setFormData] = useState({
     connectionId: '',
