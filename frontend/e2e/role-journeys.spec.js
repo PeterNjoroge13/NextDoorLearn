@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { Buffer } from 'node:buffer';
 
 const apiUrl = 'http://127.0.0.1:3219/api';
 const password = 'BrowserSmoke123!';
@@ -69,6 +70,44 @@ test('administrator can open the protected moderation console', async ({ page, r
   await expect(page.getByRole('heading', { name: 'Run the community with care.' })).toBeVisible();
   await page.getByRole('button', { name: 'Payments', exact: true }).click();
   await expect(page.getByText('Stripe must be configured before refunds or new charges can be processed.')).toBeVisible();
+});
+
+test('administrator can approve a tutor and recover the activation link while email is offline', async ({ page, request }) => {
+  const adminEmail = 'browser.admin@example.com';
+  const applicantEmail = `browser.applicant.${Date.now()}@example.com`;
+  await register(request, 'student', adminEmail, 'Browser Admin');
+  const application = await request.post(`${apiUrl}/community/tutor-applications`, {
+    multipart: {
+      name: 'Browser Applicant',
+      email: applicantEmail,
+      location: 'Baltimore, MD',
+      subjects: 'Math,Computer Science',
+      education: 'College student',
+      motivation: 'I want to make technical subjects feel approachable.',
+      availability: 'Weekday evenings',
+      tutoringMode: 'online',
+      hourlyRate: '0',
+      isAdult: 'true',
+      termsAccepted: 'true',
+      privacyAccepted: 'true',
+      safetyAccepted: 'true',
+      profilePicture: {
+        name: 'profile.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'),
+      },
+    },
+  });
+  expect(application.ok(), await application.text()).toBeTruthy();
+
+  await signIn(page, adminEmail);
+  await page.getByRole('link', { name: 'Admin' }).click();
+  await page.getByRole('button', { name: /applications/i }).click();
+  const applicationCard = page.locator('article').filter({ hasText: applicantEmail });
+  await expect(applicationCard).toBeVisible();
+  await applicationCard.getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect(applicationCard.getByText('Secure activation link')).toBeVisible();
+  await expect(applicationCard.getByRole('link', { name: 'Open' })).toHaveAttribute('href', /\/activate-tutor\?token=/);
 });
 
 test('stale saved credentials recover to sign in instead of a broken dashboard', async ({ page }) => {

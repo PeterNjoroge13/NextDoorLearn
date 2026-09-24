@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, ClipboardList, HandCoins, Mail, RefreshCw, RotateCcw, Search, ShieldCheck, Sparkles, UserCheck, UserPlus, Users, WalletCards } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clipboard, ClipboardList, ExternalLink, HandCoins, Mail, RefreshCw, RotateCcw, Search, ShieldCheck, Sparkles, UserCheck, UserPlus, Users, WalletCards } from 'lucide-react';
 import api from '../services/api';
 import AppShell, { Avatar, EmptyState, ErrorState, LoadingState } from '../components/AppShell';
 
@@ -22,6 +22,8 @@ const Admin = () => {
   const [refundDrafts, setRefundDrafts] = useState({});
   const [refundBusy, setRefundBusy] = useState(null);
   const [reviewDrafts, setReviewDrafts] = useState({});
+  const [activationInvites, setActivationInvites] = useState({});
+  const [applicationBusy, setApplicationBusy] = useState('');
   const [moderationDrafts, setModerationDrafts] = useState({});
   const [waitlistDrafts, setWaitlistDrafts] = useState({});
   const [waitlistMatches, setWaitlistMatches] = useState({});
@@ -112,14 +114,34 @@ const Admin = () => {
 
   const handleUpdateApplication = async (applicationId, status) => {
     const draft = reviewDrafts[applicationId] || {};
+    setApplicationBusy(`${status}-${applicationId}`);
     const response = await api.updateAdminTutorApplication(applicationId, {
       status,
       reason: draft.reason || '',
       internalNotes: draft.internalNotes || '',
     }, localStorage.getItem('token'));
+    setApplicationBusy('');
     if (response.error) return showToast(response.error);
     setApplications((current) => current.map((item) => item.id === response.id ? { ...item, ...response } : item));
-    showToast(status === 'approved' ? 'Tutor approved and activation invitation queued.' : 'Application updated.');
+    if (response.activation?.url) {
+      setActivationInvites((current) => ({ ...current, [applicationId]: response.activation }));
+    }
+    showToast(status === 'approved'
+      ? response.activation?.emailProviderConfigured
+        ? 'Tutor approved and activation email queued for delivery.'
+        : 'Tutor approved. Copy the activation link while email delivery is offline.'
+      : 'Application updated.');
+  };
+
+  const copyActivationLink = async (applicationId) => {
+    const url = activationInvites[applicationId]?.url;
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('Secure activation link copied.');
+    } catch {
+      showToast('Could not copy automatically. Open the link and copy it from the address bar.');
+    }
   };
 
   const updateReviewDraft = (applicationId, field, value) => {
@@ -228,6 +250,12 @@ const Admin = () => {
         </section>
 
         {toast ? <div className="alert" style={{ marginBottom: 16 }}>{toast}</div> : null}
+        {!emailDelivery.providerConfigured ? (
+          <div className="alert alert-warning admin-provider-warning">
+            <AlertTriangle size={18} />
+            <span>Transactional email is offline. Approving a tutor will generate a secure activation link you can copy and share manually.</span>
+          </div>
+        ) : null}
 
         <section className="grid grid-4">
           <div className="card stat">
@@ -288,7 +316,7 @@ const Admin = () => {
                     <div>
                       <div className="button-row">
                         <span className={`badge ${application.review_state === 'approved' ? 'badge-success' : application.review_state === 'declined' ? 'badge-error' : 'badge-warning'}`}>{(application.review_state || application.status).replaceAll('_', ' ')}</span>
-                        {application.activation_status === 'invited' ? <span className="badge badge-blue"><Mail size={14} />Invitation sent</span> : null}
+                        {application.activation_status === 'invited' ? <span className="badge badge-blue"><Mail size={14} />Invitation queued</span> : null}
                         {application.activation_status === 'activated' ? <span className="badge badge-success"><UserCheck size={14} />Activated</span> : null}
                         {application.subjects.map((subject) => <span className="badge" key={subject}>{subject}</span>)}
                       </div>
@@ -310,11 +338,23 @@ const Admin = () => {
                         <span>Private admin notes</span>
                         <textarea rows="3" value={reviewDrafts[application.id]?.internalNotes || ''} onChange={(event) => updateReviewDraft(application.id, 'internalNotes', event.target.value)} placeholder="Internal review notes" />
                       </label>
+                      {activationInvites[application.id]?.url ? (
+                        <div className="admin-activation-link" role="status">
+                          <div>
+                            <strong>Secure activation link</strong>
+                            <span>Expires {new Date(activationInvites[application.id].expiresAt).toLocaleString()}. It is shown only after approval or resend.</span>
+                          </div>
+                          <div className="button-row">
+                            <button className="btn btn-ghost btn-sm" type="button" onClick={() => copyActivationLink(application.id)}><Clipboard size={15} />Copy link</button>
+                            <a className="btn btn-primary btn-sm" href={activationInvites[application.id].url} target="_blank" rel="noreferrer"><ExternalLink size={15} />Open</a>
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="button-row">
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUpdateApplication(application.id, 'reviewing')}>Reviewing</button>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUpdateApplication(application.id, 'needs_information')}>Request info</button>
-                        {application.activation_status !== 'activated' ? <button className="btn btn-primary btn-sm" type="button" onClick={() => handleUpdateApplication(application.id, 'approved')}>{application.activation_status === 'invited' ? 'Resend invite' : 'Approve'}</button> : null}
-                        <button className="btn btn-danger btn-sm" type="button" onClick={() => handleUpdateApplication(application.id, 'declined')}>Decline</button>
+                        <button className="btn btn-ghost btn-sm" type="button" disabled={Boolean(applicationBusy)} onClick={() => handleUpdateApplication(application.id, 'reviewing')}>{applicationBusy === `reviewing-${application.id}` ? 'Saving...' : 'Reviewing'}</button>
+                        <button className="btn btn-ghost btn-sm" type="button" disabled={Boolean(applicationBusy)} onClick={() => handleUpdateApplication(application.id, 'needs_information')}>{applicationBusy === `needs_information-${application.id}` ? 'Sending...' : 'Request info'}</button>
+                        {application.activation_status !== 'activated' ? <button className="btn btn-primary btn-sm" type="button" disabled={Boolean(applicationBusy)} onClick={() => handleUpdateApplication(application.id, 'approved')}>{applicationBusy === `approved-${application.id}` ? 'Approving...' : application.activation_status === 'invited' ? 'Create new invite' : 'Approve'}</button> : null}
+                        <button className="btn btn-danger btn-sm" type="button" disabled={Boolean(applicationBusy)} onClick={() => handleUpdateApplication(application.id, 'declined')}>{applicationBusy === `declined-${application.id}` ? 'Declining...' : 'Decline'}</button>
                       </div>
                     </div>
                   </article>

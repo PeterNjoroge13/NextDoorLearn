@@ -297,6 +297,9 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(approved.status, 200);
   assert.equal(approved.body.activation_status, 'invited');
   assert.ok(approved.body.activationToken);
+  assert.match(approved.body.activation.url, /\/activate-tutor\?token=/);
+  assert.ok(new Date(approved.body.activation.expiresAt).getTime() > Date.now());
+  assert.equal(approved.body.activation.emailProviderConfigured, false);
 
   const activated = await request('/auth/tutor-activation', {
     method: 'POST', body: { token: approved.body.activationToken, password: 'newpassword123' }

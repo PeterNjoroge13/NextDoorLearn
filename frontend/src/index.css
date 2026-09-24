@@ -1098,6 +1098,33 @@ textarea:focus {
   justify-content: flex-end;
 }
 
+.admin-provider-warning {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.admin-activation-link {
+  align-items: center;
+  background: var(--surface-tint);
+  border: 1px solid var(--brand-soft);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 14px;
+}
+
+.admin-activation-link > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-activation-link span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
 .admin-waitlist-entry {
   display: grid;
   gap: 18px;
@@ -2768,6 +2795,11 @@ textarea:focus {
 }
 
 @media (max-width: 640px) {
+  .admin-activation-link {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .app-shell {
     padding-bottom: calc(70px + env(safe-area-inset-bottom));
   }

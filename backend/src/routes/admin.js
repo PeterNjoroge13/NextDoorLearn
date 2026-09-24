@@ -398,7 +398,15 @@ router.patch('/tutor-applications/:id', async (req, res) => {
         idempotencyKey: `tutor_invite_${applicationId}_${hashSecurityToken(rawToken).slice(0, 24)}`
       });
       const updated = await db.prepare('SELECT id, status, review_state, activation_status, invitation_sent_at, reviewed_at, updated_at FROM tutor_applications WHERE id = ?').get(applicationId);
-      return res.json({ ...updated, ...(process.env.NODE_ENV === 'production' ? {} : { activationToken: rawToken }) });
+      return res.json({
+        ...updated,
+        activation: {
+          url: link,
+          expiresAt,
+          emailProviderConfigured: providerConfigured()
+        },
+        ...(process.env.NODE_ENV === 'production' ? {} : { activationToken: rawToken })
+      });
     }
 
     const storedStatus = status === 'needs_information' ? 'reviewing' : status;
