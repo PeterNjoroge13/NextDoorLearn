@@ -452,7 +452,7 @@ Post-deploy checks:
 
 Acceptance criteria:
 
-- Vercel URL works.
+- The `https://www.nextdoorlearn.com/` custom domain works.
 - Railway API works.
 - Full core workflow works in production.
 
@@ -557,4 +557,3 @@ The project is complete when:
 - Critical routes are protected.
 - Basic tests pass.
 - A new user can understand the app without help.
-

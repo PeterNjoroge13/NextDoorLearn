@@ -9,7 +9,7 @@
   </p>
 
   <p>
-    <a href="https://next-door-learn.vercel.app"><strong>Visit the live web app</strong></a>
+    <a href="https://www.nextdoorlearn.com/"><strong>Visit the live web app</strong></a>
     ·
     <a href="./DEPLOYMENT.md">Deployment guide</a>
     ·

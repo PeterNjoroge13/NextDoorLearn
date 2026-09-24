@@ -24,7 +24,7 @@ You already have `vercel.json` and `render.yaml` configured.
    - **Value:** `https://your-backend.onrender.com/api` (your Render URL + `/api`)
 5. Redeploy the frontend.
 
-**Share this link:** `https://your-app.vercel.app`
+**Share this link:** `https://www.nextdoorlearn.com/`
 
 ---
 
