@@ -12,6 +12,7 @@ const {
   sanitizeText
 } = require('../utils/validation');
 const { STUDENT_BUDGETS, validateTutorRate } = require('../utils/pricing');
+const { contentPolicyError, findContentPolicyViolation } = require('../services/contentModeration');
 
 const router = express.Router();
 
@@ -108,6 +109,13 @@ router.put('/profile', authenticateToken, async (req, res) => {
     if (profile !== undefined && (!profile || typeof profile !== 'object' || Array.isArray(profile))) {
       return res.status(400).json({ error: 'Profile must be an object' });
     }
+    const profilePolicyViolation = findContentPolicyViolation(
+      bio,
+      req.user.role === 'tutor' && profile
+        ? [profile.education, profile.teaching_style, profile.headline, profile.motivation, profile.availability_notes]
+        : []
+    );
+    if (profilePolicyViolation) return res.status(422).json(contentPolicyError(profilePolicyViolation));
     const safeLanguages = languages === undefined
       ? null
       : normalizeStringArray(languages, { maxItems: 12, maxLength: 40 });

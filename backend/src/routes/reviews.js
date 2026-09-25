@@ -4,6 +4,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
 const { usersAreBlocked } = require('../services/safety');
 const { isPositiveInteger, sanitizeText } = require('../utils/validation');
+const { contentPolicyError, findContentPolicyViolation } = require('../services/contentModeration');
 
 const router = express.Router();
 
@@ -21,6 +22,8 @@ router.post('/', authenticateToken, async (req, res) => {
     const rating = Number(req.body.rating);
     const sessionId = Number(req.body.sessionId);
     const comment = sanitizeText(req.body.comment, 1200);
+    const policyViolation = findContentPolicyViolation(comment);
+    if (policyViolation) return res.status(422).json(contentPolicyError(policyViolation));
 
     // Validate required fields
     if (!isPositiveInteger(tutorId) || !isPositiveInteger(sessionId) || !Number.isInteger(rating)) {

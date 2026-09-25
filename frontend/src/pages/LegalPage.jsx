@@ -18,7 +18,7 @@ const content = {
       { title: 'Children and teenagers', body: 'NextDoorLearn does not currently permit accounts for children under 13. Students ages 13–17 must confirm parent or guardian permission. Guardians should supervise online and in-person tutoring arrangements and contact NextDoorLearn if they believe a child under 13 submitted personal information.' },
       { title: 'Retention and deletion', body: 'We retain active-account information while it is needed to provide the service. Users can delete their account from settings. Account deletion removes core profile and activity data, subject to limited retention for safety investigations, fraud prevention, backups, legal obligations, and enforcement records.' },
       { title: 'Security', body: 'NextDoorLearn uses access controls, encrypted transport, password hashing, session revocation, rate limits, restricted provider credentials, and audit records. No internet service can guarantee absolute security. Never send passwords, financial account details, government identifiers, or other unnecessary sensitive information in messages.' },
-      { title: 'Your choices', body: 'Users can update profile information, disconnect calendar access, disable notifications, block other users, submit reports, and delete their account. Questions about access, correction, deletion, or privacy can be sent through the Support page.' },
+      { title: 'Your choices', body: 'Users can update profile information, disconnect calendar access, disable notifications, block other users, submit reports, and delete their account. Questions about access, correction, deletion, consent, or privacy can be sent to nextdoorlearn@gmail.com or through the Support page.' },
       { title: 'Policy changes', body: 'Material changes will be identified by a new effective date or policy version. When appropriate, users may be asked to review and accept the updated policy.' },
     ],
   },
@@ -63,6 +63,7 @@ const content = {
       { title: 'Safety reports', body: 'Use the in-product report and block controls whenever possible. Include the user, session, approximate date, and relevant facts. For immediate danger, contact emergency services first.' },
       { title: 'Privacy and deletion', body: 'Account deletion is available in account settings. For access, correction, deletion, or guardian privacy questions that cannot be handled in the product, contact the founder through the LinkedIn profile on the welcome page.' },
       { title: 'Service status', body: 'When reporting an outage, include whether you are using the website or mobile app, your device type, and a screenshot that does not expose passwords or private messages.' },
+      { title: 'Contact', body: 'Email nextdoorlearn@gmail.com for account, privacy, payment, safety, or technical support. Do not include passwords, reset tokens, or full financial information.' },
     ],
   },
   '/delete-account': {
@@ -92,6 +93,7 @@ const LegalPage = ({ type }) => {
       <div className="legal-sections">
         {page.sections.map((section) => <article className="legal-section" key={section.title}><span className="stat-icon"><FileText size={18} /></span><div><h2>{section.title}</h2><p>{section.body}</p></div></article>)}
       </div>
+      {type === '/support' ? <a className="btn btn-primary" href="mailto:nextdoorlearn@gmail.com?subject=NextDoorLearn%20support" style={{ width: 'fit-content', marginTop: 24 }}><Mail size={18} />Email support</a> : null}
       <div className="button-row" style={{ marginTop: 28 }}><Link className="btn btn-primary" to="/signup">Create an account</Link><Link className="btn btn-ghost" to="/guidelines">Safety guidelines</Link><Link className="btn btn-ghost" to="/support">Support</Link></div>
     </section>
   </main>;

@@ -1,4 +1,4 @@
-# Mobile release checklist
+# Mobile release and App Review checklist
 
 The codebase is prepared for iOS and Android builds with Expo Application Services. The remaining steps require the product owner's Apple, Google, and Expo accounts.
 
@@ -26,5 +26,18 @@ The codebase is prepared for iOS and Android builds with Expo Application Servic
 2. Complete privacy/data-safety questionnaires truthfully from the app's real behavior.
 3. Add store copy and screenshots, reviewer credentials, support URL, privacy URL, and account-deletion URL.
 4. Run `npm run submit:production` after the listings are complete.
+
+## Apple review gates
+
+- Build the submitted binary with Xcode 26 or later and the iOS 26 SDK or later. Apple has required this for uploads since April 28, 2026; confirm the EAS production build image satisfies the current requirement before every submission.
+- Use `store/app-privacy.md` to complete and publish App Privacy answers. Reconcile the final binary's Xcode privacy report first.
+- Use `store/app-review-notes.md` for reviewer credentials, navigation, payment explanation, safety controls, and deletion instructions.
+- Complete Apple's current age-rating questionnaire, including messaging, user-generated content, and tutoring interactions. NextDoorLearn should not be submitted to the Kids Category; its current minimum account age is 13.
+- Upload final screenshots from the exact build for every required iPhone and iPad display size. Screenshots and copy must describe the shipped features accurately.
+- Confirm `nextdoorlearn@gmail.com`, the support URL, privacy URL, and deletion URL are reachable without a reviewer account.
+- Keep both reviewer accounts active and the production backend awake throughout review.
+- Test content filtering, reports, blocks, account deletion, photo permission, push permission, payment errors, and offline errors on a physical iPhone and iPad.
+- Do not add Google or another social login without adding an equivalent privacy-preserving login option that satisfies Guideline 4.8.
+- Do not add group classes, digital subscriptions, paid boosts, or digital content to Stripe checkout without a new App Store payment review; the current Stripe exception is limited to real-time one-to-one tutoring.
 
 Do not submit until email delivery, push credentials, Stripe test-mode payment/refund verification, production monitoring, and both reviewer accounts have been verified on physical devices. Profile images are persistent in Neon for the initial release; move them to object storage as usage grows.

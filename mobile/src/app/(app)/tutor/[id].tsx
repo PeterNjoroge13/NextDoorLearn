@@ -12,10 +12,7 @@ export default function TutorDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>(); const state = useData<Tutor>(() => request(`/users/tutors/${id}`), [id]); const [notice, setNotice] = useState(''); const [working, setWorking] = useState(false);
   const connect = async () => { setWorking(true); try { const result = await request<{ message: string }>('/connections/request', { method: 'POST', body: JSON.stringify({ tutorId: Number(id) }) }); setNotice(result.message); } catch (e) { setNotice(e instanceof Error ? e.message : 'Unable to send request'); } finally { setWorking(false); } };
   const favorite = async () => { try { await request(`/favorites/${id}`, { method: 'POST' }); setNotice('Tutor saved to your shortlist.'); } catch (e) { setNotice(e instanceof Error ? e.message : 'Unable to save tutor'); } };
-  const report = () => Alert.alert('Report this tutor?', 'A private safety report will be sent to the NextDoorLearn moderation team for review.', [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Submit report', onPress: async () => { try { await request('/reports', { method: 'POST', body: JSON.stringify({ reportedUserId: Number(id), reason: 'Safety concern', details: 'Submitted from the mobile tutor profile.' }) }); setNotice('Report submitted. The moderation team will review it.'); } catch (e) { setNotice(e instanceof Error ? e.message : 'Unable to submit report'); } } },
-  ]);
+  const report = () => router.push({ pathname: '/(app)/report/[id]', params: { id, name: state.data?.name || 'this tutor' } });
   const block = () => Alert.alert('Block this tutor?', 'You will no longer be able to find, message, or schedule with each other.', [
     { text: 'Cancel', style: 'cancel' },
     { text: 'Block tutor', style: 'destructive', onPress: async () => { try { await request(`/blocks/${id}`, { method: 'POST', body: JSON.stringify({ reason: 'Blocked from tutor profile' }) }); router.replace('/tutors'); } catch (e) { setNotice(e instanceof Error ? e.message : 'Unable to block tutor'); } } },

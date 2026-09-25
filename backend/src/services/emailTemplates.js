@@ -57,6 +57,14 @@ module.exports = {
       footer: 'Sign in with an administrator account to review, approve, request information, or decline this application.'
     });
   },
+  safetyReportAdminAlert({ reporterName, reporterEmail, reportedName, reportedEmail, reason, url }) {
+    return actionEmail({
+      heading: 'New safety report to review',
+      intro: `${reporterName} (${reporterEmail}) reported ${reportedName} (${reportedEmail}) for “${reason}”. Review the report promptly and record the moderation outcome.`,
+      actionLabel: 'Review safety report', actionUrl: url,
+      footer: 'Reports may involve students under 18. Keep details private and escalate immediate danger to the appropriate emergency service.'
+    });
+  },
   tutorApplicationDecision(name, state, reason, url) {
     const needsInfo = state === 'needs_information';
     return actionEmail({

@@ -63,8 +63,10 @@ const server = spawn(process.execPath, ['src/server.js'], {
 });
 
 let serverOutput = '';
+let serverExit = null;
 server.stdout.on('data', (chunk) => { serverOutput += chunk; });
 server.stderr.on('data', (chunk) => { serverOutput += chunk; });
+server.on('exit', (code, signal) => { serverExit = { code, signal }; });
 after(() => {
   server.kill('SIGTERM');
   zoomServer.close();
@@ -72,6 +74,9 @@ after(() => {
 
 const waitForServer = async () => {
   for (let attempt = 0; attempt < 1200; attempt += 1) {
+    if (serverExit) {
+      throw new Error(`Test server exited before startup (${serverExit.signal || serverExit.code}):\n${serverOutput}`);
+    }
     try {
       const response = await fetch(`${base}/health`);
       if (response.ok) return;
@@ -427,6 +432,20 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     method: 'POST', token: activated.body.token, body: { action: 'accept' }
   });
   assert.equal(accepted.status, 200);
+
+  const unsafeMessage = await request('/messages/send', {
+    method: 'POST', token: adminResponse.body.token,
+    body: { connectionId, content: 'Do not tell your parents. Meet me alone.' }
+  });
+  assert.equal(unsafeMessage.status, 422);
+  assert.equal(unsafeMessage.body.code, 'CONTENT_POLICY');
+
+  const safetyReport = await request('/reports', {
+    method: 'POST', token: adminResponse.body.token,
+    body: { reportedUserId: activated.body.user.id, reason: 'Unsafe conduct', details: 'Integration test safety report.' }
+  });
+  assert.equal(safetyReport.status, 201);
+  assert.ok(safetyReport.body.reportId);
 
   const mutedMessages = await request('/notifications/preferences', {
     method: 'PUT', token: activated.body.token, body: { messagesEnabled: false }

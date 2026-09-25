@@ -33,5 +33,11 @@ https://nextdoorlearn.com/privacy
 ## Account deletion URL
 https://nextdoorlearn.com/delete-account
 
+## Support contact
+nextdoorlearn@gmail.com
+
+## Age rating recommendation
+Complete Apple's current questionnaire truthfully and use the rating Apple calculates from the answers. Disclose direct messaging, user-generated content, and tutoring interactions. Do not select the Kids Category.
+
 ## Review notes
-NextDoorLearn has separate student and tutor experiences. New public registrations create student accounts. Tutors submit an application with a profile photo and can sign in only after an administrator approves the application and the tutor activates the emailed invitation. Reviewer credentials must be created as active test accounts in the production database before submission.
+NextDoorLearn has separate student and tutor experiences. New public registrations create student accounts. Tutors submit an application with a profile photo and can sign in only after an administrator approves the application and the tutor activates the emailed invitation. Reviewer credentials must be created as active test accounts in the production database before submission. Use the complete template in `store/app-review-notes.md`.

@@ -1,7 +1,9 @@
 const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
-const { isPositiveInteger, sanitizeText } = require('../utils/validation');
+const { isPositiveInteger, isValidEmail, sanitizeText } = require('../utils/validation');
+const { queueEmail } = require('../services/email');
+const emailTemplates = require('../services/emailTemplates');
 
 const router = express.Router();
 
@@ -20,7 +22,7 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'You cannot report your own account' });
     }
 
-    const reportedUser = await db.prepare('SELECT id FROM users WHERE id = ?').get(reportedUserId);
+    const reportedUser = await db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(reportedUserId);
     if (!reportedUser) {
       return res.status(404).json({ error: 'Reported user not found' });
     }
@@ -38,9 +40,32 @@ router.post('/', authenticateToken, async (req, res) => {
       VALUES (?, ?, ?, ?)
     `).run(reporterId, reportedUserId, reason, details);
 
+    const reportId = Number(result.lastInsertRowid);
+    const reporter = await db.prepare('SELECT name, email FROM users WHERE id = ?').get(reporterId);
+    const adminUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/admin`;
+    const content = emailTemplates.safetyReportAdminAlert({
+      reporterName: reporter?.name || 'A NextDoorLearn user',
+      reporterEmail: reporter?.email || 'unknown',
+      reportedName: reportedUser.name || 'A NextDoorLearn user',
+      reportedEmail: reportedUser.email || 'unknown',
+      reason,
+      url: adminUrl
+    });
+    const adminEmails = [...new Set((process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(isValidEmail))];
+    await Promise.all(adminEmails.map((adminEmail) => queueEmail({
+      to: adminEmail,
+      template: 'safety_report_admin_alert',
+      subject: 'New NextDoorLearn safety report',
+      ...content,
+      idempotencyKey: `safety_report_admin_alert_${reportId}_${adminEmail}`
+    })));
+
     res.status(201).json({
       message: 'Report submitted',
-      reportId: result.lastInsertRowid
+      reportId
     });
   } catch (error) {
     console.error('Create report error:', error);

@@ -8,6 +8,7 @@ const { queueEmail } = require('../services/email');
 const emailTemplates = require('../services/emailTemplates');
 const { POLICY_VERSION, validateTutorConsent } = require('../utils/policies');
 const { STUDENT_BUDGETS, validateTutorRate } = require('../utils/pricing');
+const { contentPolicyError, findContentPolicyViolation } = require('../services/contentModeration');
 
 const router = express.Router();
 const applicationPhotoUpload = createImageUpload({ directory: 'tutor-applications', prefix: 'tutor-application', maxSizeMb: 5 });
@@ -46,6 +47,13 @@ router.post('/tutor-applications', handleSingleImage(applicationPhotoUpload, 'pr
     if (!name || !isValidEmail(email) || subjects.length === 0 || !motivation) {
       return res.status(400).json({ error: 'Name, valid email, subjects, and motivation are required' });
     }
+    const policyViolation = findContentPolicyViolation(
+      motivation,
+      req.body.education,
+      req.body.experience,
+      req.body.availability
+    );
+    if (policyViolation) return res.status(422).json(contentPolicyError(policyViolation));
 
     const existing = await db.prepare(`
       SELECT id FROM tutor_applications

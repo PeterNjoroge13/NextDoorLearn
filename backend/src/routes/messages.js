@@ -4,6 +4,7 @@ const { authenticateToken, requireVerifiedEmail } = require('../middleware/auth'
 const { createNotification } = require('./notifications');
 const { isPositiveInteger, sanitizeText } = require('../utils/validation');
 const { usersAreBlocked } = require('../services/safety');
+const { contentPolicyError, findContentPolicyViolation } = require('../services/contentModeration');
 
 const router = express.Router();
 router.use(authenticateToken, requireVerifiedEmail);
@@ -18,6 +19,8 @@ router.post('/send', async (req, res) => {
     if (!isPositiveInteger(connectionId) || !messageContent) {
       return res.status(400).json({ error: 'Connection ID and content are required' });
     }
+    const policyViolation = findContentPolicyViolation(messageContent);
+    if (policyViolation) return res.status(422).json(contentPolicyError(policyViolation));
 
     // Verify user is part of this connection and get recipient info
     const connection = await db.prepare(`
