@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Flag, X } from 'lucide-react';
+import { Flag } from 'lucide-react';
 import api from '../services/api';
+import { DialogShell } from './Dialog';
 
 const reasons = [
   'Harassment or bullying',
@@ -39,8 +40,7 @@ const ReportUserModal = ({ user, onClose, onSubmitted }) => {
   };
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="report-title">
+    <DialogShell labelledBy="report-title" onClose={onClose} closeDisabled={submitting} className="modal">
         <header className="modal-head">
           <div>
             <span className="eyebrow">
@@ -51,13 +51,10 @@ const ReportUserModal = ({ user, onClose, onSubmitted }) => {
               Report {user?.name || 'this user'}
             </h2>
           </div>
-          <button className="btn btn-ghost btn-sm" type="button" onClick={onClose} aria-label="Close report form">
-            <X size={17} />
-          </button>
         </header>
 
         <form className="modal-body form-grid" onSubmit={handleSubmit}>
-          {status ? <div className="alert alert-error">{status}</div> : null}
+          {status ? <div className="alert alert-error" role="alert">{status}</div> : null}
 
           <div className="field">
             <label htmlFor="report-reason">Reason</label>
@@ -88,8 +85,7 @@ const ReportUserModal = ({ user, onClose, onSubmitted }) => {
             </button>
           </div>
         </form>
-      </section>
-    </div>
+    </DialogShell>
   );
 };
 

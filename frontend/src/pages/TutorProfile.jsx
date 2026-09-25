@@ -17,6 +17,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import AppShell, { Avatar, EmptyState, ErrorState, LoadingState } from '../components/AppShell';
+import { ConfirmDialog } from '../components/Dialog';
 import ReportUserModal from '../components/ReportUserModal';
 import { parseList } from '../utils/format';
 
@@ -30,6 +31,8 @@ const TutorProfile = () => {
   const [favorite, setFavorite] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
   const [reportUser, setReportUser] = useState(null);
+  const [confirmBlock, setConfirmBlock] = useState(false);
+  const [blocking, setBlocking] = useState(false);
   const [toast, setToast] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -93,10 +96,21 @@ const TutorProfile = () => {
   };
 
   const handleBlock = async () => {
-    if (!window.confirm(`Block ${tutor.name}? You will no longer be able to find, message, or schedule with each other.`)) return;
-    const response = await api.blockUser(tutor.id, 'Blocked from tutor profile', localStorage.getItem('token'));
-    if (response.error) return showToast(response.error);
-    navigate('/tutors', { replace: true });
+    setBlocking(true);
+    try {
+      const response = await api.blockUser(tutor.id, 'Blocked from tutor profile', localStorage.getItem('token'));
+      if (response.error) {
+        setConfirmBlock(false);
+        showToast(response.error);
+        return;
+      }
+      navigate('/tutors', { replace: true });
+    } catch {
+      setConfirmBlock(false);
+      showToast('This tutor could not be blocked. Please try again.');
+    } finally {
+      setBlocking(false);
+    }
   };
 
   if (loading) return <LoadingState label="Opening tutor profile..." />;
@@ -170,7 +184,7 @@ const TutorProfile = () => {
               <Flag size={18} />
               Report profile
             </button>
-            <button className="btn btn-ghost w-full" type="button" onClick={handleBlock}>
+            <button className="btn btn-ghost w-full" type="button" onClick={() => setConfirmBlock(true)}>
               <UserX size={18} />
               Block tutor
             </button>
@@ -297,6 +311,16 @@ const TutorProfile = () => {
           )}
         </section>
       </main>
+
+      <ConfirmDialog
+        open={confirmBlock}
+        title={`Block ${tutor.name}?`}
+        message="You will no longer be able to find, message, or schedule with each other. You can reverse this later from your profile settings."
+        confirmLabel="Block tutor"
+        busy={blocking}
+        onClose={() => setConfirmBlock(false)}
+        onConfirm={handleBlock}
+      />
 
       {reportUser ? (
         <ReportUserModal

@@ -1,0 +1,156 @@
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(20, 33, 29, 0.62);
+  animation: dialog-fade-in 140ms ease-out;
+}
+
+.dialog-panel {
+  position: relative;
+  width: min(680px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--coral);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgba(20, 33, 29, 0.28);
+  animation: dialog-rise-in 170ms ease-out;
+}
+
+.dialog-panel:focus {
+  outline: none;
+}
+
+.dialog-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 40px;
+  height: 40px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.dialog-close:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.dialog-close:focus-visible {
+  outline: 3px solid rgba(11, 116, 104, 0.22);
+  outline-offset: 2px;
+}
+
+.confirm-dialog {
+  width: min(480px, 100%);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  padding: 26px;
+}
+
+.dialog-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+}
+
+.dialog-icon-danger {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.dialog-icon-primary {
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+}
+
+.dialog-copy {
+  min-width: 0;
+  padding-right: 34px;
+}
+
+.dialog-kicker {
+  margin-bottom: 5px;
+  color: var(--coral);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.dialog-copy h2 {
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.dialog-copy > p:last-child {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.dialog-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 4px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+@keyframes dialog-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dialog-rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 520px) {
+  .dialog-backdrop {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .dialog-panel {
+    max-height: calc(100dvh - 20px);
+  }
+
+  .confirm-dialog {
+    grid-template-columns: 1fr;
+    gap: 13px;
+    padding: 22px 18px 18px;
+  }
+
+  .dialog-copy {
+    padding-right: 38px;
+  }
+
+  .dialog-actions {
+    grid-column: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-backdrop,
+  .dialog-panel {
+    animation: none;
+  }
+}
