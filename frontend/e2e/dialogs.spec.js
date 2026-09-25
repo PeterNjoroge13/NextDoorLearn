@@ -59,3 +59,37 @@ test('student can use safety dialogs with keyboard support and block a tutor', a
   await expect(page).toHaveURL(/\/tutors$/);
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Find someone who teaches the way you learn');
 });
+
+test('student gets clear confirmation before deleting goals or an account', async ({ page, request }) => {
+  const runId = `${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
+  const email = `dialog.delete.${runId}@example.com`;
+  const student = await register(request, 'student', email, 'Delete Dialog Student');
+  const goalResponse = await request.post(`${apiUrl}/progress/goals`, {
+    headers: { Authorization: `Bearer ${student.token}` },
+    data: { subject: 'Algebra', title: 'Browser deletion goal', description: 'Disposable browser test data.' },
+  });
+  expect(goalResponse.ok(), await goalResponse.text()).toBeTruthy();
+  await signIn(page, email);
+
+  await page.goto('/progress', { waitUntil: 'domcontentloaded' });
+  const deleteGoalButton = page.getByRole('button', { name: 'Delete Browser deletion goal' });
+  await deleteGoalButton.click();
+  const goalDialog = page.getByRole('dialog', { name: 'Delete this learning goal?' });
+  await expect(goalDialog).toContainText('Browser deletion goal');
+  await page.keyboard.press('Escape');
+  await expect(goalDialog).toBeHidden();
+  await expect(deleteGoalButton).toBeFocused();
+  await deleteGoalButton.click();
+  await goalDialog.getByRole('button', { name: 'Delete goal' }).click();
+  await expect(page.getByRole('heading', { name: 'No learning goals here' })).toBeVisible();
+
+  await page.goto('/profile?tab=security', { waitUntil: 'domcontentloaded' });
+  await page.getByLabel('Current password').last().fill(password);
+  const deleteAccountButton = page.getByRole('button', { name: 'Permanently delete account' });
+  await deleteAccountButton.click();
+  const accountDialog = page.getByRole('dialog', { name: 'Permanently delete your account?' });
+  await expect(accountDialog).toContainText('cannot be undone');
+  await page.keyboard.press('Escape');
+  await expect(accountDialog).toBeHidden();
+  await expect(deleteAccountButton).toBeFocused();
+});

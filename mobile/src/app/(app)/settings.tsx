@@ -4,7 +4,7 @@ import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
 import { ArrowLeft, BellRing, KeyRound, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Button, Card, ErrorNotice, Field, Header, LoadingState, Screen } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { api, request } from '@/lib/api';
@@ -113,6 +113,17 @@ export default function SettingsScreen() {
     }
   };
 
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      'Permanently delete your account?',
+      'Your profile, messages, connections, sessions, and account data will be removed. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete account', style: 'destructive', onPress: deleteAccount },
+      ],
+    );
+  };
+
   if (preferences.loading) return <LoadingState />;
 
   return <Screen refreshing={preferences.refreshing} onRefresh={preferences.reload}>
@@ -157,7 +168,7 @@ export default function SettingsScreen() {
       <View style={s.sectionHead}><Trash2 size={21} color={colors.red} /><Text style={[s.section, s.danger]}>Delete account</Text></View>
       <Text style={s.copy}>This permanently removes your profile, conversations, connections, sessions, and account data. It cannot be undone.</Text>
       <Field label="Current password to confirm" value={deletePassword} onChangeText={setDeletePassword} secureTextEntry />
-      <Button label="Permanently delete my account" variant="danger" onPress={deleteAccount} loading={working === 'delete'} disabled={!deletePassword} />
+      <Button label="Permanently delete my account" variant="danger" onPress={confirmDeleteAccount} loading={working === 'delete'} disabled={!deletePassword} />
     </Card>
   </Screen>;
 }

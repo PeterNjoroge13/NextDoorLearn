@@ -4,6 +4,7 @@ import { BellRing, CalendarClock, Camera, ClipboardCheck, ExternalLink, Globe2, 
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import AppShell, { Avatar, ErrorState, LoadingState } from '../components/AppShell';
+import { ConfirmDialog } from '../components/Dialog';
 import { parseList } from '../utils/format';
 
 const commonLanguages = ['English', 'Spanish', 'French', 'Mandarin', 'Arabic', 'Portuguese', 'Korean'];
@@ -51,6 +52,7 @@ const Profile = () => {
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [deletePassword, setDeletePassword] = useState('');
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
   const [notificationPreferences, setNotificationPreferences] = useState(defaultNotificationPreferences);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [formData, setFormData] = useState({
@@ -277,13 +279,22 @@ const Profile = () => {
 
   const handleDeleteAccount = async () => {
     if (!deletePassword) return setMessage('Enter your current password before deleting your account.');
-    if (!window.confirm('Permanently delete your NextDoorLearn account and all associated data? This cannot be undone.')) return;
     setSaving(true);
-    const response = await api.deleteAccount(deletePassword, localStorage.getItem('token'));
-    setSaving(false);
-    if (response.error) return setMessage(response.error);
-    logout();
-    navigate('/login', { replace: true });
+    try {
+      const response = await api.deleteAccount(deletePassword, localStorage.getItem('token'));
+      if (response.error) {
+        setConfirmDeleteAccount(false);
+        setMessage(response.error);
+        return;
+      }
+      logout();
+      navigate('/login', { replace: true });
+    } catch {
+      setConfirmDeleteAccount(false);
+      setMessage('Your account could not be deleted. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleNotificationPreference = async (key) => {
@@ -604,17 +615,17 @@ const Profile = () => {
               <div className="form-grid">
               <form className="form-grid" onSubmit={handlePassword}>
                 <div className="field">
-                  <label>Current password</label>
-                  <input type="password" value={passwordData.currentPassword} onChange={(event) => setPasswordData((current) => ({ ...current, currentPassword: event.target.value }))} required />
+                  <label htmlFor="current-password">Current password</label>
+                  <input id="current-password" type="password" autoComplete="current-password" value={passwordData.currentPassword} onChange={(event) => setPasswordData((current) => ({ ...current, currentPassword: event.target.value }))} required />
                 </div>
                 <div className="grid grid-2">
                   <div className="field">
-                    <label>New password</label>
-                    <input type="password" minLength={8} value={passwordData.newPassword} onChange={(event) => setPasswordData((current) => ({ ...current, newPassword: event.target.value }))} required />
+                    <label htmlFor="new-password">New password</label>
+                    <input id="new-password" type="password" autoComplete="new-password" minLength={8} value={passwordData.newPassword} onChange={(event) => setPasswordData((current) => ({ ...current, newPassword: event.target.value }))} required />
                   </div>
                   <div className="field">
-                    <label>Confirm new password</label>
-                    <input type="password" minLength={8} value={passwordData.confirmPassword} onChange={(event) => setPasswordData((current) => ({ ...current, confirmPassword: event.target.value }))} required />
+                    <label htmlFor="confirm-new-password">Confirm new password</label>
+                    <input id="confirm-new-password" type="password" autoComplete="new-password" minLength={8} value={passwordData.confirmPassword} onChange={(event) => setPasswordData((current) => ({ ...current, confirmPassword: event.target.value }))} required />
                   </div>
                 </div>
                 <button className="btn btn-primary" type="submit">Update password</button>
@@ -625,10 +636,10 @@ const Profile = () => {
               ))}</div> : <p className="muted">You have not blocked anyone.</p>}
               <div className="section-head compact" style={{ marginTop: 28 }}><div><h2>Delete account</h2><p>Permanently remove your profile, messages, sessions, and account data.</p></div><Trash2 size={22} /></div>
               <div className="field">
-                <label>Current password</label>
-                <input type="password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} />
+                <label htmlFor="delete-account-password">Current password</label>
+                <input id="delete-account-password" type="password" autoComplete="current-password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} />
               </div>
-              <button className="btn btn-danger" type="button" disabled={!deletePassword || saving} onClick={handleDeleteAccount}>Permanently delete account</button>
+              <button className="btn btn-danger" type="button" disabled={!deletePassword || saving} onClick={() => setConfirmDeleteAccount(true)}>Permanently delete account</button>
               </div>
             ) : null}
 
@@ -672,6 +683,15 @@ const Profile = () => {
           </div>
         </section>
       </main>
+      <ConfirmDialog
+        open={confirmDeleteAccount}
+        title="Permanently delete your account?"
+        message="Your profile, messages, connections, sessions, and account data will be removed. This cannot be undone."
+        confirmLabel="Delete my account"
+        busy={saving}
+        onClose={() => setConfirmDeleteAccount(false)}
+        onConfirm={handleDeleteAccount}
+      />
     </AppShell>
   );
 };

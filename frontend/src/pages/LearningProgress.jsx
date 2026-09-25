@@ -17,6 +17,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import AppShell, { Avatar, EmptyState, ErrorState, LoadingState } from '../components/AppShell';
+import { ConfirmDialog } from '../components/Dialog';
 
 const blankGoal = { subject: '', title: '', description: '', targetDate: '' };
 
@@ -40,6 +41,7 @@ const LearningProgress = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState('');
+  const [goalToDelete, setGoalToDelete] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const token = localStorage.getItem('token');
@@ -145,16 +147,23 @@ const LearningProgress = () => {
     }
   };
 
-  const deleteGoal = async (goalId) => {
-    if (!window.confirm('Delete this goal and all of its milestones?')) return;
+  const deleteGoal = async () => {
+    if (!goalToDelete) return;
+    const goalId = goalToDelete.id;
     setWorking(`goal-${goalId}`);
-    const response = await api.deleteLearningGoal(goalId, token);
-    if (response.error) setError(response.error);
-    else {
-      setGoals((current) => current.filter((goal) => goal.id !== goalId));
-      showNotice('Goal deleted.');
+    try {
+      const response = await api.deleteLearningGoal(goalId, token);
+      if (response.error) setError(response.error);
+      else {
+        setGoals((current) => current.filter((goal) => goal.id !== goalId));
+        showNotice('Goal deleted.');
+      }
+    } catch {
+      setError('That goal could not be deleted.');
+    } finally {
+      setWorking('');
+      setGoalToDelete(null);
     }
-    setWorking('');
   };
 
   const addMilestone = async (event, goalId) => {
@@ -258,7 +267,7 @@ const LearningProgress = () => {
                     <article className={`card progress-goal-card status-${goal.status}`} key={goal.id}>
                       <header className="progress-goal-head">
                         <div><span className="badge badge-primary">{goal.subject}</span><h2>{goal.title}</h2></div>
-                        {isStudent ? <button className="icon-button" type="button" onClick={() => deleteGoal(goal.id)} disabled={isWorking} aria-label={`Delete ${goal.title}`} title="Delete goal"><Trash2 size={17} /></button> : <span className={`badge ${goal.status === 'completed' ? 'badge-success' : goal.status === 'paused' ? 'badge-warning' : ''}`}>{goal.status}</span>}
+                        {isStudent ? <button className="icon-button" type="button" onClick={() => setGoalToDelete(goal)} disabled={isWorking} aria-label={`Delete ${goal.title}`} title="Delete goal"><Trash2 size={17} /></button> : <span className={`badge ${goal.status === 'completed' ? 'badge-success' : goal.status === 'paused' ? 'badge-warning' : ''}`}>{goal.status}</span>}
                       </header>
                       {goal.description ? <p className="progress-goal-description">{goal.description}</p> : null}
                       <div className="progress-goal-meta"><span><CalendarDays size={15} />{targetDateLabel(goal.target_date)}</span><span><Flag size={15} />{goal.milestones.length} milestone{goal.milestones.length === 1 ? '' : 's'}</span></div>
@@ -302,6 +311,15 @@ const LearningProgress = () => {
           </>
         )}
       </main>
+      <ConfirmDialog
+        open={Boolean(goalToDelete)}
+        title="Delete this learning goal?"
+        message={goalToDelete ? `“${goalToDelete.title}” and all of its milestones will be permanently removed.` : ''}
+        confirmLabel="Delete goal"
+        busy={Boolean(goalToDelete && working === `goal-${goalToDelete.id}`)}
+        onClose={() => setGoalToDelete(null)}
+        onConfirm={deleteGoal}
+      />
     </AppShell>
   );
 };
