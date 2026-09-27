@@ -4,11 +4,12 @@ const db = require('../db/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { boundedInteger, isPositiveInteger, sanitizeText } = require('../utils/validation');
 const { createSecurityToken, hashSecurityToken } = require('../utils/securityTokens');
-const { queueEmail, processEmailOutbox, providerConfigured } = require('../services/email');
+const { queueEmail, processEmailOutbox, providerConfigured, retryOutboxEmail } = require('../services/email');
 const emailTemplates = require('../services/emailTemplates');
 const { getTutorRecommendations, parseList } = require('../services/matching');
 const { createNotification } = require('./notifications');
 const { paymentsConfigured, refundPaymentIntent } = require('../services/payments');
+const { cancelScheduledSessions } = require('../services/sessionLifecycle');
 
 const router = express.Router();
 const sensitiveActionLimiter = rateLimit({
@@ -33,7 +34,7 @@ router.get('/overview', async (req, res) => {
       db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN review_state IN ('submitted', 'reviewing') THEN 1 ELSE 0 END) AS awaiting_review FROM tutor_applications").get(),
       db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status IN ('open', 'reviewing') THEN 1 ELSE 0 END) AS open FROM user_reports").get(),
       db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) AS scheduled FROM sessions").get(),
-      db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending FROM email_outbox").get(),
+      db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN status = 'dead_letter' THEN 1 ELSE 0 END) AS dead_letter FROM email_outbox").get(),
       db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open FROM student_waitlist_entries").get()
     ]);
     res.json({ users, applications, reports, sessions, emails: { ...emails, providerConfigured: providerConfigured() }, waitlist });
@@ -225,19 +226,39 @@ router.patch('/users/:id', async (req, res) => {
       return res.status(400).json({ error: 'You cannot restrict your own administrator account' });
     }
 
-    if (status) {
-      await db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, userId);
-    }
+    await db.withTransaction(async (transaction) => {
+      if (status) {
+        await transaction.prepare(`
+          UPDATE users SET status = ?,
+            session_version = session_version + CASE WHEN ? = 'active' THEN 0 ELSE 1 END
+          WHERE id = ?
+        `).run(status, status, userId);
+        if (status !== 'active') {
+          await transaction.prepare(`
+            UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND revoked_at IS NULL
+          `).run(userId);
+          await transaction.prepare('UPDATE push_devices SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').run(userId);
+        }
+      }
 
-    if (verified !== undefined) {
-      await db.prepare(`
-        UPDATE users
-        SET verified_at = ${verified ? 'CURRENT_TIMESTAMP' : 'NULL'}
-        WHERE id = ?
-      `).run(userId);
-    }
+      if (verified !== undefined) {
+        await transaction.prepare(`
+          UPDATE users
+          SET verified_at = ${verified ? 'CURRENT_TIMESTAMP' : 'NULL'}
+          WHERE id = ?
+        `).run(userId);
+      }
+      await audit(req.user.userId, 'user.updated', 'user', userId, { status, verified }, transaction);
+    });
 
-    await audit(req.user.userId, 'user.updated', 'user', userId, { status, verified });
+    if (status && status !== 'active') {
+      await cancelScheduledSessions({
+        userId,
+        actorUserId: req.user.userId,
+        reason: `Account ${status} by NextDoorLearn moderation`
+      });
+    }
 
     const updated = await db.prepare(`
       SELECT id, email, role, name, status, email_verified_at, verified_at, created_at, last_seen
@@ -314,7 +335,20 @@ router.post('/reports/:id/actions', async (req, res) => {
     const statusByAction = { suspend: 'suspended', ban: 'banned', reactivate: 'active' };
     await db.withTransaction(async (transaction) => {
       if (statusByAction[action]) {
-        await transaction.prepare('UPDATE users SET status = ? WHERE id = ?').run(statusByAction[action], report.reported_user_id);
+        const nextStatus = statusByAction[action];
+        await transaction.prepare(`
+          UPDATE users SET status = ?,
+            session_version = session_version + CASE WHEN ? = 'active' THEN 0 ELSE 1 END
+          WHERE id = ?
+        `).run(nextStatus, nextStatus, report.reported_user_id);
+        if (nextStatus !== 'active') {
+          await transaction.prepare(`
+            UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND revoked_at IS NULL
+          `).run(report.reported_user_id);
+          await transaction.prepare('UPDATE push_devices SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
+            .run(report.reported_user_id);
+        }
       }
       await transaction.prepare(`
         INSERT INTO moderation_actions (report_id, subject_user_id, admin_user_id, action, reason)
@@ -324,6 +358,13 @@ router.post('/reports/:id/actions', async (req, res) => {
         .run(action === 'dismiss' ? 'dismissed' : 'resolved', reportId);
       await audit(req.user.userId, `moderation.${action}`, 'user', report.reported_user_id, { reportId, reason }, transaction);
     });
+    if (['suspend', 'ban'].includes(action)) {
+      await cancelScheduledSessions({
+        userId: report.reported_user_id,
+        actorUserId: req.user.userId,
+        reason: `Account ${statusByAction[action]} by NextDoorLearn moderation`
+      });
+    }
     res.json({ message: `Moderation action ${action} recorded`, action, reportStatus: action === 'dismiss' ? 'dismissed' : 'resolved' });
   } catch (error) {
     console.error('Moderation action error:', error);
@@ -480,6 +521,19 @@ router.post('/email-outbox/process', async (req, res) => {
   const results = await processEmailOutbox(50);
   await audit(req.user.userId, 'email_outbox.processed', 'email_outbox', null, { count: results.length });
   res.json({ processed: results.length, sent: results.filter((item) => item.status === 'sent').length });
+});
+
+router.post('/email-outbox/:id/retry', sensitiveActionLimiter, async (req, res) => {
+  try {
+    if (!isPositiveInteger(req.params.id)) return res.status(400).json({ error: 'Valid email ID is required' });
+    const retried = await retryOutboxEmail(req.params.id);
+    if (!retried) return res.status(409).json({ error: 'Only pending or failed email can be retried' });
+    await audit(req.user.userId, 'email_outbox.retried', 'email_outbox', req.params.id);
+    res.json({ message: 'Email queued for another delivery attempt' });
+  } catch (error) {
+    console.error('Retry email error:', error);
+    res.status(500).json({ error: 'Unable to retry this email' });
+  }
 });
 
 router.get('/sponsor-inquiries', async (req, res) => {

@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const { randomBytes } = require('crypto');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { getAvailabilitySlots } = require('../utils/availability');
@@ -13,6 +14,8 @@ const {
 } = require('../utils/validation');
 const { STUDENT_BUDGETS, validateTutorRate } = require('../utils/pricing');
 const { contentPolicyError, findContentPolicyViolation } = require('../services/contentModeration');
+const { cancelScheduledSessions } = require('../services/sessionLifecycle');
+const { disconnectGoogleIntegration } = require('../services/googleCalendar');
 
 const router = express.Router();
 
@@ -92,6 +95,89 @@ router.get('/profile', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/export', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const account = await db.prepare(`
+      SELECT id, email, role, name, bio, avatar_url, phone, location, timezone, languages,
+        website, linkedin, age_group, status, email_verified_at, verified_at, created_at, last_seen
+      FROM users WHERE id = ?
+    `).get(userId);
+    if (!account) return res.status(404).json({ error: 'User not found' });
+    const profile = account.role === 'tutor'
+      ? await db.prepare('SELECT * FROM tutor_profiles WHERE user_id = ?').get(userId)
+      : await db.prepare('SELECT * FROM student_profiles WHERE user_id = ?').get(userId);
+    const [connections, messages, sessions, payments, reviews, notifications, goals, milestones, policies, reports, blocks] = await Promise.all([
+      db.prepare(`
+        SELECT id, student_id, tutor_id, status, created_at FROM connections
+        WHERE student_id = ? OR tutor_id = ? ORDER BY created_at ASC
+      `).all(userId, userId),
+      db.prepare(`
+        SELECT m.id, m.connection_id, m.sender_id, m.content, m.timestamp, m.read_at
+        FROM messages m JOIN connections c ON c.id = m.connection_id
+        WHERE c.student_id = ? OR c.tutor_id = ? ORDER BY m.timestamp ASC, m.id ASC
+      `).all(userId, userId),
+      db.prepare(`
+        SELECT id, connection_id, tutor_id, student_id, title, description, subject, scheduled_date,
+          start_time, end_time, session_timezone, duration_minutes, status, confirmation_status,
+          cancellation_reason, agreed_hourly_rate_cents, created_at, updated_at
+        FROM sessions WHERE student_id = ? OR tutor_id = ? ORDER BY scheduled_date ASC, start_time ASC
+      `).all(userId, userId),
+      db.prepare(`
+        SELECT id, session_id, student_id, tutor_id, amount_cents, platform_fee_cents, currency,
+          status, paid_at, refunded_at, created_at, updated_at
+        FROM session_payments WHERE student_id = ? OR tutor_id = ? ORDER BY created_at ASC
+      `).all(userId, userId),
+      db.prepare(`
+        SELECT id, tutor_id, student_id, rating, comment, session_id, created_at, updated_at
+        FROM reviews WHERE student_id = ? OR tutor_id = ? ORDER BY created_at ASC
+      `).all(userId, userId),
+      db.prepare(`
+        SELECT id, type, title, message, link, related_id, is_read, created_at
+        FROM notifications WHERE user_id = ? ORDER BY created_at ASC
+      `).all(userId),
+      db.prepare('SELECT * FROM learning_goals WHERE student_id = ? ORDER BY created_at ASC').all(userId),
+      db.prepare(`
+        SELECT milestone.* FROM goal_milestones milestone
+        JOIN learning_goals goal ON goal.id = milestone.goal_id
+        WHERE goal.student_id = ? ORDER BY milestone.created_at ASC
+      `).all(userId),
+      db.prepare(`
+        SELECT policy_type, policy_version, source, accepted_at
+        FROM policy_acceptances WHERE user_id = ? ORDER BY accepted_at ASC
+      `).all(userId),
+      db.prepare(`
+        SELECT id, reported_user_id, reason, details, status, created_at, updated_at
+        FROM user_reports WHERE reporter_id = ? ORDER BY created_at ASC
+      `).all(userId),
+      db.prepare(`
+        SELECT blocked_user_id, reason, created_at FROM user_blocks
+        WHERE blocker_id = ? ORDER BY created_at ASC
+      `).all(userId)
+    ]);
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      account,
+      profile: profile || {},
+      connections,
+      messages,
+      sessions,
+      payments,
+      reviews,
+      notifications,
+      learning: { goals, milestones },
+      policyAcceptances: policies,
+      reportsFiled: reports,
+      blockedUsers: blocks
+    };
+    res.setHeader('Content-Disposition', `attachment; filename="nextdoorlearn-data-${userId}.json"`);
+    res.json(payload);
+  } catch (error) {
+    console.error('Export account data error:', error);
+    res.status(500).json({ error: 'Unable to export account data' });
   }
 });
 
@@ -322,7 +408,7 @@ router.put('/change-password', authenticateToken, async (req, res) => {
   }
 });
 
-// Permanently delete the signed-in account. Store policies require this to be available in-app.
+// Anonymize the account while retaining the minimum financial and safety ledger required to operate the service.
 router.delete('/account', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -333,19 +419,84 @@ router.delete('/account', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Enter your password and type DELETE to confirm' });
     }
 
-    const user = await db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
+    const user = await db.prepare('SELECT id, email, role, password_hash FROM users WHERE id = ?').get(userId);
     if (!user || !(await bcrypt.compare(currentPassword, user.password_hash))) {
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
 
+    const cancelledSessions = await cancelScheduledSessions({
+      userId,
+      actorUserId: userId,
+      reason: 'Account deleted by participant'
+    });
+    await disconnectGoogleIntegration(userId);
+    const replacementEmail = `deleted-${userId}-${Date.now()}@deleted.nextdoorlearn.invalid`;
+    const disabledPassword = await bcrypt.hash(randomBytes(32).toString('base64url'), 10);
+
     await db.withTransaction(async (transaction) => {
-      // These audit relationships intentionally restrict deletion; remove the actor-owned rows first.
-      await transaction.prepare('DELETE FROM moderation_actions WHERE admin_user_id = ?').run(userId);
-      await transaction.prepare('DELETE FROM admin_audit_logs WHERE admin_user_id = ?').run(userId);
-      await transaction.prepare('DELETE FROM users WHERE id = ?').run(userId);
+      await transaction.prepare("UPDATE messages SET content = '[Message removed by account holder]' WHERE sender_id = ?").run(userId);
+      await transaction.prepare(`
+        UPDATE user_reports SET details = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE reporter_id = ? OR reported_user_id = ?
+      `).run(userId, userId);
+      await transaction.prepare('UPDATE policy_acceptances SET user_agent = NULL WHERE user_id = ?').run(userId);
+      if (user.role === 'student') {
+        await transaction.prepare(`
+          UPDATE session_outcomes SET student_reflection = NULL, confidence_before = NULL,
+            confidence_after = NULL, student_submitted_at = NULL, updated_at = CURRENT_TIMESTAMP
+          WHERE session_id IN (SELECT id FROM sessions WHERE student_id = ?)
+        `).run(userId);
+      } else {
+        await transaction.prepare(`
+          UPDATE session_outcomes SET tutor_summary = NULL, skills_practiced = NULL,
+            next_steps = NULL, tutor_submitted_at = NULL, updated_at = CURRENT_TIMESTAMP
+          WHERE session_id IN (SELECT id FROM sessions WHERE tutor_id = ?)
+        `).run(userId);
+      }
+      await transaction.prepare('DELETE FROM reviews WHERE student_id = ? OR tutor_id = ?').run(userId, userId);
+      await transaction.prepare('DELETE FROM notifications WHERE user_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM push_devices WHERE user_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM user_notification_preferences WHERE user_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM user_google_integrations WHERE user_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM media_assets WHERE owner_user_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM favorites WHERE student_id = ? OR tutor_id = ?').run(userId, userId);
+      await transaction.prepare('DELETE FROM user_blocks WHERE blocker_id = ? OR blocked_user_id = ?').run(userId, userId);
+      await transaction.prepare('DELETE FROM learning_goals WHERE student_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM student_waitlist_entries WHERE student_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM tutor_availability_slots WHERE tutor_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM tutor_profiles WHERE user_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM student_profiles WHERE user_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM refresh_tokens WHERE user_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM email_verification_tokens WHERE user_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(userId);
+      await transaction.prepare('DELETE FROM admin_memberships WHERE user_id = ?').run(userId);
+      await transaction.prepare("UPDATE connections SET status = 'rejected' WHERE student_id = ? OR tutor_id = ?").run(userId, userId);
+      await transaction.prepare(`
+        UPDATE tutor_applications SET name = 'Deleted applicant', email = ?, phone = NULL,
+          location = NULL, education = NULL, experience = NULL, motivation = 'Removed by account holder',
+          availability = NULL, profile_picture_url = '/deleted', updated_at = CURRENT_TIMESTAMP
+        WHERE activated_user_id = ?
+      `).run(replacementEmail, userId);
+      await transaction.prepare(`
+        UPDATE email_outbox SET recipient = ?, text_body = '[Removed by account holder]',
+          html_body = '[Removed by account holder]', updated_at = CURRENT_TIMESTAMP
+        WHERE LOWER(recipient) = LOWER(?)
+      `).run(replacementEmail, user.email);
+      await transaction.prepare(`
+        UPDATE users SET email = ?, password_hash = ?, name = 'Deleted user', bio = NULL,
+          avatar_url = NULL, phone = NULL, location = NULL, timezone = NULL, languages = NULL,
+          website = NULL, linkedin = NULL, age_group = NULL, status = 'deactivated',
+          email_verified_at = NULL, verified_at = NULL, session_version = session_version + 1,
+          deleted_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(replacementEmail, disabledPassword, userId);
     });
 
-    res.json({ message: 'Your account and personal data have been deleted' });
+    res.json({
+      message: 'Your account and personal data have been deleted',
+      cancelledSessions: cancelledSessions.length,
+      refundFollowUpRequired: cancelledSessions.filter((item) => item.paymentStatus === 'refund_failed').length
+    });
   } catch (error) {
     console.error('Delete account error:', error);
     res.status(500).json({ error: 'Unable to delete account' });

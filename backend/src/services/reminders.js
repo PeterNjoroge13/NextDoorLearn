@@ -32,13 +32,14 @@ const scheduleSessionReminders = async (session) => {
       await db.prepare(`
         INSERT INTO session_reminders (session_id, user_id, reminder_type, scheduled_for)
         VALUES (?, ?, ?, ?) ON CONFLICT(session_id, user_id, reminder_type)
-        DO UPDATE SET scheduled_for = excluded.scheduled_for, status = 'pending', sent_at = NULL
+        DO UPDATE SET scheduled_for = excluded.scheduled_for, status = 'pending', sent_at = NULL, locked_at = NULL
       `).run(session.id, userId, type, scheduledFor.toISOString());
     }
   }
 };
 
 const processSessionReminders = async (limit = 50) => {
+  const staleBefore = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const reminders = await db.prepare(`
     SELECT sr.*, s.title, s.starts_at, s.student_id, s.tutor_id, s.meeting_link,
       s.agreed_hourly_rate_cents, payment.status AS payment_status,
@@ -50,16 +51,25 @@ const processSessionReminders = async (limit = 50) => {
     JOIN users student ON student.id = s.student_id
     JOIN users tutor ON tutor.id = s.tutor_id
     LEFT JOIN session_payments payment ON payment.session_id = s.id
-    WHERE sr.status = 'pending' AND sr.scheduled_for <= CURRENT_TIMESTAMP
+    WHERE ((sr.status = 'pending' AND sr.scheduled_for <= CURRENT_TIMESTAMP)
+        OR (sr.status = 'processing' AND sr.locked_at <= ?))
       AND s.status = 'scheduled' AND s.confirmation_status = 'confirmed'
     ORDER BY sr.scheduled_for ASC LIMIT ?
-  `).all(Math.min(Math.max(Number(limit) || 50, 1), 100));
+  `).all(staleBefore, Math.min(Math.max(Number(limit) || 50, 1), 100));
 
   let sent = 0;
   for (const reminder of reminders) {
+    const claimed = await db.prepare(`
+      UPDATE session_reminders SET status = 'processing', locked_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND (
+        (status = 'pending' AND scheduled_for <= CURRENT_TIMESTAMP)
+        OR (status = 'processing' AND locked_at <= ?)
+      )
+    `).run(reminder.id, staleBefore);
+    if (!claimed.changes) continue;
     const preferences = await getNotificationPreferences(reminder.user_id);
     if (!preferences.remindersEnabled || !notificationAllowed(preferences, 'session_reminder', 'email')) {
-      await db.prepare("UPDATE session_reminders SET status = 'skipped' WHERE id = ?").run(reminder.id);
+      await db.prepare("UPDATE session_reminders SET status = 'skipped', locked_at = NULL WHERE id = ?").run(reminder.id);
       continue;
     }
     const otherName = Number(reminder.user_id) === Number(reminder.student_id) ? reminder.tutor_name : reminder.student_name;
@@ -87,8 +97,10 @@ const processSessionReminders = async (limit = 50) => {
       idempotencyKey: `session_${reminder.session_id}_${reminder.user_id}_${reminder.reminder_type}`
     });
     if (email?.status === 'sent') {
-      await db.prepare("UPDATE session_reminders SET status = 'sent', sent_at = CURRENT_TIMESTAMP WHERE id = ?").run(reminder.id);
+      await db.prepare("UPDATE session_reminders SET status = 'sent', sent_at = CURRENT_TIMESTAMP, locked_at = NULL WHERE id = ?").run(reminder.id);
       sent += 1;
+    } else {
+      await db.prepare("UPDATE session_reminders SET status = 'pending', locked_at = NULL WHERE id = ?").run(reminder.id);
     }
   }
   return { processed: reminders.length, sent };

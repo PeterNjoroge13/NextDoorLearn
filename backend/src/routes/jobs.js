@@ -1,6 +1,7 @@
 const express = require('express');
 const { processEmailOutbox } = require('../services/email');
 const { processSessionReminders } = require('../services/reminders');
+const { reconcileCancelledSessionPayments } = require('../services/paymentLedger');
 
 const router = express.Router();
 
@@ -15,7 +16,14 @@ router.post('/process', async (req, res) => {
   try {
     const reminders = await processSessionReminders();
     const emails = await processEmailOutbox();
-    res.json({ reminders, emailsProcessed: emails.length, emailsSent: emails.filter((item) => item.status === 'sent').length });
+    const payments = await reconcileCancelledSessionPayments();
+    res.json({
+      reminders,
+      emailsProcessed: emails.length,
+      emailsSent: emails.filter((item) => item.status === 'sent').length,
+      paymentsProcessed: payments.length,
+      paymentFailures: payments.filter((item) => item.status === 'resolution_failed').length
+    });
   } catch (error) {
     console.error('Background job processing error:', error);
     res.status(500).json({ error: 'Background processing failed' });

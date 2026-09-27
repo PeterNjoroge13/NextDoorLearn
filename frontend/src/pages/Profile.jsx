@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { BellRing, CalendarClock, Camera, ClipboardCheck, ExternalLink, Globe2, Lock, Save, Settings, Trash2, UserRound, UserX } from 'lucide-react';
+import { BellRing, CalendarClock, Camera, ClipboardCheck, Download, ExternalLink, Globe2, Lock, Save, Settings, Trash2, UserRound, UserX } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import AppShell, { Avatar, ErrorState, LoadingState } from '../components/AppShell';
@@ -292,6 +292,28 @@ const Profile = () => {
     } catch {
       setConfirmDeleteAccount(false);
       setMessage('Your account could not be deleted. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleExportAccount = async () => {
+    setSaving(true);
+    setMessage('');
+    try {
+      const data = await api.exportAccountData(localStorage.getItem('token'));
+      if (data.error) throw new Error(data.error);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `nextdoorlearn-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setMessage('Your account data export was downloaded.');
+    } catch (exportError) {
+      setMessage(exportError instanceof Error ? exportError.message : 'Your account data could not be exported.');
     } finally {
       setSaving(false);
     }
@@ -634,7 +656,9 @@ const Profile = () => {
               {blockedUsers.length ? <div className="list">{blockedUsers.map((blocked) => (
                 <div className="list-item" key={blocked.id}><div><strong>{blocked.name}</strong><p className="muted">{blocked.role}</p></div><button className="btn btn-ghost btn-sm" type="button" onClick={() => handleUnblock(blocked.blocked_user_id)}>Unblock</button></div>
               ))}</div> : <p className="muted">You have not blocked anyone.</p>}
-              <div className="section-head compact" style={{ marginTop: 28 }}><div><h2>Delete account</h2><p>Permanently remove your profile, messages, sessions, and account data.</p></div><Trash2 size={22} /></div>
+              <div className="section-head compact" style={{ marginTop: 28 }}><div><h2>Export your data</h2><p>Download a JSON copy of your profile, conversations, sessions, payments, and account history.</p></div><Download size={22} /></div>
+              <button className="btn btn-ghost" type="button" disabled={saving} onClick={handleExportAccount}><Download size={17} />Download account data</button>
+              <div className="section-head compact" style={{ marginTop: 28 }}><div><h2>Delete account</h2><p>Remove your profile and personal content. Payment and safety records are anonymized and retained only where NextDoorLearn must keep an operational record.</p></div><Trash2 size={22} /></div>
               <div className="field">
                 <label htmlFor="delete-account-password">Current password</label>
                 <input id="delete-account-password" type="password" autoComplete="current-password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} />
@@ -686,7 +710,7 @@ const Profile = () => {
       <ConfirmDialog
         open={confirmDeleteAccount}
         title="Permanently delete your account?"
-        message="Your profile, messages, connections, sessions, and account data will be removed. This cannot be undone."
+        message="Your profile and personal content will be removed, future sessions will be cancelled, and you will be signed out everywhere. Anonymized payment and safety records may be retained. This cannot be undone."
         confirmLabel="Delete my account"
         busy={saving}
         onClose={() => setConfirmDeleteAccount(false)}

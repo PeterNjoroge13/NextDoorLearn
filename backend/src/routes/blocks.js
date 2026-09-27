@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const { isPositiveInteger, sanitizeText } = require('../utils/validation');
+const { cancelScheduledSessions } = require('../services/sessionLifecycle');
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -35,14 +36,20 @@ router.post('/:userId', async (req, res) => {
       `).run(req.user.userId, blockedUserId, sanitizeText(req.body.reason, 500));
       await transaction.prepare(`
         UPDATE connections SET status = 'rejected'
-        WHERE status = 'pending' AND ((student_id = ? AND tutor_id = ?) OR (student_id = ? AND tutor_id = ?))
+        WHERE status IN ('pending', 'accepted') AND ((student_id = ? AND tutor_id = ?) OR (student_id = ? AND tutor_id = ?))
       `).run(req.user.userId, blockedUserId, blockedUserId, req.user.userId);
       await transaction.prepare(`
         DELETE FROM favorites
         WHERE (student_id = ? AND tutor_id = ?) OR (student_id = ? AND tutor_id = ?)
       `).run(req.user.userId, blockedUserId, blockedUserId, req.user.userId);
     });
-    res.status(201).json({ message: 'User blocked' });
+    const cancelledSessions = await cancelScheduledSessions({
+      userId: req.user.userId,
+      counterpartUserId: blockedUserId,
+      actorUserId: req.user.userId,
+      reason: 'Connection ended for safety'
+    });
+    res.status(201).json({ message: 'User blocked', cancelledSessions: cancelledSessions.length });
   } catch (error) {
     console.error('Block user error:', error);
     res.status(500).json({ error: 'Unable to block user' });

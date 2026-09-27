@@ -239,6 +239,13 @@ const api = {
     return response.json();
   },
 
+  exportAccountData: async (token) => {
+    const response = await apiFetch(`${API_BASE_URL}/users/export`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
   getProfileCompletion: async (token) => {
     const response = await apiFetch(`${API_BASE_URL}/users/profile-completion`, {
       headers: {
@@ -1020,6 +1027,13 @@ const api = {
 
   processAdminEmailOutbox: async (token) => {
     const response = await apiFetch(`${API_BASE_URL}/admin/email-outbox/process`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+    return response.json();
+  },
+
+  retryAdminEmail: async (emailId, token) => {
+    const response = await apiFetch(`${API_BASE_URL}/admin/email-outbox/${emailId}/retry`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` },
+    });
     return response.json();
   },
 

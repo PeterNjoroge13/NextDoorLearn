@@ -832,6 +832,14 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(tutorDetail.status, 200);
   assert.equal(tutorDetail.body.reviews[0].student_name, 'NextDoorLearn student');
   assert.equal(tutorDetail.body.reviews[0].student_avatar, null);
+  const accountExport = await request('/users/export', { token: adminResponse.body.token });
+  assert.equal(accountExport.status, 200);
+  assert.equal(accountExport.body.account.email, 'admin@example.com');
+  assert.equal(accountExport.body.account.password_hash, undefined);
+  assert.ok(accountExport.body.sessions.some((item) => item.id === completedSession.body.id));
+  assert.ok(accountExport.body.messages.length >= 100);
+  assert.ok(accountExport.body.sessions.every((item) => item.meeting_link === undefined));
+  assert.ok(accountExport.body.payments.every((item) => item.provider_payment_intent_id === undefined));
   const sessionStats = await request('/sessions/stats', { token: activated.body.token });
   assert.equal(sessionStats.status, 200);
   assert.equal(sessionStats.body.completed_sessions, 1);
@@ -854,6 +862,17 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.ok(!outbox.body.emails.some((email) => email.template === 'session_requested' && email.recipient === 'approved@example.com'));
   assert.ok(outbox.body.emails.some((email) => email.template === 'session_confirmed'));
   assert.ok(outbox.body.emails.some((email) => email.template === 'session_cancelled'));
+  const recoveryDatabase = new Database(databasePath);
+  const deadLetter = recoveryDatabase.prepare(`
+    INSERT INTO email_outbox
+      (recipient, template, subject, text_body, html_body, idempotency_key, status, attempts, last_error)
+    VALUES ('recover@example.com', 'recovery_test', 'Recover', 'Recover', 'Recover', 'recovery-test', 'dead_letter', 8, 'provider timeout')
+  `).run();
+  recoveryDatabase.close();
+  const retriedEmail = await request(`/admin/email-outbox/${deadLetter.lastInsertRowid}/retry`, {
+    method: 'POST', token: adminResponse.body.token
+  });
+  assert.equal(retriedEmail.status, 200);
   const readAllNotifications = await request('/notifications/read-all', {
     method: 'PATCH', token: adminResponse.body.token
   });
@@ -870,6 +889,22 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     method: 'POST', body: { email: 'delete-me@example.com', password: 'password123', role: 'student', name: 'Delete Me', ...registrationConsent }
   });
   assert.equal(disposable.status, 201);
+  const deletionDatabase = new Database(databasePath);
+  const disposableConnection = deletionDatabase.prepare(`
+    INSERT INTO connections (student_id, tutor_id, status) VALUES (?, ?, 'accepted')
+  `).run(disposable.body.user.id, activated.body.user.id);
+  const disposableSession = deletionDatabase.prepare(`
+    INSERT INTO sessions
+      (connection_id, tutor_id, student_id, title, scheduled_date, start_time, end_time,
+       session_timezone, duration_minutes, status, confirmation_status, agreed_hourly_rate_cents)
+    VALUES (?, ?, ?, 'Deletion ledger test', '2099-01-01', '10:00', '11:00', 'UTC', 60, 'scheduled', 'confirmed', 1000)
+  `).run(disposableConnection.lastInsertRowid, activated.body.user.id, disposable.body.user.id);
+  const disposablePayment = deletionDatabase.prepare(`
+    INSERT INTO session_payments
+      (session_id, student_id, tutor_id, amount_cents, platform_fee_cents, currency, status)
+    VALUES (?, ?, ?, 1000, 0, 'usd', 'pending')
+  `).run(disposableSession.lastInsertRowid, disposable.body.user.id, activated.body.user.id);
+  deletionDatabase.close();
   const wrongPasswordDeletion = await request('/users/account', {
     method: 'DELETE', token: disposable.body.token,
     body: { currentPassword: 'wrong-password', confirmation: 'DELETE' }
@@ -880,8 +915,84 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     body: { currentPassword: 'password123', confirmation: 'DELETE' }
   });
   assert.equal(deleted.status, 200);
+  assert.equal(deleted.body.cancelledSessions, 1);
   const deletedLogin = await request('/auth/login', {
     method: 'POST', body: { email: 'delete-me@example.com', password: 'password123' }
   });
   assert.equal(deletedLogin.status, 401);
+  const deletionAuditDatabase = new Database(databasePath);
+  const anonymizedUser = deletionAuditDatabase.prepare('SELECT * FROM users WHERE id = ?').get(disposable.body.user.id);
+  const retainedSession = deletionAuditDatabase.prepare('SELECT status FROM sessions WHERE id = ?').get(disposableSession.lastInsertRowid);
+  const retainedPayment = deletionAuditDatabase.prepare('SELECT status FROM session_payments WHERE id = ?').get(disposablePayment.lastInsertRowid);
+  const retainedConnection = deletionAuditDatabase.prepare('SELECT status FROM connections WHERE id = ?').get(disposableConnection.lastInsertRowid);
+  const recoveredEmail = deletionAuditDatabase.prepare('SELECT status, attempts FROM email_outbox WHERE id = ?').get(deadLetter.lastInsertRowid);
+  deletionAuditDatabase.close();
+  assert.equal(anonymizedUser.status, 'deactivated');
+  assert.equal(anonymizedUser.name, 'Deleted user');
+  assert.match(anonymizedUser.email, /^deleted-/);
+  assert.ok(anonymizedUser.deleted_at);
+  assert.equal(retainedSession.status, 'cancelled');
+  assert.equal(retainedPayment.status, 'cancelled');
+  assert.equal(retainedConnection.status, 'rejected');
+  assert.deepEqual(recoveredEmail, { status: 'pending', attempts: 0 });
+  const strandedPaymentDatabase = new Database(databasePath);
+  strandedPaymentDatabase.prepare("UPDATE session_payments SET status = 'pending' WHERE id = ?")
+    .run(disposablePayment.lastInsertRowid);
+  strandedPaymentDatabase.close();
+  const recoveredJobs = await request('/jobs/process', { method: 'POST' });
+  assert.equal(recoveredJobs.status, 200);
+  assert.ok(recoveredJobs.body.paymentsProcessed >= 1);
+  const reconciledPaymentDatabase = new Database(databasePath);
+  assert.equal(
+    reconciledPaymentDatabase.prepare('SELECT status FROM session_payments WHERE id = ?').get(disposablePayment.lastInsertRowid).status,
+    'cancelled'
+  );
+  reconciledPaymentDatabase.close();
+  const reusedDeletedEmail = await request('/auth/register', {
+    method: 'POST', body: { email: 'delete-me@example.com', password: 'password123', role: 'student', name: 'Replacement Account', ...registrationConsent }
+  });
+  assert.equal(reusedDeletedEmail.status, 201);
+  const lifecycleDatabase = new Database(databasePath);
+  const lifecycleConnection = lifecycleDatabase.prepare(`
+    INSERT INTO connections (student_id, tutor_id, status) VALUES (?, ?, 'accepted')
+  `).run(reusedDeletedEmail.body.user.id, activated.body.user.id);
+  const lifecycleSession = lifecycleDatabase.prepare(`
+    INSERT INTO sessions
+      (connection_id, tutor_id, student_id, title, scheduled_date, start_time, end_time,
+       session_timezone, duration_minutes, status, confirmation_status, agreed_hourly_rate_cents)
+    VALUES (?, ?, ?, 'Block cancellation test', '2099-02-01', '10:00', '11:00', 'UTC', 60, 'scheduled', 'confirmed', 0)
+  `).run(lifecycleConnection.lastInsertRowid, activated.body.user.id, reusedDeletedEmail.body.user.id);
+  lifecycleDatabase.close();
+  const lifecycleBlock = await request(`/blocks/${activated.body.user.id}`, {
+    method: 'POST', token: reusedDeletedEmail.body.token, body: { reason: 'Ending this connection safely' }
+  });
+  assert.equal(lifecycleBlock.status, 201);
+  assert.equal(lifecycleBlock.body.cancelledSessions, 1);
+  const lifecycleAuditDatabase = new Database(databasePath);
+  assert.equal(
+    lifecycleAuditDatabase.prepare('SELECT status FROM sessions WHERE id = ?').get(lifecycleSession.lastInsertRowid).status,
+    'cancelled'
+  );
+  assert.equal(
+    lifecycleAuditDatabase.prepare(`
+      SELECT COUNT(*) AS count FROM notifications
+      WHERE user_id = ? AND type = 'session' AND related_id = ? AND title = 'Session cancelled'
+    `).get(activated.body.user.id, lifecycleSession.lastInsertRowid).count,
+    1
+  );
+  lifecycleAuditDatabase.close();
+
+  const suspendedUser = await request('/auth/register', {
+    method: 'POST', body: { email: 'suspend-me@example.com', password: 'password123', role: 'student', name: 'Suspend Me', ...registrationConsent }
+  });
+  const suspended = await request(`/admin/users/${suspendedUser.body.user.id}`, {
+    method: 'PATCH', token: adminResponse.body.token, body: { status: 'suspended' }
+  });
+  assert.equal(suspended.status, 200);
+  const suspendedAccess = await request('/users/profile', { token: suspendedUser.body.token });
+  assert.equal(suspendedAccess.status, 403);
+  const suspendedRefresh = await request('/auth/refresh', {
+    method: 'POST', body: { refreshToken: suspendedUser.body.refreshToken }
+  });
+  assert.equal(suspendedRefresh.status, 401);
 });

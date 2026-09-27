@@ -1,6 +1,6 @@
 # NextDoorLearn Production Feature Backlog
 
-Last updated: September 22, 2026
+Last updated: September 27, 2026
 
 This file tracks production work that can be completed without external account credentials. Items that require Peter to configure a third-party service are listed separately so engineering work can continue without blocking.
 
@@ -84,6 +84,17 @@ This file tracks production work that can be completed without external account 
 - [ ] Keep frontend, backend, mobile, mutation smoke, and production smoke checks green.
 - [ ] Commit and push focused checkpoints to `main` after verification.
 - [ ] Keep deployment and operational documentation aligned with real behavior.
+
+## Priority 1: Failure Recovery And Data Lifecycle
+
+- [x] Preserve payment, session, consent, moderation, and audit ledgers when an account is deleted while anonymizing personal content.
+- [x] Cancel future sessions and settle payment state when a user deletes an account, blocks a participant, or is suspended or banned.
+- [x] Revoke refresh tokens, access-token versions, and push delivery when moderation restricts an account.
+- [x] Add self-service account-data export on web and native mobile.
+- [x] Lease email and reminder work so overlapping background jobs do not deliver the same work concurrently.
+- [x] Move exhausted email deliveries into a visible dead-letter state and let administrators retry them safely.
+- [ ] Configure a production job heartbeat alert so missed reminder runs page an operator.
+- [ ] Complete a documented Neon backup restore drill and record recovery time and recovery point objectives.
 
 ## Requires Peter Or External Credentials
 

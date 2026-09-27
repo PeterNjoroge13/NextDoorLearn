@@ -18,6 +18,7 @@ const Admin = () => {
   const [overview, setOverview] = useState(null);
   const [auditLog, setAuditLog] = useState([]);
   const [emailDelivery, setEmailDelivery] = useState({ providerConfigured: false, emails: [] });
+  const [emailBusy, setEmailBusy] = useState(null);
   const [paymentOperations, setPaymentOperations] = useState({ configured: false, summary: {}, payments: [], pagination: {} });
   const [refundDrafts, setRefundDrafts] = useState({});
   const [refundBusy, setRefundBusy] = useState(null);
@@ -153,6 +154,20 @@ const Admin = () => {
     if (response.error) return showToast(response.error);
     showToast(`Processed ${response.processed} queued email${response.processed === 1 ? '' : 's'}.`);
     fetchAdminData();
+  };
+
+  const handleRetryEmail = async (emailId) => {
+    setEmailBusy(emailId);
+    try {
+      const response = await api.retryAdminEmail(emailId, localStorage.getItem('token'));
+      if (response.error) return showToast(response.error);
+      showToast('Email queued for another attempt.');
+      fetchAdminData();
+    } catch (retryError) {
+      showToast(retryError instanceof Error ? retryError.message : 'Unable to retry this email.');
+    } finally {
+      setEmailBusy(null);
+    }
   };
 
   const handleUpdateInquiry = async (inquiryId, status) => {
@@ -515,7 +530,8 @@ const Admin = () => {
               </div>
               {emailDelivery.emails.length ? <div className="admin-list">{emailDelivery.emails.map((email) => (
                 <article className="card card-pad admin-row" key={email.id}>
-                  <div><div className="button-row"><span className={`badge ${email.status === 'sent' ? 'badge-success' : email.last_error ? 'badge-error' : 'badge-warning'}`}>{email.status}</span><span className="badge">{email.template.replaceAll('_', ' ')}</span></div><h2>{email.subject}</h2><p className="muted">{email.recipient} · {email.attempts} attempt{email.attempts === 1 ? '' : 's'}</p>{email.last_error ? <p className="page-copy">{email.last_error}</p> : null}</div>
+                  <div><div className="button-row"><span className={`badge ${email.status === 'sent' ? 'badge-success' : email.last_error ? 'badge-error' : 'badge-warning'}`}>{email.status.replaceAll('_', ' ')}</span><span className="badge">{email.template.replaceAll('_', ' ')}</span></div><h2>{email.subject}</h2><p className="muted">{email.recipient} · {email.attempts} attempt{email.attempts === 1 ? '' : 's'}</p>{email.last_error ? <p className="page-copy">{email.last_error}</p> : null}</div>
+                  {email.status === 'dead_letter' ? <button className="btn btn-ghost btn-sm" type="button" disabled={emailBusy === email.id} onClick={() => handleRetryEmail(email.id)}><RotateCcw size={15} />{emailBusy === email.id ? 'Queueing...' : 'Retry'}</button> : null}
                 </article>
               ))}</div> : <EmptyState icon={Mail} title="No transactional email yet">Verification, activation, and reminder deliveries will appear here.</EmptyState>}
             </div>

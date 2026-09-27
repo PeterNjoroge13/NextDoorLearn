@@ -5,15 +5,21 @@ const settleCancelledSessionPayment = async (sessionId) => {
   const payment = await db.prepare('SELECT * FROM session_payments WHERE session_id = ?').get(sessionId);
   if (!payment) return { status: 'not_required' };
   if (payment.status === 'refunded') return { status: 'refunded' };
-  if (!payment.provider_payment_intent_id || !paymentsConfigured()) {
+  if (!payment.provider_payment_intent_id) {
     await db.prepare(`
       UPDATE session_payments SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?
     `).run(payment.id);
     return { status: 'cancelled' };
   }
+  if (!paymentsConfigured()) {
+    const error = new Error('Payments are not configured; provider cancellation is still required');
+    error.code = 'provider_unconfigured';
+    error.statusCode = 503;
+    throw error;
+  }
 
   try {
-    if (payment.status === 'succeeded' || payment.status === 'refund_failed') {
+    if (['succeeded', 'refund_pending', 'refund_failed'].includes(payment.status)) {
       await db.prepare(`
         UPDATE session_payments SET status = 'refund_pending', failure_code = NULL, failure_message = NULL,
           updated_at = CURRENT_TIMESTAMP WHERE id = ?
@@ -46,4 +52,25 @@ const settleCancelledSessionPayment = async (sessionId) => {
   }
 };
 
-module.exports = { settleCancelledSessionPayment };
+const reconcileCancelledSessionPayments = async (limit = 25) => {
+  const candidates = await db.prepare(`
+    SELECT payment.session_id
+    FROM session_payments payment
+    JOIN sessions session ON session.id = payment.session_id
+    WHERE session.status = 'cancelled'
+      AND payment.status NOT IN ('cancelled', 'refunded')
+    ORDER BY payment.updated_at ASC, payment.id ASC
+    LIMIT ?
+  `).all(Math.min(Math.max(Number(limit) || 25, 1), 100));
+  const results = [];
+  for (const candidate of candidates) {
+    try {
+      results.push({ sessionId: candidate.session_id, ...(await settleCancelledSessionPayment(candidate.session_id)) });
+    } catch (error) {
+      results.push({ sessionId: candidate.session_id, status: 'resolution_failed', error: error.code || 'provider_error' });
+    }
+  }
+  return results;
+};
+
+module.exports = { reconcileCancelledSessionPayments, settleCancelledSessionPayment };

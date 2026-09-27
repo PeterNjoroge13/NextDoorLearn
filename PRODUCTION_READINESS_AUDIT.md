@@ -1,0 +1,51 @@
+# NextDoorLearn Production Readiness Audit
+
+Last updated: September 27, 2026
+
+This audit separates launch blockers from code that is already implemented. A green build is not treated as proof that external providers or operational processes are ready.
+
+## P0: Launch Blockers
+
+- **Transactional email and verification:** production currently reports email as unconfigured and email verification as optional. Configure Resend, verify the sending domain and webhook, test delivery/retry/bounce handling, then require verification.
+- **Payments:** complete Stripe Connect platform verification, configure live keys and webhook signing, and pass the documented payment, refund, dispute, payout, and mobile PaymentSheet release gate before accepting money.
+- **Backups and recovery:** enable Neon recovery appropriate to the selected plan and perform a restore drill. A backup that has never been restored is not a verified recovery plan.
+- **Legal and youth safety:** obtain review of Terms, Privacy, cancellation/refund policy, tutor classification, minor/guardian consent, mandated-reporting process, data retention, and account deletion language.
+- **Operational ownership:** assign a human owner and response target for safety reports, tutor approvals, refund failures, Stripe disputes, provider outages, and account appeals.
+
+## P1: Complete Before Public Launch
+
+- Configure Zoom and Google OAuth, then test 429, timeout, revoked-token, partial-failure, reschedule, and cancellation behavior with real sandbox accounts.
+- Configure the GitHub reminder-job secrets and add an external alert when the job has not succeeded within its expected window.
+- Add hosted error tracking and uptime alerts with request IDs, release identifiers, and a documented incident-response path.
+- Complete physical-device testing on supported iPhones and Android devices, including push permissions, deep links, password reset links, checkout return paths, accessibility text sizes, and poor networks.
+- Complete App Store Connect and Play Console records, privacy answers, screenshots, age rating, support URL, review credentials, and account-deletion reviewer notes.
+- Run a real beta with student and tutor cohorts and rehearse tutor rejection, suspension, appeal, no-show, refund failure, dispute, and safety escalation workflows.
+- Decide retention periods for messages, support records, failed emails, audit logs, application records, and anonymized financial records; automate expiration where policy permits.
+
+## P2: Production Improvements
+
+- Add cursor pagination to conversations, session history, tutors, applications, reports, and audit logs before datasets become large.
+- Add a staging environment with separate database branches, Stripe test mode, email domain, OAuth apps, and mobile build profile.
+- Add privacy-aware analytics for onboarding completion, match quality, booking conversion, attendance, and retention.
+- Add integration kill switches and maintenance messaging for payments, calendar, Zoom, email, and new bookings.
+- Add tutor vacation mode, archived conversations, receipts, downloadable invoices, dispute intake, and appeal tracking.
+- Move media to object storage with malware scanning, image re-encoding, lifecycle rules, and deletion propagation as volume grows.
+- Add database query telemetry and load tests for tutor discovery, conversations, notifications, and administration queues.
+
+## Implemented In The September 27 Pass
+
+- Account deletion now anonymizes personal data instead of cascading away payment and safety history.
+- Future sessions are cancelled and payment settlement is attempted for deletion, safety blocks, suspension, and bans.
+- Moderation revokes refresh tokens, invalidates access tokens, and disables push devices.
+- Users can export their account data from desktop web and native mobile.
+- Email and reminder workers use recoverable leases to prevent concurrent duplicate work.
+- Email delivery has bounded retries, a dead-letter state, administrator visibility, and a guarded retry action.
+- The scheduled worker reconciles non-final payments on cancelled sessions with provider-idempotent retries.
+- Database migration `017_operational_recovery` adds only nullable lifecycle/lease fields and recovery indexes for a low-risk rollout.
+
+## Release And Rollback Notes
+
+- Deploy the backend before relying on the new web/mobile controls so migration `017_operational_recovery` is present.
+- The migration is additive. Rolling application code back does not require dropping columns or indexes.
+- Do not roll back by deleting anonymized user ledger rows; payment and moderation records may be required for reconciliation and safety investigations.
+- Monitor `email_outbox.dead_letter`, `session_payments.refund_failed`, open safety reports, and the scheduled-job heartbeat after every release.

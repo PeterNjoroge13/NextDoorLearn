@@ -475,6 +475,21 @@ const migrations = [
           ON sessions(series_id, series_index);
       `);
     }
+  },
+  {
+    version: '017_operational_recovery',
+    async up(db) {
+      const timestamp = db.dialect === 'postgres' ? 'TIMESTAMPTZ' : 'DATETIME';
+      await addColumn(db, 'users', 'deleted_at', timestamp);
+      await addColumn(db, 'email_outbox', 'locked_at', timestamp);
+      await addColumn(db, 'session_reminders', 'locked_at', timestamp);
+      await db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_email_outbox_recovery
+          ON email_outbox(status, locked_at, next_attempt_at);
+        CREATE INDEX IF NOT EXISTS idx_session_reminders_recovery
+          ON session_reminders(status, locked_at, scheduled_for);
+      `);
+    }
   }
 ];
 

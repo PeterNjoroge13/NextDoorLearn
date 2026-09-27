@@ -1,8 +1,10 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
+import { File, Paths } from 'expo-file-system';
 import * as Notifications from 'expo-notifications';
+import * as Sharing from 'expo-sharing';
 import { router } from 'expo-router';
-import { ArrowLeft, BellRing, KeyRound, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, BellRing, Download, KeyRound, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Button, Card, ErrorNotice, Field, Header, LoadingState, Screen } from '@/components/ui';
@@ -116,12 +118,34 @@ export default function SettingsScreen() {
   const confirmDeleteAccount = () => {
     Alert.alert(
       'Permanently delete your account?',
-      'Your profile, messages, connections, sessions, and account data will be removed. This cannot be undone.',
+      'Your profile and personal content will be removed, future sessions will be cancelled, and you will be signed out everywhere. Anonymized payment and safety records may be retained. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete account', style: 'destructive', onPress: deleteAccount },
       ],
     );
+  };
+
+  const exportAccountData = async () => {
+    setWorking('export');
+    setError('');
+    try {
+      const data = await request<Record<string, unknown>>('/users/export');
+      if (!(await Sharing.isAvailableAsync())) throw new Error('File sharing is not available on this device.');
+      const file = new File(Paths.cache, `nextdoorlearn-data-${new Date().toISOString().slice(0, 10)}.json`);
+      file.create({ overwrite: true });
+      file.write(JSON.stringify(data, null, 2));
+      await Sharing.shareAsync(file.uri, {
+        dialogTitle: 'Share NextDoorLearn account data',
+        mimeType: 'application/json',
+        UTI: 'public.json',
+      });
+      setNotice('Your account data is ready in the share sheet.');
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : 'Unable to export account data');
+    } finally {
+      setWorking('');
+    }
   };
 
   if (preferences.loading) return <LoadingState />;
@@ -164,9 +188,15 @@ export default function SettingsScreen() {
       <Button label="Update password" variant="secondary" onPress={changePassword} loading={working === 'password'} disabled={!passwords.current || passwords.next.length < 8} />
     </Card>
 
+    <Card>
+      <View style={s.sectionHead}><Download size={21} color={colors.brand} /><Text style={s.section}>Export your data</Text></View>
+      <Text style={s.copy}>Create a portable JSON copy of your profile, conversations, sessions, payments, and account history.</Text>
+      <Button label="Share account data" variant="secondary" onPress={exportAccountData} loading={working === 'export'} />
+    </Card>
+
     <Card tone="coral">
       <View style={s.sectionHead}><Trash2 size={21} color={colors.red} /><Text style={[s.section, s.danger]}>Delete account</Text></View>
-      <Text style={s.copy}>This permanently removes your profile, conversations, connections, sessions, and account data. It cannot be undone.</Text>
+      <Text style={s.copy}>This removes your profile and personal content, cancels future sessions, and signs you out everywhere. Anonymized payment and safety records may be retained.</Text>
       <Field label="Current password to confirm" value={deletePassword} onChangeText={setDeletePassword} secureTextEntry />
       <Button label="Permanently delete my account" variant="danger" onPress={confirmDeleteAccount} loading={working === 'delete'} disabled={!deletePassword} />
     </Card>
