@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
-const { JWT_SECRET } = require('../middleware/auth');
+const { ACCESS_TOKEN_TTL, JWT_SECRET } = require('../middleware/auth');
 const { isValidEmail, passwordValidationError, sanitizeText } = require('../utils/validation');
 const { sendEmail } = require('../services/email');
 const emailTemplates = require('../services/emailTemplates');
@@ -23,7 +23,7 @@ const accessTokenFor = (user) => jwt.sign(
     sessionVersion: Number(user.session_version || 0)
   },
   JWT_SECRET,
-  { expiresIn: '24h' }
+  { expiresIn: ACCESS_TOKEN_TTL }
 );
 
 const createRefreshToken = async (userId, deviceName = null) => {
@@ -255,17 +255,22 @@ router.post('/reset-password', async (req, res) => {
     const passwordError = passwordValidationError(password);
     if (!token || passwordError) return res.status(400).json({ error: passwordError || 'Valid reset token is required' });
 
-    const reset = await db.prepare(`
-      SELECT * FROM password_reset_tokens
-      WHERE token IN (?, ?) AND used_at IS NULL AND expires_at > datetime('now')
-    `).get(token, hashSecurityToken(token));
-
-    if (!reset) {
-      return res.status(400).json({ error: 'Reset token is invalid or expired' });
-    }
-
     const passwordHash = await bcrypt.hash(password, 10);
     await db.withTransaction(async (transaction) => {
+      const reset = await transaction.prepare(`
+        SELECT * FROM password_reset_tokens
+        WHERE token IN (?, ?) AND used_at IS NULL AND expires_at > datetime('now')
+      `).get(token, hashSecurityToken(token));
+      if (!reset) {
+        throw Object.assign(new Error('Reset token is invalid or expired'), { statusCode: 400 });
+      }
+      const consumed = await transaction.prepare(`
+        UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND used_at IS NULL
+      `).run(reset.id);
+      if (!consumed.changes) {
+        throw Object.assign(new Error('Reset token is invalid or expired'), { statusCode: 400 });
+      }
       await transaction.prepare('UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?').run(passwordHash, reset.user_id);
       await transaction.prepare('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL').run(reset.user_id);
       await transaction.prepare('UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL').run(reset.user_id);
@@ -274,7 +279,7 @@ router.post('/reset-password', async (req, res) => {
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
     console.error('Reset password error:', error);
-    res.status(500).json({ error: 'Unable to reset password' });
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to reset password' });
   }
 });
 
@@ -285,22 +290,29 @@ router.post('/verify-email', async (req, res) => {
       return res.status(400).json({ error: 'Verification token is required' });
     }
 
-    const verification = await db.prepare(`
-      SELECT * FROM email_verification_tokens
-      WHERE token IN (?, ?) AND used_at IS NULL AND expires_at > datetime('now')
-    `).get(token, hashSecurityToken(token));
-
-    if (!verification) {
-      return res.status(400).json({ error: 'Verification token is invalid or expired' });
-    }
-
-    await db.prepare('UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = ?').run(verification.user_id);
-    await db.prepare('UPDATE email_verification_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL').run(verification.user_id);
+    await db.withTransaction(async (transaction) => {
+      const verification = await transaction.prepare(`
+        SELECT * FROM email_verification_tokens
+        WHERE token IN (?, ?) AND used_at IS NULL AND expires_at > datetime('now')
+      `).get(token, hashSecurityToken(token));
+      if (!verification) {
+        throw Object.assign(new Error('Verification token is invalid or expired'), { statusCode: 400 });
+      }
+      const consumed = await transaction.prepare(`
+        UPDATE email_verification_tokens SET used_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND used_at IS NULL
+      `).run(verification.id);
+      if (!consumed.changes) {
+        throw Object.assign(new Error('Verification token is invalid or expired'), { statusCode: 400 });
+      }
+      await transaction.prepare('UPDATE users SET email_verified_at = CURRENT_TIMESTAMP WHERE id = ?').run(verification.user_id);
+      await transaction.prepare('UPDATE email_verification_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL').run(verification.user_id);
+    });
 
     res.json({ message: 'Email verified successfully' });
   } catch (error) {
     console.error('Verify email error:', error);
-    res.status(500).json({ error: 'Unable to verify email' });
+    res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to verify email' });
   }
 });
 

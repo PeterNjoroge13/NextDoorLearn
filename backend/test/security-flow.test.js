@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const http = require('node:http');
 const path = require('node:path');
+const Database = require('better-sqlite3');
+const Stripe = require('stripe');
 
 const port = 3219;
 const base = `http://127.0.0.1:${port}/api`;
@@ -57,7 +59,9 @@ const server = spawn(process.execPath, ['src/server.js'], {
     ZOOM_HOST_USER_ID: 'host@example.com',
     MESSAGE_RATE_LIMIT_MAX: '500',
     ZOOM_TOKEN_URL: `http://127.0.0.1:${zoomPort}/oauth/token`,
-    ZOOM_API_BASE_URL: `http://127.0.0.1:${zoomPort}/v2`
+    ZOOM_API_BASE_URL: `http://127.0.0.1:${zoomPort}/v2`,
+    STRIPE_SECRET_KEY: 'sk_test_integration_only',
+    STRIPE_WEBHOOK_SECRET: 'whsec_integration_only'
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -95,6 +99,20 @@ const request = async (route, { method = 'GET', token, body } = {}) => {
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     },
     body: form ? body : body ? JSON.stringify(body) : undefined
+  });
+  return { status: response.status, body: await response.json() };
+};
+
+const stripeWebhook = async (event, signature = null) => {
+  const payload = JSON.stringify(event);
+  const header = signature || Stripe.webhooks.generateTestHeaderString({
+    payload,
+    secret: 'whsec_integration_only'
+  });
+  const response = await fetch(`${base}/webhooks/stripe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'stripe-signature': header },
+    body: payload
   });
   return { status: response.status, body: await response.json() };
 };
@@ -155,6 +173,20 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     adminProfile.body.policyAcceptances.map((item) => item.policy_type).sort(),
     ['community_safety', 'privacy', 'terms']
   );
+  const verificationDatabase = new Database(databasePath);
+  verificationDatabase.prepare(`
+    INSERT INTO email_verification_tokens (user_id, token, expires_at)
+    VALUES (?, 'verification-replay-test', datetime('now', '+1 hour'))
+  `).run(adminResponse.body.user.id);
+  verificationDatabase.close();
+  const verifiedEmail = await request('/auth/verify-email', {
+    method: 'POST', body: { token: 'verification-replay-test' }
+  });
+  assert.equal(verifiedEmail.status, 200);
+  const replayedVerification = await request('/auth/verify-email', {
+    method: 'POST', body: { token: 'verification-replay-test' }
+  });
+  assert.equal(replayedVerification.status, 400);
 
   const refreshed = await request('/auth/refresh', {
     method: 'POST', body: { refreshToken: adminResponse.body.refreshToken, deviceName: 'Integration test phone' }
@@ -220,6 +252,10 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     method: 'POST', body: { token: forgotPassword.body.resetToken, password: 'reset-password123' }
   });
   assert.equal(resetPassword.status, 200);
+  const replayedResetPassword = await request('/auth/reset-password', {
+    method: 'POST', body: { token: forgotPassword.body.resetToken, password: 'attacker-password123' }
+  });
+  assert.equal(replayedResetPassword.status, 400);
   const accessAfterPasswordReset = await request('/users/profile', { token: passwordResetUser.body.token });
   assert.equal(accessAfterPasswordReset.status, 401);
   const refreshAfterPasswordReset = await request('/auth/refresh', {
@@ -506,7 +542,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(invalidAvailabilityDate.status, 400);
   const studentCustomMeeting = await request('/sessions', {
     method: 'POST', token: adminResponse.body.token,
-    body: { connectionId, title: 'Unsafe link attempt', scheduledDate, startTime: '10:00', endTime: '11:00', meetingLink: 'https://student.example/room' }
+    body: { connectionId, title: 'Unauthorized link attempt', scheduledDate, startTime: '10:00', endTime: '11:00', meetingLink: 'https://meet.google.com/abc-defg-hij' }
   });
   assert.equal(studentCustomMeeting.status, 403);
   const insecureTutorMeeting = await request('/sessions', {
@@ -514,6 +550,11 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     body: { connectionId, title: 'Insecure room', scheduledDate, startTime: '10:00', endTime: '11:00', meetingLink: 'http://tutor.example/room' }
   });
   assert.equal(insecureTutorMeeting.status, 400);
+  const untrustedTutorMeeting = await request('/sessions', {
+    method: 'POST', token: activated.body.token,
+    body: { connectionId, title: 'Phishing room', scheduledDate, startTime: '10:00', endTime: '11:00', meetingLink: 'https://example.com/fake-room' }
+  });
+  assert.equal(untrustedTutorMeeting.status, 400);
   const mutedSessionEmail = await request('/notifications/preferences', {
     method: 'PUT', token: activated.body.token, body: { emailEnabled: false }
   });
@@ -546,7 +587,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(paymentSummary.body.configured, false);
   const adminPayments = await request('/admin/payments', { token: adminResponse.body.token });
   assert.equal(adminPayments.status, 200);
-  assert.equal(adminPayments.body.configured, false);
+  assert.equal(adminPayments.body.configured, true);
   assert.deepEqual(adminPayments.body.payments, []);
   assert.equal(adminPayments.body.summary.collected_cents, 0);
   const tutorCannotReviewPayments = await request('/admin/payments', { token: activated.body.token });
@@ -560,7 +601,7 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     method: 'POST', token: adminResponse.body.token,
     body: { reason: 'Student requested a refund', confirmation: 'REFUND' }
   });
-  assert.equal(unconfiguredRefund.status, 503);
+  assert.equal(unconfiguredRefund.status, 404);
   const tutorPaymentSummary = await request(`/payments/sessions/${session.body.id}`, { token: activated.body.token });
   assert.equal(tutorPaymentSummary.status, 200);
   assert.equal(tutorPaymentSummary.body.canPay, false);
@@ -576,13 +617,63 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(payoutStatus.status, 200);
   assert.equal(payoutStatus.body.onboardingStatus, 'not_started');
   const meetingAccess = await request(`/sessions/${session.body.id}/meeting`, { token: adminResponse.body.token });
-  assert.equal(meetingAccess.status, 200);
-  assert.equal(meetingAccess.body.status, 'ready');
-  assert.equal(meetingAccess.body.joinUrl, 'https://zoom.example/j/1');
-  assert.equal(meetingAccess.body.startUrl, undefined);
+  assert.equal(meetingAccess.status, 402);
+  assert.equal(meetingAccess.body.code, 'PAYMENT_REQUIRED');
+  const studentSessionsBeforePayment = await request('/sessions', { token: adminResponse.body.token });
+  const protectedSession = studentSessionsBeforePayment.body.find((item) => item.id === session.body.id);
+  assert.equal(protectedSession.meeting_link, null);
+  assert.equal(protectedSession.meeting_status, 'payment_required');
   const tutorMeetingAccess = await request(`/sessions/${session.body.id}/meeting`, { token: activated.body.token });
   assert.equal(tutorMeetingAccess.status, 200);
   assert.equal(tutorMeetingAccess.body.startUrl, 'https://zoom.example/s/1?zak=refreshed');
+  const paymentDatabase = new Database(databasePath);
+  paymentDatabase.prepare(`
+    INSERT INTO tutor_payment_accounts
+      (user_id, provider_account_id, onboarding_status, charges_enabled, payouts_enabled, details_submitted)
+    VALUES (?, 'acct_tutor_verified', 'active', 1, 1, 1)
+  `).run(activated.body.user.id);
+  const paymentRecord = paymentDatabase.prepare(`
+    INSERT INTO session_payments
+      (session_id, student_id, tutor_id, provider_payment_intent_id, amount_cents, platform_fee_cents, currency, status)
+    VALUES (?, ?, ?, 'pi_session_verified', 2500, 0, 'usd', 'pending')
+  `).run(session.body.id, adminResponse.body.user.id, activated.body.user.id);
+  paymentDatabase.close();
+  const paymentIntentObject = {
+    id: 'pi_session_verified', object: 'payment_intent', amount: 2500, currency: 'usd', status: 'succeeded',
+    latest_charge: 'ch_session_verified', transfer_data: { destination: 'acct_tutor_verified' },
+    metadata: {
+      nextdoorlearn_payment_id: String(paymentRecord.lastInsertRowid),
+      nextdoorlearn_session_id: String(session.body.id),
+      nextdoorlearn_student_id: String(adminResponse.body.user.id),
+      nextdoorlearn_tutor_id: String(activated.body.user.id)
+    }
+  };
+  const forgedWebhook = await stripeWebhook(
+    { id: 'evt_forged', type: 'payment_intent.succeeded', data: { object: paymentIntentObject } },
+    't=1,v1=forged'
+  );
+  assert.equal(forgedWebhook.status, 400);
+  const tamperedWebhook = await stripeWebhook({
+    id: 'evt_tampered_amount', type: 'payment_intent.succeeded',
+    data: { object: { ...paymentIntentObject, amount: 1 } }
+  });
+  assert.equal(tamperedWebhook.status, 422);
+  assert.equal(tamperedWebhook.body.code, 'PAYMENT_EVENT_MISMATCH');
+  const acceptedWebhook = await stripeWebhook({
+    id: 'evt_verified_payment', type: 'payment_intent.succeeded', data: { object: paymentIntentObject }
+  });
+  assert.equal(acceptedWebhook.status, 200);
+  const replayedWebhook = await stripeWebhook({
+    id: 'evt_verified_payment', type: 'payment_intent.succeeded', data: { object: paymentIntentObject }
+  });
+  assert.equal(replayedWebhook.status, 200);
+  assert.equal(replayedWebhook.body.duplicate, true);
+  const paidMeetingAccess = await request(`/sessions/${session.body.id}/meeting`, { token: adminResponse.body.token });
+  assert.equal(paidMeetingAccess.status, 200);
+  assert.equal(paidMeetingAccess.body.joinUrl, 'https://zoom.example/j/1');
+  const paymentCleanupDatabase = new Database(databasePath);
+  paymentCleanupDatabase.prepare('DELETE FROM session_payments WHERE session_id = ?').run(session.body.id);
+  paymentCleanupDatabase.close();
   const studentCannotCreateSeries = await request('/sessions', {
     method: 'POST', token: adminResponse.body.token,
     body: { connectionId, title: 'Weekly student request', subject: 'Math', scheduledDate, startTime: '13:00', endTime: '14:00', recurrenceCount: 3 }
@@ -613,7 +704,8 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   const afterConfirmation = await request('/sessions/upcoming', { token: adminResponse.body.token });
   const confirmedSession = afterConfirmation.body.find((item) => item.id === session.body.id);
   assert.ok(confirmedSession);
-  assert.equal(confirmedSession.meeting_link, 'https://zoom.example/j/1');
+  assert.equal(confirmedSession.meeting_link, null);
+  assert.equal(confirmedSession.meeting_status, 'payment_required');
   assert.equal(confirmedSession.host_url, undefined);
 
   const blockingSession = await request('/sessions', {

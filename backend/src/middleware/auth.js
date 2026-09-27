@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../db/database');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || '15m';
 
 if (process.env.NODE_ENV === 'production' && JWT_SECRET === 'your-secret-key-change-in-production') {
   throw new Error('JWT_SECRET must be set in production');
@@ -71,4 +72,4 @@ const requireVerifiedEmail = (req, res, next) => {
   next();
 };
 
-module.exports = { authenticateToken, requireAdmin, requireVerifiedEmail, JWT_SECRET };
+module.exports = { authenticateToken, requireAdmin, requireVerifiedEmail, ACCESS_TOKEN_TTL, JWT_SECRET };

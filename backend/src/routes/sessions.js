@@ -10,7 +10,8 @@ const { scheduleSessionReminders, zonedTimeToUtc } = require('../services/remind
 const { deleteZoomMeeting, getMeetingAccess, provisionZoomMeeting, zoomConfigured } = require('../services/zoom');
 const { queueSessionEmails } = require('../services/sessionCommunications');
 const { settleCancelledSessionPayment } = require('../services/paymentLedger');
-const { boundedInteger, isPositiveInteger, isValidDate, isValidHttpUrl, isValidTime, sanitizeText } = require('../utils/validation');
+const { canOpenMeeting, redactSessionForUser } = require('../services/sessionAccess');
+const { boundedInteger, isPositiveInteger, isValidDate, isValidMeetingUrl, isValidTime, sanitizeText } = require('../utils/validation');
 
 const router = express.Router();
 router.use(authenticateToken, requireVerifiedEmail);
@@ -30,16 +31,6 @@ const getSessionWithOutcome = (sessionId) => db.prepare(`
   LEFT JOIN session_payments payment ON payment.session_id = s.id
   WHERE s.id = ?
 `).get(sessionId);
-
-const hidePrivateOutcomeFields = (session, role) => {
-  if (!session || role === 'student') return session;
-  const safeSession = { ...session };
-  delete safeSession.student_reflection;
-  delete safeSession.confidence_before;
-  delete safeSession.confidence_after;
-  delete safeSession.student_submitted_at;
-  return safeSession;
-};
 
 const sessionState = (session) => session.confirmation_status === 'pending'
   ? 'pending_confirmation'
@@ -153,7 +144,7 @@ router.get('/', async (req, res) => {
     query += ' ORDER BY s.scheduled_date DESC, s.start_time DESC';
     
     const sessions = await db.prepare(query).all(...params);
-    res.json(sessions.map((session) => hidePrivateOutcomeFields(session, req.user.role)));
+    res.json(sessions.map((session) => redactSessionForUser(session, req.user)));
   } catch (error) {
     console.error('Get sessions error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -172,11 +163,13 @@ router.get('/upcoming', async (req, res) => {
         u1.name as tutor_name,
         u2.name as student_name,
         meeting.provider as meeting_provider,
-        meeting.status as meeting_status
+        meeting.status as meeting_status,
+        payment.status as payment_status
       FROM sessions s
       JOIN users u1 ON s.tutor_id = u1.id
       JOIN users u2 ON s.student_id = u2.id
       LEFT JOIN session_meetings meeting ON meeting.session_id = s.id
+      LEFT JOIN session_payments payment ON payment.session_id = s.id
       WHERE (s.tutor_id = ? OR s.student_id = ?)
         AND s.status = 'scheduled'
         AND s.confirmation_status = 'confirmed'
@@ -185,7 +178,7 @@ router.get('/upcoming', async (req, res) => {
       LIMIT ?
     `).all(userId, userId, limit);
     
-    res.json(sessions);
+    res.json(sessions.map((session) => redactSessionForUser(session, req.user)));
   } catch (error) {
     console.error('Get upcoming sessions error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -196,11 +189,19 @@ router.get('/:id/meeting', async (req, res) => {
   try {
     if (!isPositiveInteger(req.params.id)) return res.status(400).json({ error: 'Valid session ID is required' });
     const session = await db.prepare(`
-      SELECT * FROM sessions WHERE id = ? AND (student_id = ? OR tutor_id = ?)
+      SELECT s.*, payment.status AS payment_status
+      FROM sessions s LEFT JOIN session_payments payment ON payment.session_id = s.id
+      WHERE s.id = ? AND (s.student_id = ? OR s.tutor_id = ?)
     `).get(req.params.id, req.user.userId, req.user.userId);
     if (!session) return res.status(404).json({ error: 'Session not found' });
     if (session.status !== 'scheduled' || session.confirmation_status !== 'confirmed') {
       return res.status(409).json({ error: 'The session must be confirmed before opening its meeting room' });
+    }
+    if (!canOpenMeeting(session, req.user)) {
+      return res.status(402).json({
+        error: 'Payment must be confirmed by Stripe before this meeting room opens',
+        code: 'PAYMENT_REQUIRED'
+      });
     }
     res.json(await getMeetingAccess(session, req.user));
   } catch (error) {
@@ -260,7 +261,7 @@ router.get('/:id/outcome', async (req, res) => {
     if (!session || ![Number(session.student_id), Number(session.tutor_id)].includes(Number(req.user.userId))) {
       return res.status(404).json({ error: 'Session not found' });
     }
-    res.json(hidePrivateOutcomeFields(session, req.user.role));
+    res.json(redactSessionForUser(session, req.user));
   } catch (error) {
     console.error('Get session outcome error:', error);
     res.status(500).json({ error: 'Unable to load session outcome' });
@@ -352,7 +353,7 @@ router.patch('/:id/outcome', async (req, res) => {
     }
 
     const updatedSession = await getSessionWithOutcome(sessionId);
-    res.json(hidePrivateOutcomeFields(updatedSession, req.user.role));
+    res.json(redactSessionForUser(updatedSession, req.user));
   } catch (error) {
     console.error('Update session outcome error:', error);
     res.status(500).json({ error: 'Unable to save session outcome' });
@@ -389,8 +390,8 @@ router.post('/', async (req, res) => {
     if (!Number.isInteger(recurrenceCount) || recurrenceCount < 1 || recurrenceCount > 12) {
       return res.status(400).json({ error: 'Weekly session series must contain between 1 and 12 sessions' });
     }
-    if (safeMeetingLink && (!isValidHttpUrl(safeMeetingLink) || !safeMeetingLink.toLowerCase().startsWith('https://'))) {
-      return res.status(400).json({ error: 'Meeting link must be a secure https:// URL' });
+    if (safeMeetingLink && !isValidMeetingUrl(safeMeetingLink)) {
+      return res.status(400).json({ error: 'Use a secure Zoom, Google Meet, Microsoft Teams, or Whereby meeting link' });
     }
     
     // Verify the connection exists and user is part of it
@@ -609,7 +610,7 @@ router.patch('/:id/reschedule', async (req, res) => {
     await queueSessionEmails(updatedSession, confirmationStatus === 'pending' ? 'reschedule_requested' : 'rescheduled')
       .catch((error) => console.error('Session email warning:', error.message || error));
 
-    res.json(await getSessionWithOutcome(sessionId));
+    res.json(redactSessionForUser(await getSessionWithOutcome(sessionId), req.user));
   } catch (error) {
     console.error('Reschedule session error:', error);
     res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to reschedule session' });

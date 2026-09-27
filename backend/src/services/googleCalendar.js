@@ -172,12 +172,12 @@ const toDateTime = (date, time) => {
   return `${datePart}T${timePart}:00`;
 };
 
-const buildEventPayload = (session, timezone = null) => ({
+const buildEventPayload = (session, timezone = null, includeMeeting = true) => ({
   summary: session.title,
-  description: [session.description, session.subject ? `Subject: ${session.subject}` : null, session.meeting_link ? `Meeting link: ${session.meeting_link}` : null]
+  description: [session.description, session.subject ? `Subject: ${session.subject}` : null, includeMeeting && session.meeting_link ? `Meeting link: ${session.meeting_link}` : null]
     .filter(Boolean)
     .join('\n'),
-  location: session.meeting_link || undefined,
+  location: includeMeeting ? session.meeting_link || undefined : undefined,
   start: { dateTime: toDateTime(session.scheduled_date, session.start_time), timeZone: session.session_timezone || timezone || 'UTC' },
   end: { dateTime: toDateTime(session.scheduled_date, session.end_time), timeZone: session.session_timezone || timezone || 'UTC' }
 });
@@ -203,6 +203,10 @@ const deleteSessionGoogleEvents = async (sessionId) => {
 
 const syncSessionToGoogle = async (session, action = 'upsert') => {
   try {
+    const payment = session.payment_status
+      ? { status: session.payment_status }
+      : await db.prepare('SELECT status FROM session_payments WHERE session_id = ?').get(session.id);
+    const studentMeetingAccess = Number(session.agreed_hourly_rate_cents || 0) === 0 || payment?.status === 'succeeded';
     const clients = await Promise.all([
       getAuthorizedCalendarClient(session.tutor_id),
       getAuthorizedCalendarClient(session.student_id)
@@ -218,7 +222,8 @@ const syncSessionToGoogle = async (session, action = 'upsert') => {
         continue;
       }
 
-      const eventPayload = buildEventPayload(session);
+      const includeMeeting = Number(participant.userId) === Number(session.tutor_id) || studentMeetingAccess;
+      const eventPayload = buildEventPayload(session, null, includeMeeting);
       const calendarId = participant.client.integration.calendar_id || 'primary';
       const existingEvent = await getSessionGoogleEvent(session.id, participant.userId);
 

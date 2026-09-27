@@ -41,6 +41,7 @@ const scheduleSessionReminders = async (session) => {
 const processSessionReminders = async (limit = 50) => {
   const reminders = await db.prepare(`
     SELECT sr.*, s.title, s.starts_at, s.student_id, s.tutor_id, s.meeting_link,
+      s.agreed_hourly_rate_cents, payment.status AS payment_status,
       recipient.name AS recipient_name, recipient.email AS recipient_email, recipient.timezone AS recipient_timezone,
       student.name AS student_name, tutor.name AS tutor_name
     FROM session_reminders sr
@@ -48,6 +49,7 @@ const processSessionReminders = async (limit = 50) => {
     JOIN users recipient ON recipient.id = sr.user_id
     JOIN users student ON student.id = s.student_id
     JOIN users tutor ON tutor.id = s.tutor_id
+    LEFT JOIN session_payments payment ON payment.session_id = s.id
     WHERE sr.status = 'pending' AND sr.scheduled_for <= CURRENT_TIMESTAMP
       AND s.status = 'scheduled' AND s.confirmation_status = 'confirmed'
     ORDER BY sr.scheduled_for ASC LIMIT ?
@@ -66,13 +68,16 @@ const processSessionReminders = async (limit = 50) => {
       month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
       timeZone: reminderTimezone, timeZoneName: 'short'
     });
+    const meetingReady = Number(reminder.user_id) === Number(reminder.tutor_id)
+      || Number(reminder.agreed_hourly_rate_cents || 0) === 0
+      || reminder.payment_status === 'succeeded';
     const content = emailTemplates.sessionReminder(
       reminder.recipient_name,
       reminder.title,
       when,
       otherName,
       `${process.env.FRONTEND_URL || 'http://localhost:5173'}/sessions`,
-      Boolean(reminder.meeting_link)
+      Boolean(reminder.meeting_link) && meetingReady
     );
     const email = await queueEmail({
       to: reminder.recipient_email,

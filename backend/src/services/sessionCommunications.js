@@ -29,6 +29,11 @@ const queueSessionEmails = async (session, event) => {
   const student = byId.get(Number(session.student_id));
   const tutor = byId.get(Number(session.tutor_id));
   if (!student || !tutor) return [];
+  const payment = session.payment_status
+    ? { status: session.payment_status }
+    : await db.prepare('SELECT status FROM session_payments WHERE session_id = ?').get(session.id);
+  const studentMeetingReady = Number(session.agreed_hourly_rate_cents || 0) === 0
+    || payment?.status === 'succeeded';
 
   const recipients = event === 'requested' ? [tutor] : [student, tutor];
   const results = [];
@@ -42,7 +47,8 @@ const queueSessionEmails = async (session, event) => {
       otherName: other.name,
       title: session.title,
       when: formatWhen(session, recipient.timezone || tutor.timezone || 'UTC'),
-      meetingReady: Boolean(session.meeting_link),
+      meetingReady: Boolean(session.meeting_link)
+        && (Number(recipient.id) === Number(tutor.id) || studentMeetingReady),
       url: sessionUrl()
     });
     results.push(await queueEmail({

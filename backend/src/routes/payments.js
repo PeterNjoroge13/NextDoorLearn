@@ -15,6 +15,12 @@ const {
   retrieveTutorAccount
 } = require('../services/payments');
 const { isPositiveInteger } = require('../utils/validation');
+const {
+  assertPaymentIntentMatches,
+  shouldApplyPaymentStatus,
+  statusForPaymentIntentEvent
+} = require('../services/paymentSecurity');
+const { syncSessionToGoogle } = require('../services/googleCalendar');
 
 const router = express.Router();
 router.use(authenticateToken, requireVerifiedEmail);
@@ -222,12 +228,23 @@ router.post('/sessions/:sessionId/intent', paymentWriteLimiter, async (req, res)
     if (payment?.status === 'succeeded') return res.status(409).json({ error: 'This session is already paid' });
     if (payment?.status === 'refunded') return res.status(409).json({ error: 'This session payment was refunded' });
     if (!payment) {
-      const result = await db.prepare(`
+      await db.prepare(`
         INSERT INTO session_payments (
           session_id, student_id, tutor_id, amount_cents, platform_fee_cents, currency, status
         ) VALUES (?, ?, ?, ?, ?, 'usd', 'pending')
+        ON CONFLICT(session_id) DO NOTHING
       `).run(session.id, session.student_id, session.tutor_id, amountCents, platformFeeFor(amountCents));
-      payment = await db.prepare('SELECT * FROM session_payments WHERE id = ?').get(result.lastInsertRowid);
+      payment = await db.prepare('SELECT * FROM session_payments WHERE session_id = ?').get(session.id);
+    }
+    if (
+      Number(payment.student_id) !== Number(session.student_id)
+      || Number(payment.tutor_id) !== Number(session.tutor_id)
+      || Number(payment.amount_cents) !== amountCents
+      || String(payment.currency).toLowerCase() !== 'usd'
+    ) {
+      return res.status(409).json({
+        error: 'The saved checkout no longer matches this booking. Cancel the session and create a new one.'
+      });
     }
 
     let intent;
@@ -243,6 +260,7 @@ router.post('/sessions/:sessionId/intent', paymentWriteLimiter, async (req, res)
         WHERE id = ?
       `).run(intent.id, platformFeeFor(amountCents), intent.status, payment.id);
     }
+    assertPaymentIntentMatches(intent, payment, session.provider_account_id);
     res.json({
       clientSecret: intent.client_secret,
       paymentIntentId: intent.id,
@@ -259,12 +277,6 @@ router.post('/sessions/:sessionId/intent', paymentWriteLimiter, async (req, res)
   }
 });
 
-const paymentStatusForIntent = (intent) => ({
-  succeeded: 'succeeded', processing: 'processing', canceled: 'cancelled',
-  requires_payment_method: 'failed', requires_action: 'requires_action',
-  requires_confirmation: 'requires_action', requires_capture: 'processing'
-}[intent.status] || 'pending');
-
 const handleWebhook = async (req, res) => {
   let event;
   try {
@@ -274,20 +286,54 @@ const handleWebhook = async (req, res) => {
   }
 
   try {
-    const exists = await db.prepare('SELECT id FROM payment_events WHERE provider_event_id = ?').get(event.id);
-    if (exists) return res.json({ received: true, duplicate: true });
     const object = event.data.object;
+    const outcome = await db.withTransaction(async (transaction) => {
+      const claimed = await transaction.prepare(`
+        INSERT INTO payment_events (provider_event_id, event_type, object_id)
+        VALUES (?, ?, ?) ON CONFLICT(provider_event_id) DO NOTHING
+      `).run(event.id, event.type, object.id || null);
+      if (!claimed.changes) return { duplicate: true };
 
-    if (event.type === 'account.updated') {
-      const row = await db.prepare('SELECT user_id FROM tutor_payment_accounts WHERE provider_account_id = ?').get(object.id);
-      if (row) await saveAccountStatus(row.user_id, object);
-    }
+      if (event.type === 'account.updated') {
+        const row = await transaction.prepare('SELECT user_id FROM tutor_payment_accounts WHERE provider_account_id = ?').get(object.id);
+        if (row) {
+          const state = accountStatus(object);
+          await transaction.prepare(`
+            UPDATE tutor_payment_accounts
+            SET onboarding_status = ?, charges_enabled = ?, payouts_enabled = ?, details_submitted = ?,
+                requirements_due = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+          `).run(
+            state.onboardingStatus, Number(state.chargesEnabled), Number(state.payoutsEnabled),
+            Number(state.detailsSubmitted), JSON.stringify(state.requirementsDue), row.user_id
+          );
+        }
+        return {};
+      }
 
-    if (event.type.startsWith('payment_intent.')) {
-      const status = paymentStatusForIntent(object);
-      const payment = await db.prepare('SELECT * FROM session_payments WHERE provider_payment_intent_id = ?').get(object.id);
-      if (payment) {
-        await db.prepare(`
+      if (event.type.startsWith('payment_intent.')) {
+        const status = statusForPaymentIntentEvent(event.type, object);
+        if (!status) return {};
+        const payment = await transaction.prepare(`
+          SELECT payment.*, account.provider_account_id AS expected_destination_account_id,
+            session.student_id AS session_student_id, session.tutor_id AS session_tutor_id
+          FROM session_payments payment
+          JOIN sessions session ON session.id = payment.session_id
+          LEFT JOIN tutor_payment_accounts account ON account.user_id = payment.tutor_id
+          WHERE payment.provider_payment_intent_id = ?
+        `).get(object.id);
+        if (!payment) return {};
+        if (
+          Number(payment.student_id) !== Number(payment.session_student_id)
+          || Number(payment.tutor_id) !== Number(payment.session_tutor_id)
+        ) {
+          throw Object.assign(new Error('Stored payment ownership does not match its session'), {
+            code: 'PAYMENT_RECORD_MISMATCH', statusCode: 422
+          });
+        }
+        assertPaymentIntentMatches(object, payment, payment.expected_destination_account_id);
+        if (!shouldApplyPaymentStatus(payment.status, status)) return {};
+        await transaction.prepare(`
           UPDATE session_payments SET status = ?, provider_charge_id = ?, failure_code = ?, failure_message = ?,
             paid_at = CASE WHEN ? = 'succeeded' THEN COALESCE(paid_at, CURRENT_TIMESTAMP) ELSE paid_at END,
             updated_at = CURRENT_TIMESTAMP WHERE id = ?
@@ -296,29 +342,51 @@ const handleWebhook = async (req, res) => {
           object.last_payment_error?.code || null, object.last_payment_error?.message || null,
           status, payment.id
         );
-        if (status === 'succeeded' && payment.status !== 'succeeded') {
-          await Promise.all([
-            createNotification(payment.student_id, 'payment_received', 'Payment complete', 'Your tutoring session payment is confirmed.', '/sessions', payment.session_id),
-            createNotification(payment.tutor_id, 'payment_received', 'Session paid', 'A student payment is on its way to your connected payout account.', '/sessions', payment.session_id)
-          ]);
+        return {
+          paymentSucceeded: status === 'succeeded' && payment.status !== 'succeeded',
+          payment
+        };
+      }
+
+      if (event.type === 'charge.refunded' && object.payment_intent) {
+        const payment = await transaction.prepare('SELECT * FROM session_payments WHERE provider_payment_intent_id = ?').get(object.payment_intent);
+        if (!payment) return {};
+        if (
+          Number(object.amount) !== Number(payment.amount_cents)
+          || String(object.currency || '').toLowerCase() !== String(payment.currency).toLowerCase()
+        ) {
+          throw Object.assign(new Error('Refund event does not match the recorded payment'), {
+            code: 'PAYMENT_EVENT_MISMATCH', statusCode: 422
+          });
+        }
+        if (object.refunded === true || Number(object.amount_refunded) >= Number(payment.amount_cents)) {
+          await transaction.prepare(`
+            UPDATE session_payments SET status = 'refunded', refunded_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(payment.id);
         }
       }
-    }
+      return {};
+    });
 
-    if (event.type === 'charge.refunded' && object.payment_intent) {
-      await db.prepare(`
-        UPDATE session_payments SET status = 'refunded', refunded_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-        WHERE provider_payment_intent_id = ?
-      `).run(object.payment_intent);
+    if (outcome.paymentSucceeded) {
+      await Promise.allSettled([
+        createNotification(outcome.payment.student_id, 'payment_received', 'Payment complete', 'Your tutoring session payment is confirmed.', '/sessions', outcome.payment.session_id),
+        createNotification(outcome.payment.tutor_id, 'payment_received', 'Session paid', 'A student payment is on its way to your connected payout account.', '/sessions', outcome.payment.session_id)
+      ]);
+      const session = await db.prepare('SELECT * FROM sessions WHERE id = ?').get(outcome.payment.session_id);
+      if (session) {
+        await syncSessionToGoogle({ ...session, payment_status: 'succeeded' }, 'upsert')
+          .catch((error) => console.error('Payment calendar sync warning:', error.message || error));
+      }
     }
-
-    await db.prepare(`
-      INSERT INTO payment_events (provider_event_id, event_type, object_id) VALUES (?, ?, ?)
-    `).run(event.id, event.type, object.id || null);
-    res.json({ received: true });
+    res.json({ received: true, ...(outcome.duplicate ? { duplicate: true } : {}) });
   } catch (error) {
     console.error('Payment webhook error:', error);
-    res.status(500).json({ error: 'Unable to process payment event' });
+    res.status(error.statusCode || 500).json({
+      error: error.statusCode ? 'Payment event failed integrity checks' : 'Unable to process payment event',
+      ...(error.code ? { code: error.code } : {})
+    });
   }
 };
 

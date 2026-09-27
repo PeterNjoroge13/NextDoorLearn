@@ -58,6 +58,22 @@ const isValidHttpUrl = (value) => {
   }
 };
 
+const trustedMeetingHosts = new Set([
+  'meet.google.com',
+  'teams.live.com',
+  'teams.microsoft.com',
+  'whereby.com',
+  'zoom.us',
+]);
+
+const isValidMeetingUrl = (value) => {
+  if (!isValidHttpUrl(value)) return false;
+  const url = new URL(value);
+  if (url.protocol !== 'https:' || url.username || url.password) return false;
+  const hostname = url.hostname.toLowerCase();
+  return [...trustedMeetingHosts].some((host) => hostname === host || hostname.endsWith(`.${host}`));
+};
+
 const passwordValidationError = (value) => {
   if (typeof value !== 'string' || value.length < 8) {
     return 'Password must be at least 8 characters';
@@ -74,6 +90,7 @@ module.exports = {
   isValidDate,
   isValidEmail,
   isValidHttpUrl,
+  isValidMeetingUrl,
   isValidTime,
   isValidTimeZone,
   normalizeStringArray,

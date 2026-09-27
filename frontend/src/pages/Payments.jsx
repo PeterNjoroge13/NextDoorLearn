@@ -130,9 +130,9 @@ const Payments = () => {
     setCheckout(response);
   };
 
-  const paymentComplete = (status) => {
+  const paymentComplete = () => {
     setCheckout(null);
-    setNotice(status === 'succeeded' ? 'Payment confirmed. Your tutor has been notified.' : 'Payment is processing. This page will update when Stripe confirms it.');
+    setNotice('Payment submitted. This page will show it as paid only after NextDoorLearn receives Stripe confirmation.');
     load();
   };
 
