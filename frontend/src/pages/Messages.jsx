@@ -20,10 +20,18 @@ const Messages = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [sendError, setSendError] = useState('');
   const [threadError, setThreadError] = useState('');
+  const [historyCursor, setHistoryCursor] = useState(null);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
   const messagesEndRef = useRef(null);
+  const messageScrollRef = useRef(null);
+  const shouldScrollToEndRef = useRef(true);
+  const selectedConversationIdRef = useRef(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (shouldScrollToEndRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      shouldScrollToEndRef.current = false;
+    }
   }, [messages]);
 
   useEffect(() => {
@@ -52,15 +60,35 @@ const Messages = () => {
     if (!selectedConversation) return undefined;
 
     setMessages([]);
+    setHistoryCursor(null);
     setThreadError('');
+    selectedConversationIdRef.current = selectedConversation.connection_id;
+    shouldScrollToEndRef.current = true;
+    let initialLoad = true;
+    let active = true;
 
     const fetchMessages = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await api.getMessages(selectedConversation.connection_id, token);
+        const response = await api.getMessages(selectedConversation.connection_id, token, { paged: true, limit: 50 });
+        if (!active) return;
         if (response.error) setThreadError(response.error);
         else {
-          setMessages(Array.isArray(response) ? response : []);
+          const incoming = Array.isArray(response.messages) ? response.messages : [];
+          if (initialLoad) {
+            setMessages(incoming);
+            setHistoryCursor(response.nextCursor || null);
+            initialLoad = false;
+          } else {
+            setMessages((current) => {
+              const known = new Set(current.map((message) => message.id));
+              const additions = incoming.filter((message) => !known.has(message.id));
+              const container = messageScrollRef.current;
+              const nearBottom = !container || container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+              if (additions.length && nearBottom) shouldScrollToEndRef.current = true;
+              return [...current, ...additions].sort((a, b) => Number(a.id) - Number(b.id));
+            });
+          }
           setThreadError('');
         }
       } catch {
@@ -70,7 +98,10 @@ const Messages = () => {
 
     fetchMessages();
     const interval = setInterval(fetchMessages, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [selectedConversation]);
 
   const handleSendMessage = async (event) => {
@@ -84,13 +115,54 @@ const Messages = () => {
       const response = await api.sendMessage(selectedConversation.connection_id, newMessage.trim(), token);
       if (!response.error) {
         setNewMessage('');
-        const updatedMessages = await api.getMessages(selectedConversation.connection_id, token);
-        if (!updatedMessages.error) setMessages(Array.isArray(updatedMessages) ? updatedMessages : []);
+        const updatedMessages = await api.getMessages(selectedConversation.connection_id, token, { paged: true, limit: 50 });
+        if (!updatedMessages.error) {
+          shouldScrollToEndRef.current = true;
+          setMessages((current) => {
+            const merged = new Map(current.map((message) => [message.id, message]));
+            (updatedMessages.messages || []).forEach((message) => merged.set(message.id, message));
+            return [...merged.values()].sort((a, b) => Number(a.id) - Number(b.id));
+          });
+        }
       } else setSendError(response.error);
     } catch {
       setSendError('Your message was not sent. Check your connection and try again.');
     } finally {
       setSending(false);
+    }
+  };
+
+  const loadEarlierMessages = async () => {
+    if (!selectedConversation || !historyCursor || loadingEarlier) return;
+    const connectionId = selectedConversation.connection_id;
+    const container = messageScrollRef.current;
+    const previousHeight = container?.scrollHeight || 0;
+    setLoadingEarlier(true);
+    setThreadError('');
+    try {
+      const response = await api.getMessages(connectionId, localStorage.getItem('token'), {
+        paged: true,
+        limit: 50,
+        before: historyCursor,
+      });
+      if (selectedConversationIdRef.current !== connectionId) return;
+      if (response.error) setThreadError(response.error);
+      else {
+        shouldScrollToEndRef.current = false;
+        setMessages((current) => {
+          const merged = new Map((response.messages || []).map((message) => [message.id, message]));
+          current.forEach((message) => merged.set(message.id, message));
+          return [...merged.values()].sort((a, b) => Number(a.id) - Number(b.id));
+        });
+        setHistoryCursor(response.nextCursor || null);
+        requestAnimationFrame(() => {
+          if (container) container.scrollTop += container.scrollHeight - previousHeight;
+        });
+      }
+    } catch {
+      setThreadError('Earlier messages could not be loaded.');
+    } finally {
+      setLoadingEarlier(false);
     }
   };
 
@@ -187,7 +259,14 @@ const Messages = () => {
                 ) : null}
               </header>
 
-              <div className="message-scroll">
+              <div className="message-scroll" ref={messageScrollRef}>
+                {historyCursor ? (
+                  <div className="thread-history-control">
+                    <button className="btn btn-ghost btn-sm" type="button" onClick={loadEarlierMessages} disabled={loadingEarlier}>
+                      {loadingEarlier ? 'Loading...' : 'Load earlier messages'}
+                    </button>
+                  </div>
+                ) : null}
                 {threadError ? (
                   <div className="alert alert-error" role="alert">{threadError}</div>
                 ) : filteredMessages.length ? (

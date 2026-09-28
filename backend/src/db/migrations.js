@@ -510,6 +510,15 @@ const migrations = [
           ON background_job_runs(job_name, status, started_at);
       `);
     }
+  },
+  {
+    version: '019_message_history_pagination',
+    async up(db) {
+      await db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_messages_connection_history
+          ON messages(connection_id, id DESC);
+      `);
+    }
   }
 ];
 

@@ -446,8 +446,13 @@ const api = {
     return response.json();
   },
 
-  getMessages: async (connectionId, token) => {
-    const response = await apiFetch(`${API_BASE_URL}/messages/${connectionId}`, {
+  getMessages: async (connectionId, token, options = {}) => {
+    const params = new URLSearchParams();
+    if (options.paged) params.set('paged', 'true');
+    if (options.limit) params.set('limit', String(options.limit));
+    if (options.before) params.set('before', String(options.before));
+    const query = params.toString();
+    const response = await apiFetch(`${API_BASE_URL}/messages/${connectionId}${query ? `?${query}` : ''}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },

@@ -80,6 +80,7 @@ This file tracks production work that can be completed without external account 
 ## Continuous Release Quality
 
 - [x] Expand API workflow tests across tutor activation, matching, safety, scheduling, recurring series, payments, and learning outcomes.
+- [x] Add backward-compatible cursor pagination and load-earlier controls for message history on web and native mobile.
 - [x] Add browser-level tests for public, student, tutor, and administrator routes.
 - [ ] Keep frontend, backend, mobile, mutation smoke, and production smoke checks green.
 - [ ] Commit and push focused checkpoints to `main` after verification.

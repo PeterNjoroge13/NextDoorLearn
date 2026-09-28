@@ -776,6 +776,23 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(boundedMessages.status, 200);
   assert.equal(boundedMessages.body.length, 100);
   assert.equal(boundedMessages.body[0].content, 'Bounded message 6');
+  const newestMessagePage = await request(`/messages/${connectionId}?paged=true&limit=50`, { token: adminResponse.body.token });
+  assert.equal(newestMessagePage.status, 200);
+  assert.equal(newestMessagePage.body.messages.length, 50);
+  assert.ok(newestMessagePage.body.nextCursor);
+  assert.equal(newestMessagePage.body.messages.at(-1).content, 'Bounded message 105');
+  const olderMessagePage = await request(
+    `/messages/${connectionId}?paged=true&limit=50&before=${newestMessagePage.body.nextCursor}`,
+    { token: adminResponse.body.token }
+  );
+  assert.equal(olderMessagePage.status, 200);
+  assert.equal(olderMessagePage.body.messages.length, 50);
+  assert.ok(olderMessagePage.body.nextCursor);
+  assert.ok(olderMessagePage.body.messages.at(-1).id < newestMessagePage.body.messages[0].id);
+  const invalidMessageCursor = await request(`/messages/${connectionId}?paged=true&before=not-a-cursor`, {
+    token: adminResponse.body.token
+  });
+  assert.equal(invalidMessageCursor.status, 400);
 
   const earlyOutcome = await request(`/sessions/${session.body.id}/outcome`, {
     method: 'PATCH', token: activated.body.token,

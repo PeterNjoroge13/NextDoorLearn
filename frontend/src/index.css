@@ -1375,6 +1375,12 @@ textarea:focus {
   padding: 20px;
 }
 
+.thread-history-control {
+  display: flex;
+  justify-content: center;
+  min-height: 34px;
+}
+
 .bubble {
   max-width: min(620px, 78%);
   padding: 12px 14px;

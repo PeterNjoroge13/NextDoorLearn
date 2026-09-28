@@ -24,7 +24,7 @@ This audit separates launch blockers from code that is already implemented. A gr
 
 ## P2: Production Improvements
 
-- Add cursor pagination to conversations, session history, tutors, applications, reports, and audit logs before datasets become large.
+- Extend the implemented message-history cursor pagination to conversations, session history, tutors, applications, reports, and audit logs before those datasets become large.
 - Add a staging environment with separate database branches, Stripe test mode, email domain, OAuth apps, and mobile build profile.
 - Add privacy-aware analytics for onboarding completion, match quality, booking conversion, attendance, and retention.
 - Exercise the new integration maintenance switches during a staging incident drill before launch.
@@ -48,10 +48,11 @@ This audit separates launch blockers from code that is already implemented. A gr
 - Production request and fatal-error logs are structured, request-ID correlated, and omit bodies, network addresses, and direct contact information.
 - Database migration `017_operational_recovery` adds only nullable lifecycle/lease fields and recovery indexes for a low-risk rollout.
 - Database migration `018_background_job_health` adds the bounded operational run ledger used by heartbeat monitoring.
+- Database migration `019_message_history_pagination` adds the composite index used by cursor-based message history.
 
 ## Release And Rollback Notes
 
-- Deploy the backend before relying on the new web/mobile controls so migrations `017_operational_recovery` and `018_background_job_health` are present.
-- Both migrations are additive. Rolling application code back does not require dropping columns, tables, or indexes.
+- Deploy the backend before relying on the new web/mobile controls so migrations `017_operational_recovery` through `019_message_history_pagination` are present.
+- These migrations are additive. Rolling application code back does not require dropping columns, tables, or indexes.
 - Do not roll back by deleting anonymized user ledger rows; payment and moderation records may be required for reconciliation and safety investigations.
 - Monitor `email_outbox.dead_letter`, `session_payments.refund_failed`, open safety reports, and `backgroundJobs` health after every release.

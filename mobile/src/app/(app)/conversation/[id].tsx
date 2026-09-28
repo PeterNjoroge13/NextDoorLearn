@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, MoreVertical, Send } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar, ErrorNotice, LoadingState } from '@/components/ui';
@@ -10,19 +10,39 @@ import { useData } from '@/lib/hooks';
 import { colors, spacing, typography } from '@/theme';
 
 type Message = { id: number; sender_id: number; sender_name: string; content: string; timestamp: string };
+type MessagePage = { messages: Message[]; nextCursor: string | null };
 
 export default function ConversationScreen() {
   const params = useLocalSearchParams<{ id: string; name?: string; userId?: string }>();
   const { user } = useAuth();
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [history, setHistory] = useState<{
+    connectionId: string;
+    messages: Message[];
+    cursor: string | null;
+  } | null>(null);
   const [error, setError] = useState('');
   const list = useRef<FlatList<Message>>(null);
-  const state = useData<Message[]>(() => request(`/messages/${params.id}`), [params.id]);
+  const shouldScrollToEnd = useRef(true);
+  const state = useData<MessagePage>(() => request(`/messages/${params.id}?paged=true&limit=50`), [params.id]);
+  const connectionId = String(params.id || '');
+  const activeHistory = history?.connectionId === connectionId ? history : null;
+  const historyCursor = activeHistory ? activeHistory.cursor : state.data?.nextCursor || null;
+  const messages = useMemo(() => {
+    const merged = new Map<number, Message>();
+    (activeHistory?.messages || []).forEach((item) => merged.set(item.id, item));
+    (state.data?.messages || []).forEach((item) => merged.set(item.id, item));
+    return [...merged.values()].sort((a, b) => a.id - b.id);
+  }, [activeHistory?.messages, state.data?.messages]);
 
   useEffect(() => {
-    if (state.data?.length) setTimeout(() => list.current?.scrollToEnd({ animated: false }), 50);
-  }, [state.data]);
+    if (messages.length && shouldScrollToEnd.current) {
+      shouldScrollToEnd.current = false;
+      setTimeout(() => list.current?.scrollToEnd({ animated: false }), 50);
+    }
+  }, [messages]);
 
   const send = async () => {
     const content = message.trim();
@@ -35,12 +55,32 @@ export default function ConversationScreen() {
         method: 'POST',
         body: JSON.stringify({ connectionId: Number(params.id), content }),
       });
+      shouldScrollToEnd.current = true;
       state.reload();
     } catch (caught) {
       setMessage(content);
       setError(caught instanceof Error ? caught.message : 'Your message could not be sent.');
     } finally {
       setSending(false);
+    }
+  };
+
+  const loadEarlier = async () => {
+    if (!historyCursor || loadingEarlier) return;
+    setLoadingEarlier(true);
+    setError('');
+    try {
+      const page = await request<MessagePage>(`/messages/${params.id}?paged=true&limit=50&before=${encodeURIComponent(historyCursor)}`);
+      setHistory({
+        connectionId,
+        messages: [...page.messages, ...(activeHistory?.messages || [])],
+        cursor: page.nextCursor,
+      });
+      shouldScrollToEnd.current = false;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Earlier messages could not be loaded.');
+    } finally {
+      setLoadingEarlier(false);
     }
   };
 
@@ -107,9 +147,17 @@ export default function ConversationScreen() {
     {error || state.error ? <View style={styles.errorWrap}><ErrorNotice message={error || state.error || ''} /></View> : null}
     <FlatList
       ref={list}
-      data={state.data || []}
+      data={messages}
       keyExtractor={(item) => String(item.id)}
       contentContainerStyle={styles.messages}
+      ListHeaderComponent={historyCursor ? <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Load earlier messages"
+        accessibilityState={{ disabled: loadingEarlier }}
+        disabled={loadingEarlier}
+        onPress={loadEarlier}
+        style={styles.earlier}
+      ><Text style={styles.earlierText}>{loadingEarlier ? 'Loading...' : 'Load earlier messages'}</Text></Pressable> : null}
       renderItem={({ item }) => {
         const mine = Number(item.sender_id) === Number(user?.id);
         return <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
@@ -163,6 +211,8 @@ const styles = StyleSheet.create({
   status: { color: colors.muted, fontFamily: typography.regular, fontSize: 11 },
   errorWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   messages: { padding: spacing.lg, gap: spacing.sm, flexGrow: 1 },
+  earlier: { alignSelf: 'center', minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.md },
+  earlierText: { color: colors.brand, fontFamily: typography.bold, fontSize: 13 },
   bubble: { maxWidth: '82%', borderRadius: 16, paddingHorizontal: spacing.md, paddingVertical: 10, gap: 4 },
   mine: { alignSelf: 'flex-end', backgroundColor: colors.brand, borderBottomRightRadius: 4 },
   theirs: { alignSelf: 'flex-start', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderBottomLeftRadius: 4 },

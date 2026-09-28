@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db/database');
 const { authenticateToken, requireVerifiedEmail } = require('../middleware/auth');
 const { createNotification } = require('./notifications');
-const { isPositiveInteger, sanitizeText } = require('../utils/validation');
+const { boundedInteger, isPositiveInteger, sanitizeText } = require('../utils/validation');
 const { usersAreBlocked } = require('../services/safety');
 const { contentPolicyError, findContentPolicyViolation } = require('../services/contentModeration');
 
@@ -137,18 +137,30 @@ router.get('/:connectionId', async (req, res) => {
       return res.status(403).json({ error: 'Messaging is unavailable for this connection' });
     }
 
-    // Get messages with read status
+    const paged = req.query.paged === 'true';
+    const limit = boundedInteger(req.query.limit, { min: 10, max: 100, fallback: 50 });
+    const before = req.query.before;
+    if (before !== undefined && !isPositiveInteger(before)) {
+      return res.status(400).json({ error: 'Message cursor is invalid' });
+    }
+
+    // Read newest-first for an efficient cursor, then restore chronological display order.
     const messages = await db.prepare(`
       SELECT * FROM (
         SELECT m.id, m.content, m.timestamp, m.read_at, m.sender_id, u.name as sender_name
         FROM messages m
         JOIN users u ON m.sender_id = u.id
-        WHERE m.connection_id = ?
-        ORDER BY m.timestamp DESC, m.id DESC
-        LIMIT 100
+        WHERE m.connection_id = ? ${paged && before ? 'AND m.id < ?' : ''}
+        ORDER BY m.id DESC
+        LIMIT ?
       ) recent_messages
-      ORDER BY timestamp ASC, id ASC
-    `).all(connectionId);
+      ORDER BY id ASC
+    `).all(...(paged && before
+      ? [connectionId, Number(before), limit + 1]
+      : [connectionId, paged ? limit + 1 : 100]));
+
+    const hasMore = paged && messages.length > limit;
+    const page = hasMore ? messages.slice(messages.length - limit) : messages;
 
     // Mark messages as read for the current user (except their own messages)
     const markAsRead = await db.prepare(`
@@ -158,7 +170,13 @@ router.get('/:connectionId', async (req, res) => {
     `);
     await markAsRead.run(connectionId, userId);
 
-    res.json(messages);
+    if (paged) {
+      return res.json({
+        messages: page,
+        nextCursor: hasMore ? String(page[0].id) : null
+      });
+    }
+    res.json(page);
   } catch (error) {
     console.error('Get messages error:', error);
     res.status(500).json({ error: 'Internal server error' });
