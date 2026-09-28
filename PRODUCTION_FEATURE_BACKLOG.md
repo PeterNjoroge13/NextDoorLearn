@@ -94,6 +94,8 @@ This file tracks production work that can be completed without external account 
 - [x] Lease email and reminder work so overlapping background jobs do not deliver the same work concurrently.
 - [x] Move exhausted email deliveries into a visible dead-letter state and let administrators retry them safely.
 - [x] Persist background-job heartbeats, recover stale worker leases, and surface unhealthy processing in health and admin views.
+- [x] Add scoped maintenance switches for new bookings, checkout, Zoom provisioning, Google Calendar sync, and email delivery.
+- [x] Retry transient Zoom failures and isolate Google Calendar failures to the affected participant.
 - [ ] Connect GitHub Actions failure notifications to the production operator so missed runs actively page someone.
 - [ ] Complete a documented Neon backup restore drill and record recovery time and recovery point objectives.
 

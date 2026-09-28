@@ -404,6 +404,7 @@ const Sessions = () => {
             <strong>Google Calendar</strong>
             <p>{googleStatus.connected
               ? `Session sync is ${googleStatus.integration?.syncEnabled ? 'on' : 'paused'}.`
+              : googleStatus.maintenance ? 'Calendar sync is temporarily paused for maintenance.'
               : googleStatus.configured ? 'Connect once to keep confirmed sessions in your calendar.' : 'Calendar connection is coming soon.'}</p>
           </div>
           <div className="button-row">

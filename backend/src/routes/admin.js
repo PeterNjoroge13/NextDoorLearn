@@ -4,7 +4,8 @@ const db = require('../db/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { boundedInteger, isPositiveInteger, sanitizeText } = require('../utils/validation');
 const { createSecurityToken, hashSecurityToken } = require('../utils/securityTokens');
-const { queueEmail, processEmailOutbox, providerConfigured, retryOutboxEmail } = require('../services/email');
+const { queueEmail, processEmailOutbox, providerAvailable, providerConfigured, retryOutboxEmail } = require('../services/email');
+const { isFeatureDisabled } = require('../services/featureFlags');
 const emailTemplates = require('../services/emailTemplates');
 const { getTutorRecommendations, parseList } = require('../services/matching');
 const { createNotification } = require('./notifications');
@@ -39,7 +40,20 @@ router.get('/overview', async (req, res) => {
       db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open FROM student_waitlist_entries").get(),
       getBackgroundJobHealth()
     ]);
-    res.json({ users, applications, reports, sessions, emails: { ...emails, providerConfigured: providerConfigured() }, waitlist, backgroundJobs });
+    res.json({
+      users,
+      applications,
+      reports,
+      sessions,
+      emails: {
+        ...emails,
+        providerConfigured: providerAvailable(),
+        credentialsConfigured: providerConfigured(),
+        maintenance: isFeatureDisabled('email')
+      },
+      waitlist,
+      backgroundJobs
+    });
   } catch (error) {
     console.error('Admin overview error:', error);
     res.status(500).json({ error: 'Unable to load administration overview' });

@@ -27,7 +27,7 @@ This audit separates launch blockers from code that is already implemented. A gr
 - Add cursor pagination to conversations, session history, tutors, applications, reports, and audit logs before datasets become large.
 - Add a staging environment with separate database branches, Stripe test mode, email domain, OAuth apps, and mobile build profile.
 - Add privacy-aware analytics for onboarding completion, match quality, booking conversion, attendance, and retention.
-- Add integration kill switches and maintenance messaging for payments, calendar, Zoom, email, and new bookings.
+- Exercise the new integration maintenance switches during a staging incident drill before launch.
 - Add tutor vacation mode, archived conversations, receipts, downloadable invoices, dispute intake, and appeal tracking.
 - Move media to object storage with malware scanning, image re-encoding, lifecycle rules, and deletion propagation as volume grows.
 - Add database query telemetry and load tests for tutor discovery, conversations, notifications, and administration queues.
@@ -42,6 +42,8 @@ This audit separates launch blockers from code that is already implemented. A gr
 - Email delivery has bounded retries, a dead-letter state, administrator visibility, and a guarded retry action.
 - The scheduled worker reconciles non-final payments on cancelled sessions with provider-idempotent retries.
 - Background work records durable heartbeats, rejects overlapping runs, expires abandoned leases, and surfaces stale or failed execution in health and admin views.
+- Scoped maintenance switches pause new bookings and provider writes without blocking Stripe webhooks, refunds, existing records, or cleanup operations.
+- Zoom retries rate limits and transient provider failures; Google Calendar isolates participant failures and disables sync after revoked authorization.
 - Database migration `017_operational_recovery` adds only nullable lifecycle/lease fields and recovery indexes for a low-risk rollout.
 - Database migration `018_background_job_health` adds the bounded operational run ledger used by heartbeat monitoring.
 

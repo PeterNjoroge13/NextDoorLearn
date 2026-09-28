@@ -1,9 +1,11 @@
 const db = require('../db/database');
 const { decryptField, encryptField, isEncryptedField } = require('../utils/fieldEncryption');
+const { isFeatureDisabled } = require('./featureFlags');
 
 const GOOGLE_PROVIDER = 'google';
 const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/calendar.events', 'openid', 'email', 'profile'];
 const getGoogleApi = () => require('googleapis').google;
+const GOOGLE_REQUEST_OPTIONS = { timeout: 15000 };
 
 const getOAuthClient = () => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -21,6 +23,22 @@ const getOAuthClient = () => {
 const hasGoogleConfig = () => Boolean(
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REDIRECT_URI
 );
+const googleCalendarAvailable = () => hasGoogleConfig() && !isFeatureDisabled('googleCalendar');
+
+const isGoogleAuthError = (error) => {
+  const status = Number(error?.code || error?.response?.status);
+  const message = String(error?.message || '').toLowerCase();
+  return status === 401 || message.includes('invalid_grant') || message.includes('invalid credentials');
+};
+
+const runParticipantOperations = async (participants, operation) => Promise.all(participants.map(async (participant) => {
+  try {
+    const result = await operation(participant);
+    return { userId: participant.userId, status: 'synced', ...result };
+  } catch (error) {
+    return { userId: participant.userId, status: 'failed', error };
+  }
+}));
 
 const getGoogleIntegration = async (userId) => {
   const integration = await db.prepare(`
@@ -197,80 +215,80 @@ const upsertSessionGoogleEvent = async (sessionId, userId, eventId) => {
   `).run(sessionId, userId, GOOGLE_PROVIDER, eventId);
 };
 
-const deleteSessionGoogleEvents = async (sessionId) => {
-  await db.prepare('DELETE FROM session_google_events WHERE session_id = ?').run(sessionId);
-};
-
 const syncSessionToGoogle = async (session, action = 'upsert') => {
-  try {
-    const payment = session.payment_status
-      ? { status: session.payment_status }
-      : await db.prepare('SELECT status FROM session_payments WHERE session_id = ?').get(session.id);
-    const studentMeetingAccess = Number(session.agreed_hourly_rate_cents || 0) === 0 || payment?.status === 'succeeded';
-    const clients = await Promise.all([
-      getAuthorizedCalendarClient(session.tutor_id),
-      getAuthorizedCalendarClient(session.student_id)
-    ]);
-
-    const participants = [
-      { userId: session.tutor_id, client: clients[0] },
-      { userId: session.student_id, client: clients[1] }
-    ];
-
-    for (const participant of participants) {
-      if (!participant.client) {
-        continue;
-      }
-
-      const includeMeeting = Number(participant.userId) === Number(session.tutor_id) || studentMeetingAccess;
-      const eventPayload = buildEventPayload(session, null, includeMeeting);
-      const calendarId = participant.client.integration.calendar_id || 'primary';
-      const existingEvent = await getSessionGoogleEvent(session.id, participant.userId);
-
+  if (isFeatureDisabled('googleCalendar')) {
+    return [session.tutor_id, session.student_id].map((userId) => ({ userId, status: 'maintenance' }));
+  }
+  const payment = session.payment_status
+    ? { status: session.payment_status }
+    : await db.prepare('SELECT status FROM session_payments WHERE session_id = ?').get(session.id);
+  const studentMeetingAccess = Number(session.agreed_hourly_rate_cents || 0) === 0 || payment?.status === 'succeeded';
+  const participants = [{ userId: session.tutor_id }, { userId: session.student_id }];
+  const results = await runParticipantOperations(participants, async (participant) => {
+    const client = await getAuthorizedCalendarClient(participant.userId);
+    if (!client) return { status: 'skipped' };
+    const includeMeeting = Number(participant.userId) === Number(session.tutor_id) || studentMeetingAccess;
+    const eventPayload = buildEventPayload(session, null, includeMeeting);
+    const calendarId = client.integration.calendar_id || 'primary';
+    const existingEvent = await getSessionGoogleEvent(session.id, participant.userId);
+    try {
       if (action === 'delete') {
         if (existingEvent?.event_id) {
-          await participant.client.calendar.events.delete({
-            calendarId,
-            eventId: existingEvent.event_id
-          });
+          await client.calendar.events.delete({ calendarId, eventId: existingEvent.event_id }, GOOGLE_REQUEST_OPTIONS);
         }
-        continue;
+        await db.prepare(`
+          DELETE FROM session_google_events WHERE session_id = ? AND user_id = ? AND provider = ?
+        `).run(session.id, participant.userId, GOOGLE_PROVIDER);
+        if (Number(participant.userId) === Number(session.tutor_id)) {
+          await db.prepare('UPDATE sessions SET google_event_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(session.id);
+        }
+        return {};
       }
-
       if (existingEvent?.event_id) {
-        await participant.client.calendar.events.update({
+        await client.calendar.events.update({
           calendarId,
           eventId: existingEvent.event_id,
           requestBody: eventPayload
-        });
+        }, GOOGLE_REQUEST_OPTIONS);
       } else {
-        const created = await participant.client.calendar.events.insert({
-          calendarId,
-          requestBody: eventPayload
-        });
+        const created = await client.calendar.events.insert({ calendarId, requestBody: eventPayload }, GOOGLE_REQUEST_OPTIONS);
         if (created?.data?.id) {
           await upsertSessionGoogleEvent(session.id, participant.userId, created.data.id);
-          if (participant.userId === session.tutor_id) {
+          if (Number(participant.userId) === Number(session.tutor_id)) {
             await db.prepare('UPDATE sessions SET google_event_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
               .run(created.data.id, session.id);
           }
         }
       }
+      return {};
+    } catch (error) {
+      if (isGoogleAuthError(error)) {
+        await db.prepare(`
+          UPDATE user_google_integrations SET sync_enabled = 0, updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = ? AND provider = ?
+        `).run(participant.userId, GOOGLE_PROVIDER);
+      }
+      throw error;
     }
-    if (action === 'delete') {
-      await deleteSessionGoogleEvents(session.id);
-    }
-  } catch (error) {
-    console.error('Google Calendar sync warning:', error.message || error);
+  });
+  for (const result of results) {
+    if (result.status === 'failed') console.error('Google Calendar participant sync warning:', result.error?.message || result.error);
   }
+  return results.map(({ error, ...result }) => ({
+    ...result,
+    error: error ? (isGoogleAuthError(error) ? 'authorization_required' : 'provider_error') : undefined
+  }));
 };
 
 module.exports = {
   hasGoogleConfig,
+  googleCalendarAvailable,
+  isGoogleAuthError,
   getGoogleIntegration,
   upsertGoogleIntegration,
   disconnectGoogleIntegration,
   createAuthUrl,
   exchangeCodeForTokens,
+  runParticipantOperations,
   syncSessionToGoogle
 };

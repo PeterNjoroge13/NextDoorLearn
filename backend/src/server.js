@@ -10,6 +10,7 @@ const { providerConfigured } = require('./services/email');
 const { zoomConfigured } = require('./services/zoom');
 const { hasGoogleConfig } = require('./services/googleCalendar');
 const { publicPaymentConfig } = require('./services/payments');
+const { featureStates, isFeatureDisabled } = require('./services/featureFlags');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -222,17 +223,19 @@ app.get('/api/health', async (req, res) => {
   try {
     await db.prepare('SELECT 1 as ok').get();
     const backgroundJobs = await getBackgroundJobHealth();
+    const paymentConfig = publicPaymentConfig();
     res.json({
       status: 'ok',
       message: 'NextDoorLearn API is running',
       database: 'ok',
-      email: providerConfigured() ? 'configured' : 'not_configured',
+      email: isFeatureDisabled('email') ? 'maintenance' : providerConfigured() ? 'configured' : 'not_configured',
       emailVerification: process.env.REQUIRE_EMAIL_VERIFICATION === 'true' ? 'required' : 'optional',
-      zoom: zoomConfigured() ? 'configured' : 'not_configured',
-      googleCalendar: hasGoogleConfig() ? 'configured' : 'not_configured',
+      zoom: isFeatureDisabled('zoom') ? 'maintenance' : zoomConfigured() ? 'configured' : 'not_configured',
+      googleCalendar: isFeatureDisabled('googleCalendar') ? 'maintenance' : hasGoogleConfig() ? 'configured' : 'not_configured',
       mediaStorage: 'database',
-      payments: publicPaymentConfig().configured ? 'configured' : 'not_configured',
+      payments: paymentConfig.maintenance ? 'maintenance' : paymentConfig.configured ? 'configured' : 'not_configured',
       backgroundJobs: backgroundJobs.healthy ? 'ok' : backgroundJobs.status,
+      features: featureStates(),
       timestamp: new Date().toISOString()
     });
   } catch (error) {

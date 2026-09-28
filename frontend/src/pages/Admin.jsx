@@ -268,7 +268,7 @@ const Admin = () => {
         {!emailDelivery.providerConfigured ? (
           <div className="alert alert-warning admin-provider-warning">
             <AlertTriangle size={18} />
-            <span>Transactional email is offline. Approving a tutor will generate a secure activation link you can copy and share manually.</span>
+            <span>{emailDelivery.maintenance ? 'Transactional email is paused for maintenance. Messages remain queued until delivery resumes.' : 'Transactional email is offline. Approving a tutor will generate a secure activation link you can copy and share manually.'}</span>
           </div>
         ) : null}
         {overview?.backgroundJobs && !overview.backgroundJobs.healthy ? (

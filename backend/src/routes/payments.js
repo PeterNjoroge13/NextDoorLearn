@@ -21,6 +21,7 @@ const {
   statusForPaymentIntentEvent
 } = require('../services/paymentSecurity');
 const { syncSessionToGoogle } = require('../services/googleCalendar');
+const { requireFeature } = require('../services/featureFlags');
 
 const router = express.Router();
 router.use(authenticateToken, requireVerifiedEmail);
@@ -86,14 +87,15 @@ router.get('/account', async (req, res) => {
       await saveAccountStatus(req.user.userId, account);
       row = await db.prepare('SELECT * FROM tutor_payment_accounts WHERE user_id = ?').get(req.user.userId);
     }
-    res.json({ ...serializeAccount(row), configured: publicPaymentConfig().configured });
+    const config = publicPaymentConfig();
+    res.json({ ...serializeAccount(row), configured: config.configured, maintenance: config.maintenance });
   } catch (error) {
     console.error('Payment account status error:', error);
     res.status(error.statusCode || 502).json({ error: error.statusCode ? error.message : 'Unable to load payout status' });
   }
 });
 
-router.post('/account/onboarding-link', paymentWriteLimiter, async (req, res) => {
+router.post('/account/onboarding-link', requireFeature('payments'), paymentWriteLimiter, async (req, res) => {
   if (req.user.role !== 'tutor') return res.status(403).json({ error: 'Tutor access is required' });
   try {
     const user = await db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(req.user.userId);
@@ -203,7 +205,7 @@ router.get('/sessions/:sessionId', async (req, res) => {
   });
 });
 
-router.post('/sessions/:sessionId/intent', paymentWriteLimiter, async (req, res) => {
+router.post('/sessions/:sessionId/intent', requireFeature('payments'), paymentWriteLimiter, async (req, res) => {
   if (req.user.role !== 'student') return res.status(403).json({ error: 'Only the session student can pay' });
   if (!isPositiveInteger(req.params.sessionId)) return res.status(400).json({ error: 'Valid session ID is required' });
   try {

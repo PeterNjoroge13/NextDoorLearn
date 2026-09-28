@@ -1,8 +1,10 @@
 const db = require('../db/database');
+const { isFeatureDisabled } = require('./featureFlags');
 const REQUEST_TIMEOUT_MS = 15000;
 const MAX_ATTEMPTS = 8;
 
 const providerConfigured = () => Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
+const providerAvailable = () => providerConfigured() && !isFeatureDisabled('email');
 
 const claimOutboxEmail = async (id) => {
   const staleBefore = new Date(Date.now() - 15 * 60 * 1000).toISOString();
@@ -24,7 +26,7 @@ const deliverOutboxEmail = async (emailOrId) => {
   if (!candidate || candidate.status === 'sent') return candidate;
   const email = await claimOutboxEmail(candidate.id);
   if (!email) return { ...candidate, skipped: true };
-  if (!providerConfigured()) {
+  if (!providerAvailable()) {
     await db.prepare(`
       UPDATE email_outbox SET status = 'pending', locked_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?
     `).run(email.id);
@@ -114,4 +116,4 @@ const sendEmail = (options) => queueEmail({
   idempotencyKey: options.idempotencyKey || `legacy_${Date.now()}_${Math.random().toString(36).slice(2)}`
 });
 
-module.exports = { deliverOutboxEmail, processEmailOutbox, providerConfigured, queueEmail, retryOutboxEmail, sendEmail };
+module.exports = { deliverOutboxEmail, processEmailOutbox, providerAvailable, providerConfigured, queueEmail, retryOutboxEmail, sendEmail };

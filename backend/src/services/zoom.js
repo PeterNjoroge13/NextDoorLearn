@@ -2,10 +2,12 @@ const crypto = require('crypto');
 const db = require('../db/database');
 const { decryptField, encryptField } = require('../utils/fieldEncryption');
 const { zonedTimeToUtc } = require('./reminders');
+const { isFeatureDisabled } = require('./featureFlags');
 
 const ZOOM_TOKEN_URL = process.env.ZOOM_TOKEN_URL || 'https://zoom.us/oauth/token';
 const ZOOM_API_BASE_URL = process.env.ZOOM_API_BASE_URL || 'https://api.zoom.us/v2';
 const REQUEST_TIMEOUT_MS = 15000;
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 let cachedToken = null;
 let cachedTokenExpiresAt = 0;
@@ -16,6 +18,7 @@ const zoomConfigured = () => Boolean(
   process.env.ZOOM_CLIENT_SECRET &&
   process.env.ZOOM_HOST_USER_ID
 );
+const zoomAvailable = () => zoomConfigured() && !isFeatureDisabled('zoom');
 
 const zoomRequest = async (url, options = {}) => {
   const controller = new AbortController();
@@ -27,6 +30,20 @@ const zoomRequest = async (url, options = {}) => {
   }
 };
 
+const retryDelay = (response, attempt) => {
+  const retryAfter = Number(response.headers.get('retry-after'));
+  if (Number.isFinite(retryAfter) && retryAfter >= 0) return Math.min(2000, retryAfter * 1000);
+  return Math.min(2000, 250 * (2 ** attempt));
+};
+
+const zoomRequestWithRetry = async (url, options = {}, attempt = 0) => {
+  const response = await zoomRequest(url, options);
+  if (!RETRYABLE_STATUSES.has(response.status) || attempt >= 2) return response;
+  if (response.body) await response.body.cancel().catch(() => null);
+  await new Promise((resolve) => setTimeout(resolve, retryDelay(response, attempt)));
+  return zoomRequestWithRetry(url, options, attempt + 1);
+};
+
 const getZoomAccessToken = async ({ forceRefresh = false } = {}) => {
   if (!zoomConfigured()) throw Object.assign(new Error('Zoom is not configured'), { code: 'ZOOM_NOT_CONFIGURED' });
   if (!forceRefresh && cachedToken && cachedTokenExpiresAt > Date.now() + 60000) return cachedToken;
@@ -35,7 +52,7 @@ const getZoomAccessToken = async ({ forceRefresh = false } = {}) => {
   const tokenUrl = new URL(ZOOM_TOKEN_URL);
   tokenUrl.searchParams.set('grant_type', 'account_credentials');
   tokenUrl.searchParams.set('account_id', process.env.ZOOM_ACCOUNT_ID);
-  const response = await zoomRequest(tokenUrl, {
+  const response = await zoomRequestWithRetry(tokenUrl, {
     method: 'POST',
     headers: { Authorization: `Basic ${credentials}` }
   });
@@ -50,7 +67,7 @@ const getZoomAccessToken = async ({ forceRefresh = false } = {}) => {
 
 const callZoomApi = async (path, options = {}, retry = true) => {
   const accessToken = await getZoomAccessToken();
-  const response = await zoomRequest(`${ZOOM_API_BASE_URL}${path}`, {
+  const response = await zoomRequestWithRetry(`${ZOOM_API_BASE_URL}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -107,7 +124,14 @@ const getMeetingRecord = (sessionId) => db.prepare(`
 `).get(sessionId);
 
 const provisionZoomMeeting = async (session, { force = false } = {}) => {
-  if (!zoomConfigured() || session.meeting_link) return session;
+  if (session.meeting_link) return session;
+  if (!zoomConfigured()) return session;
+  if (!zoomAvailable()) {
+    throw Object.assign(new Error('New Zoom rooms are temporarily paused for maintenance'), {
+      statusCode: 503,
+      code: 'FEATURE_MAINTENANCE'
+    });
+  }
   const existing = await getMeetingRecord(session.id);
   if (existing?.provider_meeting_id && existing.status === 'ready' && !force) return session;
 
@@ -204,5 +228,6 @@ module.exports = {
   getMeetingAccess,
   getMeetingRecord,
   provisionZoomMeeting,
+  zoomAvailable,
   zoomConfigured
 };

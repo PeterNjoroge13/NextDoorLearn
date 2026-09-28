@@ -4,6 +4,7 @@ const db = require('../db/database');
 const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
 const {
   hasGoogleConfig,
+  googleCalendarAvailable,
   getGoogleIntegration,
   upsertGoogleIntegration,
   disconnectGoogleIntegration,
@@ -11,6 +12,7 @@ const {
   exchangeCodeForTokens,
   syncSessionToGoogle
 } = require('../services/googleCalendar');
+const { requireFeature } = require('../services/featureFlags');
 
 const router = express.Router();
 
@@ -32,7 +34,7 @@ const syncUpcomingSessions = async (userId) => {
   for (const session of sessions) await syncSessionToGoogle(session, 'upsert');
 };
 
-router.get('/auth-url', authenticateToken, async (req, res) => {
+router.get('/auth-url', authenticateToken, requireFeature('googleCalendar'), async (req, res) => {
   try {
     if (!hasGoogleConfig()) {
       return res.status(400).json({ error: 'Google OAuth is not configured on the server' });
@@ -53,6 +55,7 @@ router.get('/auth-url', authenticateToken, async (req, res) => {
   }
 });
 
+// Allow an OAuth redirect already in flight to finish; the auth-url route prevents new connections during maintenance.
 router.get('/callback', async (req, res) => {
   let callbackClient = 'web';
   try {
@@ -83,7 +86,7 @@ router.get('/callback', async (req, res) => {
   }
 });
 
-router.post('/sync-toggle', authenticateToken, async (req, res) => {
+router.post('/sync-toggle', authenticateToken, requireFeature('googleCalendar'), async (req, res) => {
   try {
     const { enabled } = req.body;
     const existing = await getGoogleIntegration(req.user.userId);
@@ -125,7 +128,8 @@ router.get('/status', authenticateToken, async (req, res) => {
   try {
     const integration = await getGoogleIntegration(req.user.userId);
     res.json({
-      configured: hasGoogleConfig(),
+      configured: googleCalendarAvailable(),
+      maintenance: hasGoogleConfig() && !googleCalendarAvailable(),
       connected: Boolean(integration),
       integration: integration
         ? {

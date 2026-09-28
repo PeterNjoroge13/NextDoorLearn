@@ -12,6 +12,7 @@ const { queueSessionEmails } = require('../services/sessionCommunications');
 const { settleCancelledSessionPayment } = require('../services/paymentLedger');
 const { canOpenMeeting, redactSessionForUser } = require('../services/sessionAccess');
 const { boundedInteger, isPositiveInteger, isValidDate, isValidMeetingUrl, isValidTime, sanitizeText } = require('../utils/validation');
+const { requireFeature } = require('../services/featureFlags');
 
 const router = express.Router();
 router.use(authenticateToken, requireVerifiedEmail);
@@ -226,7 +227,12 @@ router.post('/:id/meeting', async (req, res) => {
     res.json(await getMeetingAccess(provisioned, req.user));
   } catch (error) {
     console.error('Retry meeting creation error:', error);
-    res.status(503).json({ error: 'The Zoom room could not be created. Check the Zoom connection and try again.' });
+    res.status(error.statusCode || 503).json({
+      error: error.code === 'FEATURE_MAINTENANCE'
+        ? error.message
+        : 'The Zoom room could not be created. Check the Zoom connection and try again.',
+      code: error.code
+    });
   }
 });
 
@@ -361,7 +367,7 @@ router.patch('/:id/outcome', async (req, res) => {
 });
 
 // Create a new session
-router.post('/', async (req, res) => {
+router.post('/', requireFeature('bookings'), async (req, res) => {
   try {
     const {
       connectionId,

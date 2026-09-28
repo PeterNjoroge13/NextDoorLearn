@@ -11,6 +11,8 @@ const base = `http://127.0.0.1:${port}/api`;
 const databasePath = path.join('/tmp', `nextdoorlearn-test-${process.pid}.db`);
 const zoomPort = 3229;
 let zoomMeetingSequence = 0;
+let zoomRateLimitRemaining = 1;
+let zoomRateLimitResponses = 0;
 const zoomServer = http.createServer((req, res) => {
   const send = (status, payload) => {
     res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -20,6 +22,12 @@ const zoomServer = http.createServer((req, res) => {
     return send(200, { access_token: 'fake-zoom-token', expires_in: 3600 });
   }
   if (req.method === 'POST' && /^\/v2\/users\/[^/]+\/meetings$/.test(req.url || '')) {
+    if (zoomRateLimitRemaining > 0) {
+      zoomRateLimitRemaining -= 1;
+      zoomRateLimitResponses += 1;
+      res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '0' });
+      return res.end(JSON.stringify({ message: 'Rate limit test' }));
+    }
     zoomMeetingSequence += 1;
     return send(201, {
       id: zoomMeetingSequence,
@@ -1001,4 +1009,5 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     method: 'POST', body: { refreshToken: suspendedUser.body.refreshToken }
   });
   assert.equal(suspendedRefresh.status, 401);
+  assert.equal(zoomRateLimitResponses, 1);
 });

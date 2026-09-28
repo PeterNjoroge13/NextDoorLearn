@@ -1,9 +1,11 @@
 const Stripe = require('stripe');
+const { isFeatureDisabled } = require('./featureFlags');
 
 let stripeClient;
 
 const paymentsConfigured = () => Boolean(process.env.STRIPE_SECRET_KEY);
 const webhookConfigured = () => Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
+const paymentsAvailable = () => paymentsConfigured() && !isFeatureDisabled('payments');
 
 const getStripe = () => {
   if (!paymentsConfigured()) {
@@ -17,8 +19,9 @@ const getStripe = () => {
 };
 
 const publicPaymentConfig = () => ({
-  configured: webhookConfigured() && Boolean(process.env.STRIPE_PUBLISHABLE_KEY),
-  publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null,
+  configured: webhookConfigured() && Boolean(process.env.STRIPE_PUBLISHABLE_KEY) && !isFeatureDisabled('payments'),
+  maintenance: isFeatureDisabled('payments'),
+  publishableKey: isFeatureDisabled('payments') ? null : process.env.STRIPE_PUBLISHABLE_KEY || null,
   currency: 'usd',
   provider: 'stripe'
 });
@@ -99,6 +102,7 @@ module.exports = {
   createSessionPaymentIntent,
   createTutorAccount,
   paymentsConfigured,
+  paymentsAvailable,
   platformFeeFor,
   publicPaymentConfig,
   refundPaymentIntent,

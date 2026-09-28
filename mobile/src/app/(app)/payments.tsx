@@ -15,7 +15,7 @@ type PaymentItem = {
   amount_cents: number; payment_status: string; payout_ready: boolean; can_pay: boolean;
   student_name: string; tutor_name: string;
 };
-type PaymentAccount = { configured: boolean; onboardingStatus: string; payoutsEnabled: boolean; requirementsDue: string[] };
+type PaymentAccount = { configured: boolean; maintenance?: boolean; onboardingStatus: string; payoutsEnabled: boolean; requirementsDue: string[] };
 type Checkout = { clientSecret: string; publishableKey: string; amountCents: number };
 
 const labels: Record<string, string> = {
@@ -71,7 +71,7 @@ export default function PaymentsScreen() {
       </View>
       <Card tone={account.data?.payoutsEnabled ? 'brand' : 'gold'}>
         <Text style={styles.section}>{account.data?.payoutsEnabled ? 'Payouts ready' : 'Connect your payout account'}</Text>
-        <Text style={styles.copy}>{account.data?.configured ? 'Stripe verifies your identity and sends tutoring earnings to your connected bank account.' : 'The app is ready for payments, but Stripe production keys have not been added yet.'}</Text>
+        <Text style={styles.copy}>{account.data?.maintenance ? 'Payment setup is temporarily paused for maintenance. Your existing history is still available.' : account.data?.configured ? 'Stripe verifies your identity and sends tutoring earnings to your connected bank account.' : 'The app is ready for payments, but Stripe production keys have not been added yet.'}</Text>
         <Button label={account.data?.payoutsEnabled ? 'Review payout details' : 'Set up secure payouts'} onPress={beginOnboarding} loading={onboarding} disabled={!account.data?.configured} />
       </Card>
     </> : <Card tone="brand"><View style={styles.trust}><ShieldCheck size={24} color={colors.brand} /><View style={styles.flex}><Text style={styles.section}>Protected payment details</Text><Text style={styles.copy}>Stripe securely handles card and bank details. NextDoorLearn never stores them.</Text></View></View></Card>}

@@ -58,6 +58,16 @@ services:
         generateValue: true
       - key: REQUIRE_EMAIL_VERIFICATION
         value: false
+      - key: DISABLE_NEW_BOOKINGS
+        value: false
+      - key: DISABLE_PAYMENTS
+        value: false
+      - key: DISABLE_ZOOM
+        value: false
+      - key: DISABLE_GOOGLE_CALENDAR
+        value: false
+      - key: DISABLE_EMAIL
+        value: false
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_PUBLISHABLE_KEY
