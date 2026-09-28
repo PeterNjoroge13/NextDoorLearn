@@ -32,6 +32,7 @@ const progressRoutes = require('./routes/progress');
 const blockRoutes = require('./routes/blocks');
 const recommendationRoutes = require('./routes/recommendations');
 const jobRoutes = require('./routes/jobs');
+const { getBackgroundJobHealth } = require('./services/jobHealth');
 const resendWebhookRoutes = require('./routes/resendWebhook');
 const deviceRoutes = require('./routes/devices');
 const mediaRoutes = require('./routes/media');
@@ -220,6 +221,7 @@ app.use('/api/payments', paymentRoutes);
 app.get('/api/health', async (req, res) => {
   try {
     await db.prepare('SELECT 1 as ok').get();
+    const backgroundJobs = await getBackgroundJobHealth();
     res.json({
       status: 'ok',
       message: 'NextDoorLearn API is running',
@@ -230,6 +232,7 @@ app.get('/api/health', async (req, res) => {
       googleCalendar: hasGoogleConfig() ? 'configured' : 'not_configured',
       mediaStorage: 'database',
       payments: publicPaymentConfig().configured ? 'configured' : 'not_configured',
+      backgroundJobs: backgroundJobs.healthy ? 'ok' : backgroundJobs.status,
       timestamp: new Date().toISOString()
     });
   } catch (error) {

@@ -490,6 +490,26 @@ const migrations = [
           ON session_reminders(status, locked_at, scheduled_for);
       `);
     }
+  },
+  {
+    version: '018_background_job_health',
+    async up(db) {
+      const id = db.dialect === 'postgres' ? 'BIGSERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+      const timestamp = db.dialect === 'postgres' ? 'TIMESTAMPTZ' : 'DATETIME';
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS background_job_runs (
+          id ${id},
+          job_name TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'running',
+          started_at ${timestamp} DEFAULT CURRENT_TIMESTAMP,
+          completed_at ${timestamp},
+          error TEXT,
+          details TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_background_job_runs_health
+          ON background_job_runs(job_name, status, started_at);
+      `);
+    }
   }
 ];
 

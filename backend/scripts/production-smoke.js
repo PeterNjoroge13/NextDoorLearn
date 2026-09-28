@@ -50,7 +50,8 @@ const main = async () => {
     emailVerification: health.body.emailVerification,
     zoom: health.body.zoom,
     googleCalendar: health.body.googleCalendar,
-    mediaStorage: health.body.mediaStorage
+    mediaStorage: health.body.mediaStorage,
+    backgroundJobs: health.body.backgroundJobs
   }, null, 2));
 };
 

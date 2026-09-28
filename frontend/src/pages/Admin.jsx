@@ -271,6 +271,15 @@ const Admin = () => {
             <span>Transactional email is offline. Approving a tutor will generate a secure activation link you can copy and share manually.</span>
           </div>
         ) : null}
+        {overview?.backgroundJobs && !overview.backgroundJobs.healthy ? (
+          <div className="alert alert-warning admin-provider-warning">
+            <AlertTriangle size={18} />
+            <span>
+              Background processing needs attention. Status: {overview.backgroundJobs.status.replaceAll('_', ' ')}
+              {overview.backgroundJobs.ageMinutes !== null ? `, last update ${overview.backgroundJobs.ageMinutes} minutes ago.` : '.'}
+            </span>
+          </div>
+        ) : null}
 
         <section className="grid grid-4">
           <div className="card stat">

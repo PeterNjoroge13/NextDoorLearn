@@ -942,6 +942,12 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   const recoveredJobs = await request('/jobs/process', { method: 'POST' });
   assert.equal(recoveredJobs.status, 200);
   assert.ok(recoveredJobs.body.paymentsProcessed >= 1);
+  const heartbeatOverview = await request('/admin/overview', { token: adminResponse.body.token });
+  assert.equal(heartbeatOverview.status, 200);
+  assert.equal(heartbeatOverview.body.backgroundJobs.status, 'completed');
+  assert.equal(heartbeatOverview.body.backgroundJobs.healthy, true);
+  const heartbeatHealth = await request('/health');
+  assert.equal(heartbeatHealth.body.backgroundJobs, 'ok');
   const reconciledPaymentDatabase = new Database(databasePath);
   assert.equal(
     reconciledPaymentDatabase.prepare('SELECT status FROM session_payments WHERE id = ?').get(disposablePayment.lastInsertRowid).status,

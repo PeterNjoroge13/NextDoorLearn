@@ -1,6 +1,6 @@
 # NextDoorLearn Production Readiness Audit
 
-Last updated: September 27, 2026
+Last updated: September 28, 2026
 
 This audit separates launch blockers from code that is already implemented. A green build is not treated as proof that external providers or operational processes are ready.
 
@@ -15,7 +15,7 @@ This audit separates launch blockers from code that is already implemented. A gr
 ## P1: Complete Before Public Launch
 
 - Configure Zoom and Google OAuth, then test 429, timeout, revoked-token, partial-failure, reschedule, and cancellation behavior with real sandbox accounts.
-- Configure the GitHub reminder-job secrets and add an external alert when the job has not succeeded within its expected window.
+- Configure the GitHub reminder-job secrets and route failed workflow notifications to the production operator. Job heartbeats, stale leases, health reporting, and admin warnings are implemented.
 - Add hosted error tracking and uptime alerts with request IDs, release identifiers, and a documented incident-response path.
 - Complete physical-device testing on supported iPhones and Android devices, including push permissions, deep links, password reset links, checkout return paths, accessibility text sizes, and poor networks.
 - Complete App Store Connect and Play Console records, privacy answers, screenshots, age rating, support URL, review credentials, and account-deletion reviewer notes.
@@ -41,11 +41,13 @@ This audit separates launch blockers from code that is already implemented. A gr
 - Email and reminder workers use recoverable leases to prevent concurrent duplicate work.
 - Email delivery has bounded retries, a dead-letter state, administrator visibility, and a guarded retry action.
 - The scheduled worker reconciles non-final payments on cancelled sessions with provider-idempotent retries.
+- Background work records durable heartbeats, rejects overlapping runs, expires abandoned leases, and surfaces stale or failed execution in health and admin views.
 - Database migration `017_operational_recovery` adds only nullable lifecycle/lease fields and recovery indexes for a low-risk rollout.
+- Database migration `018_background_job_health` adds the bounded operational run ledger used by heartbeat monitoring.
 
 ## Release And Rollback Notes
 
-- Deploy the backend before relying on the new web/mobile controls so migration `017_operational_recovery` is present.
-- The migration is additive. Rolling application code back does not require dropping columns or indexes.
+- Deploy the backend before relying on the new web/mobile controls so migrations `017_operational_recovery` and `018_background_job_health` are present.
+- Both migrations are additive. Rolling application code back does not require dropping columns, tables, or indexes.
 - Do not roll back by deleting anonymized user ledger rows; payment and moderation records may be required for reconciliation and safety investigations.
-- Monitor `email_outbox.dead_letter`, `session_payments.refund_failed`, open safety reports, and the scheduled-job heartbeat after every release.
+- Monitor `email_outbox.dead_letter`, `session_payments.refund_failed`, open safety reports, and `backgroundJobs` health after every release.

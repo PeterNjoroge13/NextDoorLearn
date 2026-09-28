@@ -10,6 +10,7 @@ const { getTutorRecommendations, parseList } = require('../services/matching');
 const { createNotification } = require('./notifications');
 const { paymentsConfigured, refundPaymentIntent } = require('../services/payments');
 const { cancelScheduledSessions } = require('../services/sessionLifecycle');
+const { getBackgroundJobHealth } = require('../services/jobHealth');
 
 const router = express.Router();
 const sensitiveActionLimiter = rateLimit({
@@ -29,15 +30,16 @@ const audit = (adminUserId, action, targetType, targetId, details = {}, database
 
 router.get('/overview', async (req, res) => {
   try {
-    const [users, applications, reports, sessions, emails, waitlist] = await Promise.all([
+    const [users, applications, reports, sessions, emails, waitlist, backgroundJobs] = await Promise.all([
       db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status != 'active' THEN 1 ELSE 0 END) AS restricted FROM users").get(),
       db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN review_state IN ('submitted', 'reviewing') THEN 1 ELSE 0 END) AS awaiting_review FROM tutor_applications").get(),
       db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status IN ('open', 'reviewing') THEN 1 ELSE 0 END) AS open FROM user_reports").get(),
       db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'scheduled' THEN 1 ELSE 0 END) AS scheduled FROM sessions").get(),
       db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN status = 'dead_letter' THEN 1 ELSE 0 END) AS dead_letter FROM email_outbox").get(),
-      db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open FROM student_waitlist_entries").get()
+      db.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open FROM student_waitlist_entries").get(),
+      getBackgroundJobHealth()
     ]);
-    res.json({ users, applications, reports, sessions, emails: { ...emails, providerConfigured: providerConfigured() }, waitlist });
+    res.json({ users, applications, reports, sessions, emails: { ...emails, providerConfigured: providerConfigured() }, waitlist, backgroundJobs });
   } catch (error) {
     console.error('Admin overview error:', error);
     res.status(500).json({ error: 'Unable to load administration overview' });

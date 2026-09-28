@@ -8,6 +8,10 @@ on:
 jobs:
   process:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: nextdoorlearn-production-background-jobs
+      cancel-in-progress: false
     steps:
       - name: Process scheduled reminders and queued email
         env:
@@ -16,8 +20,8 @@ jobs:
         run: |
           if [ -z "$JOB_URL" ] || [ -z "$JOB_SECRET" ]; then
             echo "Reminder processing is waiting for repository secrets."
-            exit 0
+            exit 1
           fi
-          curl --fail --silent --show-error --retry 3 \
+          curl --fail --silent --show-error --retry 3 --connect-timeout 10 --max-time 90 \
             -X POST "$JOB_URL" \
             -H "x-job-secret: $JOB_SECRET"

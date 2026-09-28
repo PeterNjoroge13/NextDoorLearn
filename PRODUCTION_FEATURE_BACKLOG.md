@@ -93,7 +93,8 @@ This file tracks production work that can be completed without external account 
 - [x] Add self-service account-data export on web and native mobile.
 - [x] Lease email and reminder work so overlapping background jobs do not deliver the same work concurrently.
 - [x] Move exhausted email deliveries into a visible dead-letter state and let administrators retry them safely.
-- [ ] Configure a production job heartbeat alert so missed reminder runs page an operator.
+- [x] Persist background-job heartbeats, recover stale worker leases, and surface unhealthy processing in health and admin views.
+- [ ] Connect GitHub Actions failure notifications to the production operator so missed runs actively page someone.
 - [ ] Complete a documented Neon backup restore drill and record recovery time and recovery point objectives.
 
 ## Requires Peter Or External Credentials
