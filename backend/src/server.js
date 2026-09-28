@@ -11,6 +11,7 @@ const { zoomConfigured } = require('./services/zoom');
 const { hasGoogleConfig } = require('./services/googleCalendar');
 const { publicPaymentConfig } = require('./services/payments');
 const { featureStates, isFeatureDisabled } = require('./services/featureFlags');
+const logger = require('./services/logger');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -70,6 +71,21 @@ app.use(helmet({
 app.use((req, res, next) => {
   req.requestId = randomUUID();
   res.setHeader('X-Request-ID', req.requestId);
+  const startedAt = process.hrtime.bigint();
+  res.on('finish', () => {
+    if (process.env.NODE_ENV !== 'production' && process.env.LOG_REQUESTS !== 'true') return;
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    const slowRequestMs = Math.max(100, Number(process.env.SLOW_REQUEST_MS) || 1000);
+    const level = res.statusCode >= 500 ? 'error' : durationMs >= slowRequestMs ? 'warn' : 'info';
+    logger[level](durationMs >= slowRequestMs ? 'http.request.slow' : 'http.request.completed', {
+      requestId: req.requestId,
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      durationMs: Math.round(durationMs * 100) / 100,
+      userId: req.user?.userId || null
+    });
+  });
   next();
 });
 
@@ -137,7 +153,9 @@ const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: Number(process.env.RATE_LIMIT_MAX || 300),
   standardHeaders: 'draft-7',
-  legacyHeaders: false
+  legacyHeaders: false,
+  // Infrastructure probes must keep reporting service health during traffic spikes.
+  skip: (req) => req.path === '/health'
 });
 
 const authLimiter = rateLimit({
@@ -250,7 +268,14 @@ app.get('/api/health', async (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   const statusCode = Number(err.statusCode) || 500;
-  if (statusCode >= 500) console.error(`[${req.requestId}]`, err.stack);
+  if (statusCode >= 500) logger.error('http.request.failed', {
+    requestId: req.requestId,
+    method: req.method,
+    path: req.path,
+    statusCode,
+    userId: req.user?.userId || null,
+    error: err
+  });
   res.status(statusCode).json({
     error: statusCode === 403 ? 'Origin not allowed' : 'Something went wrong!',
     requestId: req.requestId
@@ -261,11 +286,27 @@ const startServer = async () => {
   try {
     validateProductionConfig();
     await db.initialize();
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT} with ${db.dialect}`);
+    const server = app.listen(PORT, () => {
+      logger.info('server.started', { port: Number(PORT), databaseDialect: db.dialect });
     });
+    let shuttingDown = false;
+    const shutdown = (signal, error = null) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      logger[error ? 'error' : 'info']('server.shutdown', { signal, error });
+      const forceExit = setTimeout(() => process.exit(1), 10000);
+      forceExit.unref();
+      server.close(() => {
+        clearTimeout(forceExit);
+        process.exit(error ? 1 : 0);
+      });
+    };
+    process.once('SIGTERM', () => shutdown('SIGTERM'));
+    process.once('SIGINT', () => shutdown('SIGINT'));
+    process.once('uncaughtException', (error) => shutdown('uncaughtException', error));
+    process.once('unhandledRejection', (error) => shutdown('unhandledRejection', error instanceof Error ? error : new Error(String(error))));
   } catch (error) {
-    console.error('Database initialization failed:', error);
+    logger.error('server.start_failed', { error });
     process.exit(1);
   }
 };

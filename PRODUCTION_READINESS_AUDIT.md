@@ -20,7 +20,7 @@ This audit separates launch blockers from code that is already implemented. A gr
 - Complete physical-device testing on supported iPhones and Android devices, including push permissions, deep links, password reset links, checkout return paths, accessibility text sizes, and poor networks.
 - Complete App Store Connect and Play Console records, privacy answers, screenshots, age rating, support URL, review credentials, and account-deletion reviewer notes.
 - Run a real beta with student and tutor cohorts and rehearse tutor rejection, suspension, appeal, no-show, refund failure, dispute, and safety escalation workflows.
-- Decide retention periods for messages, support records, failed emails, audit logs, application records, and anonymized financial records; automate expiration where policy permits.
+- Obtain legal approval for message, support, audit, application, and anonymized financial retention periods. Expired security tokens and completed-email content now have configurable automated cleanup.
 
 ## P2: Production Improvements
 
@@ -30,7 +30,7 @@ This audit separates launch blockers from code that is already implemented. A gr
 - Exercise the new integration maintenance switches during a staging incident drill before launch.
 - Add tutor vacation mode, archived conversations, receipts, downloadable invoices, dispute intake, and appeal tracking.
 - Move media to object storage with malware scanning, image re-encoding, lifecycle rules, and deletion propagation as volume grows.
-- Add database query telemetry and load tests for tutor discovery, conversations, notifications, and administration queues.
+- Expand the new bounded load-smoke runner into authenticated staging scenarios for tutor discovery, conversations, notifications, and administration queues.
 
 ## Implemented In The September 27 Pass
 
@@ -44,6 +44,8 @@ This audit separates launch blockers from code that is already implemented. A gr
 - Background work records durable heartbeats, rejects overlapping runs, expires abandoned leases, and surfaces stale or failed execution in health and admin views.
 - Scoped maintenance switches pause new bookings and provider writes without blocking Stripe webhooks, refunds, existing records, or cleanup operations.
 - Zoom retries rate limits and transient provider failures; Google Calendar isolates participant failures and disables sync after revoked authorization.
+- Scheduled retention removes expired authentication artifacts and redacts aged email content while preserving operational delivery metadata.
+- Production request and fatal-error logs are structured, request-ID correlated, and omit bodies, network addresses, and direct contact information.
 - Database migration `017_operational_recovery` adds only nullable lifecycle/lease fields and recovery indexes for a low-risk rollout.
 - Database migration `018_background_job_health` adds the bounded operational run ledger used by heartbeat monitoring.
 

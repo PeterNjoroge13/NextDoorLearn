@@ -3,6 +3,7 @@ const { processEmailOutbox } = require('../services/email');
 const { processSessionReminders } = require('../services/reminders');
 const { reconcileCancelledSessionPayments } = require('../services/paymentLedger');
 const { completeBackgroundJobRun, startBackgroundJobRun } = require('../services/jobHealth');
+const { runDataRetention } = require('../services/dataRetention');
 
 const router = express.Router();
 
@@ -20,12 +21,14 @@ router.post('/process', async (req, res) => {
     const reminders = await processSessionReminders();
     const emails = await processEmailOutbox();
     const payments = await reconcileCancelledSessionPayments();
+    const retention = await runDataRetention();
     const summary = {
       reminders,
       emailsProcessed: emails.length,
       emailsSent: emails.filter((item) => item.status === 'sent').length,
       paymentsProcessed: payments.length,
-      paymentFailures: payments.filter((item) => item.status === 'resolution_failed').length
+      paymentFailures: payments.filter((item) => item.status === 'resolution_failed').length,
+      retention
     };
     await completeBackgroundJobRun(runId, { status: 'completed', details: summary });
     res.json(summary);

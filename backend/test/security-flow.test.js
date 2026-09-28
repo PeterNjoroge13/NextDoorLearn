@@ -946,10 +946,24 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   const strandedPaymentDatabase = new Database(databasePath);
   strandedPaymentDatabase.prepare("UPDATE session_payments SET status = 'pending' WHERE id = ?")
     .run(disposablePayment.lastInsertRowid);
+  const expiredVerification = strandedPaymentDatabase.prepare(`
+    INSERT INTO email_verification_tokens (user_id, token, expires_at, created_at)
+    VALUES (?, 'expired-retention-token', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')
+  `).run(activated.body.user.id);
+  const retainedEmail = strandedPaymentDatabase.prepare(`
+    INSERT INTO email_outbox (
+      recipient, template, subject, text_body, html_body, idempotency_key, status, created_at, updated_at
+    ) VALUES (
+      'old-email@example.com', 'retention_test', 'Old subject', 'Old text', '<p>Old HTML</p>',
+      'retention-test-email', 'sent', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z'
+    )
+  `).run();
   strandedPaymentDatabase.close();
   const recoveredJobs = await request('/jobs/process', { method: 'POST' });
   assert.equal(recoveredJobs.status, 200);
   assert.ok(recoveredJobs.body.paymentsProcessed >= 1);
+  assert.ok(recoveredJobs.body.retention.emailVerificationTokens >= 1);
+  assert.ok(recoveredJobs.body.retention.emailContentRedacted >= 1);
   const heartbeatOverview = await request('/admin/overview', { token: adminResponse.body.token });
   assert.equal(heartbeatOverview.status, 200);
   assert.equal(heartbeatOverview.body.backgroundJobs.status, 'completed');
@@ -960,6 +974,19 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.equal(
     reconciledPaymentDatabase.prepare('SELECT status FROM session_payments WHERE id = ?').get(disposablePayment.lastInsertRowid).status,
     'cancelled'
+  );
+  assert.equal(
+    reconciledPaymentDatabase.prepare('SELECT COUNT(*) AS count FROM email_verification_tokens WHERE id = ?').get(expiredVerification.lastInsertRowid).count,
+    0
+  );
+  assert.deepEqual(
+    reconciledPaymentDatabase.prepare('SELECT recipient, subject, text_body, html_body FROM email_outbox WHERE id = ?').get(retainedEmail.lastInsertRowid),
+    {
+      recipient: 'redacted@retained.nextdoorlearn.invalid',
+      subject: '[Retained delivery record]',
+      text_body: '[Expired by retention policy]',
+      html_body: '[Expired by retention policy]'
+    }
   );
   reconciledPaymentDatabase.close();
   const reusedDeletedEmail = await request('/auth/register', {

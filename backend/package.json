@@ -12,6 +12,7 @@
     "db:check": "node scripts/check-database.js",
     "smoke": "node scripts/smoke-test.js",
     "smoke:production": "node scripts/production-smoke.js",
+    "smoke:load": "node scripts/load-smoke.js",
     "test": "node --test --test-concurrency=1 test/*.test.js"
   },
   "keywords": [

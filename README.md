@@ -194,6 +194,17 @@ SMOKE_FRONTEND_ORIGIN=https://your-app.example.com \
 npm run smoke:production
 ```
 
+Run the bounded local load smoke check against a running API before a release:
+
+```bash
+cd backend
+LOAD_API_URL=http://127.0.0.1:3001/api npm run smoke:load
+```
+
+The runner refuses non-local targets unless `ALLOW_PRODUCTION_LOAD_TEST=true` is
+explicitly set. Tune `LOAD_REQUESTS`, `LOAD_CONCURRENCY`, and `LOAD_MAX_P95_MS`
+for controlled staging checks.
+
 ## Deployment
 
 The current deployment model uses:

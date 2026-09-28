@@ -96,6 +96,9 @@ This file tracks production work that can be completed without external account 
 - [x] Persist background-job heartbeats, recover stale worker leases, and surface unhealthy processing in health and admin views.
 - [x] Add scoped maintenance switches for new bookings, checkout, Zoom provisioning, Google Calendar sync, and email delivery.
 - [x] Retry transient Zoom failures and isolate Google Calendar failures to the affected participant.
+- [x] Add scheduled privacy cleanup for expired security tokens and aged completed-email content.
+- [x] Add privacy-conscious structured request/error logs and graceful deploy shutdown handling.
+- [x] Add bounded load-smoke tooling and structured slow-request warnings.
 - [ ] Connect GitHub Actions failure notifications to the production operator so missed runs actively page someone.
 - [ ] Complete a documented Neon backup restore drill and record recovery time and recovery point objectives.
 

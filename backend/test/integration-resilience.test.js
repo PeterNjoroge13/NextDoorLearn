@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const { isFeatureDisabled, requireFeature } = require('../src/services/featureFlags');
 const { runParticipantOperations } = require('../src/services/googleCalendar');
 const { publicPaymentConfig } = require('../src/services/payments');
+const { boundedDays } = require('../src/services/dataRetention');
+const { sanitizeDetails } = require('../src/services/logger');
 
 const withEnvironment = async (values, callback) => {
   const original = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
@@ -60,4 +62,21 @@ test('Google participant operations isolate failures', async () => {
   assert.equal(results[0].status, 'failed');
   assert.equal(results[1].status, 'synced');
   assert.equal(results[1].eventId, 'calendar-event-20');
+});
+
+test('retention configuration is bounded and logs redact sensitive fields', () => {
+  assert.equal(boundedDays('14', 30), 14);
+  assert.equal(boundedDays('0', 30), 30);
+  assert.equal(boundedDays('99999', 30), 30);
+  assert.deepEqual(sanitizeDetails({
+    requestId: 'request-1',
+    password: 'do-not-log',
+    recipient: 'student@example.com',
+    nested: { authorization: 'Bearer secret', token: 'secret-token', safe: 'visible' }
+  }), {
+    requestId: 'request-1',
+    password: '[redacted]',
+    recipient: '[redacted]',
+    nested: { authorization: '[redacted]', token: '[redacted]', safe: 'visible' }
+  });
 });

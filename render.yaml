@@ -68,6 +68,12 @@ services:
         value: false
       - key: DISABLE_EMAIL
         value: false
+      - key: RETENTION_SECURITY_TOKEN_DAYS
+        value: 30
+      - key: RETENTION_EMAIL_CONTENT_DAYS
+        value: 90
+      - key: SLOW_REQUEST_MS
+        value: 1000
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_PUBLISHABLE_KEY
