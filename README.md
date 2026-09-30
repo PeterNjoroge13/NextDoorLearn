@@ -157,7 +157,7 @@ in only the services you intend to use.
 | Email | `RESEND_API_KEY`, `EMAIL_FROM`, `RESEND_WEBHOOK_SECRET` |
 | Meetings and calendar | `ZOOM_*`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
 | Payments | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` |
-| Operations | `ADMIN_EMAILS`, `JOB_SECRET`, rate-limit settings |
+| Operations | `ADMIN_EMAILS`, GitHub Actions job identity settings, optional `JOB_SECRET`, rate-limit settings |
 
 Never place server secrets in `VITE_*` or `EXPO_PUBLIC_*` variables. Those values
 are included in client builds. Local `.env` files, databases, uploads, logs, and

@@ -100,6 +100,7 @@ This file tracks production work that can be completed without external account 
 - [x] Add scheduled privacy cleanup for expired security tokens and aged completed-email content.
 - [x] Add privacy-conscious structured request/error logs and graceful deploy shutdown handling.
 - [x] Add bounded load-smoke tooling and structured slow-request warnings.
+- [x] Replace fragile shared GitHub reminder secrets with repository-, branch-, workflow-, and event-scoped OIDC authentication.
 - [ ] Connect GitHub Actions failure notifications to the production operator so missed runs actively page someone.
 - [ ] Complete a documented Neon backup restore drill and record recovery time and recovery point objectives.
 

@@ -5,6 +5,10 @@ on:
     - cron: '*/10 * * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   process:
     runs-on: ubuntu-latest
@@ -15,13 +19,14 @@ jobs:
     steps:
       - name: Process scheduled reminders and queued email
         env:
-          JOB_URL: ${{ secrets.NEXTDOORLEARN_JOB_URL }}
-          JOB_SECRET: ${{ secrets.NEXTDOORLEARN_JOB_SECRET }}
+          JOB_URL: https://nextdoorlearn-backend.onrender.com/api/jobs/process
+          JOB_AUDIENCE: nextdoorlearn-background-jobs
         run: |
-          if [ -z "$JOB_URL" ] || [ -z "$JOB_SECRET" ]; then
-            echo "Reminder processing is waiting for repository secrets."
-            exit 1
-          fi
+          oidc_response=$(curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$JOB_AUDIENCE")
+          oidc_token=$(printf '%s' "$oidc_response" | node -e \
+            "let input='';process.stdin.on('data',c=>input+=c).on('end',()=>{const value=JSON.parse(input).value;if(!value)process.exit(1);process.stdout.write(value)})")
           curl --fail --silent --show-error --retry 3 --connect-timeout 10 --max-time 90 \
             -X POST "$JOB_URL" \
-            -H "x-job-secret: $JOB_SECRET"
+            -H "Authorization: Bearer $oidc_token"

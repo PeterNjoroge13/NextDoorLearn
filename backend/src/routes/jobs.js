@@ -4,15 +4,16 @@ const { processSessionReminders } = require('../services/reminders');
 const { reconcileCancelledSessionPayments } = require('../services/paymentLedger');
 const { completeBackgroundJobRun, startBackgroundJobRun } = require('../services/jobHealth');
 const { runDataRetention } = require('../services/dataRetention');
+const { authenticateBackgroundJob } = require('../services/backgroundJobAuth');
 
 const router = express.Router();
 
 router.post('/process', async (req, res) => {
-  const configuredSecret = process.env.JOB_SECRET;
-  if (process.env.NODE_ENV === 'production' && !configuredSecret) {
+  const configured = Boolean(process.env.JOB_SECRET || process.env.GITHUB_ACTIONS_JOB_REPOSITORY);
+  if (process.env.NODE_ENV === 'production' && !configured) {
     return res.status(503).json({ error: 'Background jobs are not configured' });
   }
-  if (configuredSecret && req.headers['x-job-secret'] !== configuredSecret) {
+  if (!(await authenticateBackgroundJob(req))) {
     return res.status(401).json({ error: 'Invalid job credentials' });
   }
   const runId = await startBackgroundJobRun();

@@ -6,7 +6,7 @@
 - Deploy frontend on Vercel.
 - Set `VITE_API_URL` in Vercel.
 - Create a Neon project and set its pooled connection string as `DATABASE_URL` in Render.
-- Set `JWT_SECRET`, `FIELD_ENCRYPTION_KEY`, and `JOB_SECRET` in Render. The Blueprint generates all three secrets and configures `FRONTEND_URL` plus `CORS_ORIGINS` for the public custom domain.
+- Set `JWT_SECRET` and `FIELD_ENCRYPTION_KEY` in Render. The Blueprint generates those secrets, keeps an optional `JOB_SECRET` for manual recovery, and trusts only the signed GitHub Actions identity for the scheduled worker.
 - Set `RESEND_API_KEY`, `EMAIL_FROM`, and `RESEND_WEBHOOK_SECRET` in Render for password reset, verification, and delivery tracking.
 - Create a Zoom Server-to-Server OAuth app and set `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, and `ZOOM_HOST_USER_ID` in Render.
 - Create Google OAuth web credentials and set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`; register `https://nextdoorlearn-backend.onrender.com/api/google/callback` as an authorized redirect URI.
@@ -15,6 +15,7 @@
 - Verify `https://your-api/api/health`.
 - Run `SMOKE_API_URL=https://your-api/api SMOKE_FRONTEND_ORIGIN=https://your-frontend npm run smoke:production` from `backend`.
 - Confirm the `Production smoke` GitHub Actions workflow passes after each release; it also checks the live services every six hours.
+- Confirm the `Process reminders` workflow succeeds without repository secrets; it authenticates with a short-lived GitHub OIDC token scoped to this repository, branch, and workflow.
 - Run the mutation-heavy `npm run smoke` only against local or staging environments.
 - Register a student, submit a tutor application, approve it in the admin console, and activate the tutor account.
 - Complete the approved tutor profile with subjects.

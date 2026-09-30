@@ -15,7 +15,7 @@ This audit separates launch blockers from code that is already implemented. A gr
 ## P1: Complete Before Public Launch
 
 - Configure Zoom and Google OAuth, then test 429, timeout, revoked-token, partial-failure, reschedule, and cancellation behavior with real sandbox accounts.
-- Configure the GitHub reminder-job secrets and route failed workflow notifications to the production operator. Job heartbeats, stale leases, health reporting, and admin warnings are implemented.
+- Route failed workflow notifications to the production operator. Scheduled jobs now use signed GitHub OIDC identity, and job heartbeats, stale leases, health reporting, and admin warnings are implemented.
 - Add hosted error tracking and uptime alerts with request IDs, release identifiers, and a documented incident-response path.
 - Complete physical-device testing on supported iPhones and Android devices, including push permissions, deep links, password reset links, checkout return paths, accessibility text sizes, and poor networks.
 - Complete App Store Connect and Play Console records, privacy answers, screenshots, age rating, support URL, review credentials, and account-deletion reviewer notes.

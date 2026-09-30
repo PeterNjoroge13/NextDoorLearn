@@ -49,7 +49,9 @@ const validateProductionConfig = () => {
   const missing = [];
   if (!process.env.JWT_SECRET) missing.push('JWT_SECRET');
   if (!process.env.FIELD_ENCRYPTION_KEY) missing.push('FIELD_ENCRYPTION_KEY');
-  if (!process.env.JOB_SECRET) missing.push('JOB_SECRET');
+  if (!process.env.JOB_SECRET && !process.env.GITHUB_ACTIONS_JOB_REPOSITORY) {
+    missing.push('JOB_SECRET or GITHUB_ACTIONS_JOB_REPOSITORY');
+  }
   if (!process.env.DATABASE_URL) missing.push('DATABASE_URL');
   if (!process.env.FRONTEND_URL) missing.push('FRONTEND_URL');
   if (!process.env.CORS_ORIGINS) missing.push('CORS_ORIGINS');
