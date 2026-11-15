@@ -44,9 +44,12 @@
     "typescript": "~6.0.3"
   },
   "overrides": {
+    "decode-uri-component": "0.5.1",
+    "minimatch": "11.0.8",
     "node-forge": "1.4.3",
     "shell-quote": "1.12.0",
-    "source-map-js": "1.2.2"
+    "source-map-js": "1.2.2",
+    "zod": "4.6.7"
   },
   "scripts": {
     "start": "expo start",
