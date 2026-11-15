@@ -152,7 +152,9 @@ export default function SessionDetailScreen() {
         ? <Button label={item.meeting_status === 'error' ? 'Retry meeting room' : item.meeting_link ? 'Open secure meeting' : 'Prepare Zoom room'} icon={item.meeting_status === 'error' ? RefreshCw : Video} variant="secondary" onPress={openMeeting} loading={meetingBusy} />
         : null}
       {item.status === 'scheduled' && item.confirmation_status === 'confirmed' && !item.meeting_link && !tutor
-        ? <Text style={styles.copy}>The tutor is preparing the meeting room.</Text>
+        ? <Text style={styles.copy}>{item.meeting_status === 'payment_required'
+          ? 'Payment is required before you can join. Use Pay securely below.'
+          : 'The tutor is preparing the meeting room.'}</Text>
         : null}
     </Card>
 

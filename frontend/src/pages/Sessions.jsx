@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, ExternalLink, FileText, List, Plus, RefreshCw, Star, Unplug, UserX, Video, X } from 'lucide-react';
+import { CalendarClock, CalendarDays, CheckCircle2, CreditCard, ChevronLeft, ChevronRight, Clock, ExternalLink, FileText, List, Plus, RefreshCw, Star, Unplug, UserX, Video, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '../services/api';
 import AppShell, { EmptyState, ErrorState, LoadingState } from '../components/AppShell';
 import { useAuth } from '../context/AuthContext';
@@ -523,7 +524,14 @@ const Sessions = () => {
                         {meetingBusy === session.id ? 'Opening...' : session.meeting_status === 'error' ? 'Retry room' : session.meeting_link ? 'Open meeting' : 'Prepare room'}
                       </button>
                     ) : null}
-                    {session.status === 'scheduled' && session.confirmation_status === 'confirmed' && !session.meeting_link && user?.role === 'student' ? <span className="muted">Meeting room pending</span> : null}
+                    {session.status === 'scheduled' && session.confirmation_status === 'confirmed' && !session.meeting_link && user?.role === 'student' ? (
+                      session.meeting_status === 'payment_required' ? (
+                        <>
+                          <span className="muted">Payment required to join</span>
+                          <Link className="btn btn-primary btn-sm" to="/payments"><CreditCard size={16} />Pay for session</Link>
+                        </>
+                      ) : <span className="muted">Meeting room pending</span>
+                    ) : null}
                   </div>
                 </article>
               ))}

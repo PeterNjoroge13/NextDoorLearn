@@ -3,6 +3,7 @@ const db = require('../db/database');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || '15m';
+const ACCESS_TOKEN_TYPE = 'access';
 
 if (process.env.NODE_ENV === 'production' && JWT_SECRET === 'your-secret-key-change-in-production') {
   throw new Error('JWT_SECRET must be set in production');
@@ -20,6 +21,12 @@ const authenticateToken = async (req, res, next) => {
   try {
     user = jwt.verify(token, JWT_SECRET);
   } catch {
+    return res.status(401).json({ error: 'Invalid or expired token', code: 'SESSION_EXPIRED' });
+  }
+  // Other tokens signed with JWT_SECRET (such as the Google OAuth state) carry their own type
+  // and must never authenticate API requests. Access tokens issued before this check have no
+  // type and expire within ACCESS_TOKEN_TTL.
+  if (!user?.userId || (user.type !== undefined && user.type !== ACCESS_TOKEN_TYPE)) {
     return res.status(401).json({ error: 'Invalid or expired token', code: 'SESSION_EXPIRED' });
   }
 
@@ -49,7 +56,10 @@ const requireAdmin = async (req, res, next) => {
     .filter(Boolean);
 
   try {
-    const configured = adminEmails.includes(String(req.user.email || '').toLowerCase());
+    // ADMIN_EMAILS only grants access once the account has proven it owns that address;
+    // otherwise anyone could register an unverified account under an admin email first.
+    const configured = adminEmails.includes(String(req.user.email || '').toLowerCase())
+      && Boolean(req.user.email_verified_at);
     if (configured) {
       await db.prepare(`
         INSERT INTO admin_memberships (user_id, permission_level) VALUES (?, 'owner')
@@ -72,4 +82,4 @@ const requireVerifiedEmail = (req, res, next) => {
   next();
 };
 
-module.exports = { authenticateToken, requireAdmin, requireVerifiedEmail, ACCESS_TOKEN_TTL, JWT_SECRET };
+module.exports = { authenticateToken, requireAdmin, requireVerifiedEmail, ACCESS_TOKEN_TTL, ACCESS_TOKEN_TYPE, JWT_SECRET };

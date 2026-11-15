@@ -172,7 +172,8 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
     body: { email: 'admin@example.com', password: 'password123', role: 'student', name: 'Admin', ...registrationConsent }
   });
   assert.equal(adminResponse.status, 201);
-  assert.equal(adminResponse.body.user.isAdmin, true);
+  // ADMIN_EMAILS only applies after the address is verified (checked below).
+  assert.equal(adminResponse.body.user.isAdmin, false);
   assert.ok(adminResponse.body.refreshToken);
   assert.equal(adminResponse.body.user.policyVersion, '2026-09-21');
   const adminProfile = await request('/users/profile', { token: adminResponse.body.token });
