@@ -7,11 +7,11 @@
 - Set `VITE_API_URL` in Vercel.
 - Create a Neon project and set its pooled connection string as `DATABASE_URL` in Render.
 - Set `JWT_SECRET` and `FIELD_ENCRYPTION_KEY` in Render. The Blueprint generates those secrets, keeps an optional `JOB_SECRET` for manual recovery, and trusts only the signed GitHub Actions identity for the scheduled worker.
-- Set `RESEND_API_KEY`, `EMAIL_FROM`, and `RESEND_WEBHOOK_SECRET` in Render for password reset, verification, and delivery tracking.
+- [x] Set `RESEND_API_KEY`, `EMAIL_FROM`, and `RESEND_WEBHOOK_SECRET` in Render for password reset, verification, and delivery tracking.
 - Create a Zoom Server-to-Server OAuth app and set `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, and `ZOOM_HOST_USER_ID` in Render.
 - Create Google OAuth web credentials and set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`; register `https://nextdoorlearn-backend.onrender.com/api/google/callback` as an authorized redirect URI.
 - Set `ADMIN_EMAILS` in Render for moderation endpoints.
-- Keep `REQUIRE_EMAIL_VERIFICATION=false` until Resend delivery is confirmed, then switch it to `true`.
+- [x] Require verified email after confirming Resend delivery and signed webhook processing.
 - Verify `https://your-api/api/health`.
 - Run `SMOKE_API_URL=https://your-api/api SMOKE_FRONTEND_ORIGIN=https://your-frontend npm run smoke:production` from `backend`.
 - Confirm the `Production smoke` GitHub Actions workflow passes after each release; it also checks the live services every six hours.

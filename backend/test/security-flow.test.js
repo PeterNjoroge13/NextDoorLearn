@@ -5,11 +5,13 @@ const http = require('node:http');
 const path = require('node:path');
 const Database = require('better-sqlite3');
 const Stripe = require('stripe');
+const { Webhook } = require('svix');
 
 const port = 3219;
 const base = `http://127.0.0.1:${port}/api`;
 const databasePath = path.join('/tmp', `nextdoorlearn-test-${process.pid}.db`);
 const zoomPort = 3229;
+const resendWebhookSecret = 'whsec_dGVzdC13ZWJob29rLXNlY3JldA==';
 let zoomMeetingSequence = 0;
 let zoomRateLimitRemaining = 1;
 let zoomRateLimitResponses = 0;
@@ -69,7 +71,8 @@ const server = spawn(process.execPath, ['src/server.js'], {
     ZOOM_TOKEN_URL: `http://127.0.0.1:${zoomPort}/oauth/token`,
     ZOOM_API_BASE_URL: `http://127.0.0.1:${zoomPort}/v2`,
     STRIPE_SECRET_KEY: 'sk_test_integration_only',
-    STRIPE_WEBHOOK_SECRET: 'whsec_integration_only'
+    STRIPE_WEBHOOK_SECRET: 'whsec_integration_only',
+    RESEND_WEBHOOK_SECRET: resendWebhookSecret
   },
   stdio: ['ignore', 'pipe', 'pipe']
 });
@@ -122,6 +125,19 @@ const stripeWebhook = async (event, signature = null) => {
     headers: { 'Content-Type': 'application/json', 'stripe-signature': header },
     body: payload
   });
+  return { status: response.status, body: await response.json() };
+};
+
+const resendWebhook = async (event, { id = `msg_${Date.now()}`, signature } = {}) => {
+  const payload = JSON.stringify(event);
+  const timestamp = new Date();
+  const headers = {
+    'Content-Type': 'application/json',
+    'svix-id': id,
+    'svix-timestamp': String(Math.floor(timestamp.getTime() / 1000)),
+    'svix-signature': signature || new Webhook(resendWebhookSecret).sign(id, timestamp, payload)
+  };
+  const response = await fetch(`${base}/webhooks/resend`, { method: 'POST', headers, body: payload });
   return { status: response.status, body: await response.json() };
 };
 
@@ -888,6 +904,39 @@ test('secure tutor activation, matching, session outcomes, reviews, and blocking
   assert.ok(!outbox.body.emails.some((email) => email.template === 'session_requested' && email.recipient === 'approved@example.com'));
   assert.ok(outbox.body.emails.some((email) => email.template === 'session_confirmed'));
   assert.ok(outbox.body.emails.some((email) => email.template === 'session_cancelled'));
+  const webhookDatabase = new Database(databasePath);
+  webhookDatabase.prepare(`
+    INSERT INTO email_outbox
+      (recipient, template, subject, text_body, html_body, idempotency_key, status, provider_id)
+    VALUES ('delivery@example.com', 'delivery_test', 'Delivery', 'Delivery', 'Delivery',
+      'delivery-webhook-test', 'sent', 're_delivery_test')
+  `).run();
+  webhookDatabase.close();
+  const invalidResendWebhook = await resendWebhook(
+    { type: 'email.delivered', data: { email_id: 're_delivery_test' } },
+    { id: 'msg_invalid', signature: 'v1,invalid' }
+  );
+  assert.equal(invalidResendWebhook.status, 400);
+  const deliveredEvent = { type: 'email.delivered', data: { email_id: 're_delivery_test' } };
+  const deliveredWebhook = await resendWebhook(deliveredEvent, { id: 'msg_delivered' });
+  assert.equal(deliveredWebhook.status, 200);
+  const replayedDeliveredWebhook = await resendWebhook(deliveredEvent, { id: 'msg_delivered' });
+  assert.equal(replayedDeliveredWebhook.status, 200);
+  const bouncedWebhook = await resendWebhook(
+    { type: 'email.bounced', data: { email_id: 're_delivery_test' } },
+    { id: 'msg_bounced' }
+  );
+  assert.equal(bouncedWebhook.status, 200);
+  const webhookAuditDatabase = new Database(databasePath);
+  assert.equal(
+    webhookAuditDatabase.prepare("SELECT status FROM email_outbox WHERE provider_id = 're_delivery_test'").get().status,
+    'bounced'
+  );
+  assert.equal(
+    webhookAuditDatabase.prepare("SELECT COUNT(*) AS count FROM email_delivery_events WHERE provider_email_id = 're_delivery_test'").get().count,
+    2
+  );
+  webhookAuditDatabase.close();
   const recoveryDatabase = new Database(databasePath);
   const deadLetter = recoveryDatabase.prepare(`
     INSERT INTO email_outbox

@@ -1,12 +1,12 @@
 # NextDoorLearn Production Readiness Audit
 
-Last updated: September 28, 2026
+Last updated: November 15, 2026
 
 This audit separates launch blockers from code that is already implemented. A green build is not treated as proof that external providers or operational processes are ready.
 
 ## P0: Launch Blockers
 
-- **Transactional email and verification:** production currently reports email as unconfigured and email verification as optional. Configure Resend, verify the sending domain and webhook, test delivery/retry/bounce handling, then require verification.
+- **Transactional email and verification:** Resend is configured, `nextdoorlearn.com` is verified, required email verification is enabled, signed delivery webhooks return HTTP 200, and real inbox delivery is confirmed for verification, password reset, and tutor-application flows. Complete one real confirmed-session run to verify booking and reminder inbox delivery.
 - **Payments:** complete Stripe Connect platform verification, configure live keys and webhook signing, and pass the documented payment, refund, dispute, payout, and mobile PaymentSheet release gate before accepting money.
 - **Backups and recovery:** enable Neon recovery appropriate to the selected plan and perform a restore drill. A backup that has never been restored is not a verified recovery plan.
 - **Legal and youth safety:** obtain review of Terms, Privacy, cancellation/refund policy, tutor classification, minor/guardian consent, mandated-reporting process, data retention, and account deletion language.
@@ -14,7 +14,7 @@ This audit separates launch blockers from code that is already implemented. A gr
 
 ## P1: Complete Before Public Launch
 
-- Configure Zoom and Google OAuth, then test 429, timeout, revoked-token, partial-failure, reschedule, and cancellation behavior with real sandbox accounts.
+- Publish Google OAuth and complete Google's sensitive-scope verification for Calendar access. Zoom and Google credentials are configured; automated coverage exercises Zoom rate limits and Google participant-isolated failures, but a final connected-account session run is still required.
 - Route failed workflow notifications to the production operator. Scheduled jobs now use signed GitHub OIDC identity, and job heartbeats, stale leases, health reporting, and admin warnings are implemented.
 - Add hosted error tracking and uptime alerts with request IDs, release identifiers, and a documented incident-response path.
 - Complete physical-device testing on supported iPhones and Android devices, including push permissions, deep links, password reset links, checkout return paths, accessibility text sizes, and poor networks.

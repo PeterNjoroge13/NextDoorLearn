@@ -106,9 +106,9 @@ This file tracks production work that can be completed without external account 
 
 ## Requires Peter Or External Credentials
 
-- [ ] Configure Resend domain, API key, sender address, and delivery webhook.
-- [ ] Configure Google OAuth credentials and publish/verify the consent screen when required.
-- [ ] Configure Zoom Server-to-Server OAuth credentials and meeting scopes.
+- [x] Configure Resend domain, API key, sender address, and signed delivery webhook; verify real account and tutor-application delivery.
+- [ ] Publish the configured Google OAuth app and complete sensitive-scope verification.
+- [x] Configure Zoom Server-to-Server OAuth credentials and meeting scopes.
 - [ ] Enroll in the Apple Developer Program and accept Apple agreements.
 - [ ] Create/verify Google Play Console and Apple App Store Connect records.
 - [ ] Obtain final legal review for Terms, Privacy Policy, youth-safety, and consent language.
