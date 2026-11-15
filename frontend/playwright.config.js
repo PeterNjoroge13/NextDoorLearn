@@ -30,6 +30,7 @@ export default defineConfig({
         FIELD_ENCRYPTION_KEY: 'browser-smoke-field-encryption-key',
         ALLOW_DIRECT_TUTOR_REGISTRATION: 'true',
         ADMIN_EMAILS: 'browser.admin@example.com',
+        REQUIRE_EMAIL_VERIFICATION: 'true',
         FRONTEND_URL: frontendUrl,
         RATE_LIMIT_MAX: '5000',
         AUTH_RATE_LIMIT_MAX: '500',

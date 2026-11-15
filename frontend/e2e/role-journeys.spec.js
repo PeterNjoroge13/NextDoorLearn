@@ -19,7 +19,14 @@ const register = async (request, role, email, name) => {
     const payload = await response.json();
     if (payload.error === 'User with this email already exists') return;
   }
-  expect(response.ok(), await response.text()).toBeTruthy();
+  const responseBody = await response.text();
+  expect(response.ok(), responseBody).toBeTruthy();
+  const payload = JSON.parse(responseBody);
+  expect(payload.verificationToken).toBeTruthy();
+  const verification = await request.post(`${apiUrl}/auth/verify-email`, {
+    data: { token: payload.verificationToken },
+  });
+  expect(verification.ok(), await verification.text()).toBeTruthy();
 };
 
 const signIn = async (page, email) => {

@@ -30,6 +30,11 @@ test('signed-in phone navigation keeps primary actions within thumb reach', asyn
     },
   });
   expect(registration.ok()).toBeTruthy();
+  const registrationPayload = await registration.json();
+  const verification = await request.post(`${apiUrl}/auth/verify-email`, {
+    data: { token: registrationPayload.verificationToken },
+  });
+  expect(verification.ok()).toBeTruthy();
 
   await page.goto('/login', { waitUntil: 'domcontentloaded' });
   await page.getByLabel('Email address').fill(email);
