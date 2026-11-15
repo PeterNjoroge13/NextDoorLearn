@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { authenticateToken, requireVerifiedEmail } = require('../middleware/auth');
-const { usersAreBlocked } = require('../services/safety');
+const { respondToConnectionRequest } = require('../services/connectionRequests');
 const { isPositiveInteger } = require('../utils/validation');
 
 const router = express.Router();
@@ -58,34 +58,18 @@ router.post('/:id/respond', async (req, res) => {
       return res.status(400).json({ error: 'Invalid action. Must be "accept" or "reject"' });
     }
 
-    // Check if the request exists and belongs to this tutor
-    const request = await db.prepare(`
-      SELECT * FROM connections 
-      WHERE id = ? AND tutor_id = ? AND status = 'pending'
-    `).get(id, userId);
-
-    if (!request) {
-      return res.status(404).json({ error: 'Request not found or already processed' });
-    }
-    if (await usersAreBlocked(request.student_id, request.tutor_id)) {
-      return res.status(403).json({ error: 'This connection is unavailable' });
-    }
-
-    // Update the connection status
-    const newStatus = action === 'accept' ? 'accepted' : 'rejected';
-    const updateConnection = await db.prepare(`
-      UPDATE connections 
-      SET status = ? 
-      WHERE id = ?
-    `);
-    
-    await updateConnection.run(newStatus, id);
+    const { status } = await respondToConnectionRequest({
+      connectionId: id,
+      tutorId: userId,
+      accept: action === 'accept'
+    });
 
     res.json({ 
       message: `Request ${action}ed successfully`,
-      status: newStatus 
+      status
     });
   } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     console.error('Respond to request error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }

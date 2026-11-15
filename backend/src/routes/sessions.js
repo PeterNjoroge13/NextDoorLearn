@@ -47,6 +47,10 @@ const addDays = (date, days) => {
   return parsed.toISOString().slice(0, 10);
 };
 
+const CLEAR_PREVIOUS_SCHEDULE_SQL = `previous_scheduled_date = NULL, previous_start_time = NULL, previous_end_time = NULL,
+  previous_session_timezone = NULL, previous_duration_minutes = NULL,
+  previous_starts_at = NULL, previous_ends_at = NULL, previous_requested_by = NULL,`;
+
 const recordSessionEvent = async (database, sessionId, actorUserId, eventType, fromState, toState, details = {}) => {
   await database.prepare(`
     INSERT INTO session_events (session_id, actor_user_id, event_type, from_state, to_state, details)
@@ -77,16 +81,27 @@ const getScheduleDetails = async ({ tutorId, scheduledDate, startTime, endTime }
   return { durationMinutes, timezone, startsAt };
 };
 
-const assertNoScheduleConflict = async (database, { tutorId, studentId, scheduledDate, startTime, endTime, excludeSessionId = null }) => {
+// starts_at/ends_at are written with Date#toISOString(): ISO-8601 UTC text in SQLite (so string
+// comparison orders correctly) and TIMESTAMPTZ in PostgreSQL (where the ISO parameter is cast).
+const toInstantParam = (value) => new Date(value).toISOString();
+
+// Overlap is tested on real UTC instants so sessions owned by tutors in different time zones
+// are compared correctly: two ranges overlap when a.start < b.end AND b.start < a.end.
+const assertNoScheduleConflict = async (database, { tutorId, studentId, startsAt, endsAt, excludeSessionId = null }) => {
   if (database.dialect === 'postgres') {
-    await database.prepare('SELECT pg_advisory_xact_lock(?)').get(Number(tutorId));
+    // Serialize bookings for both participants. Lock in a fixed order so two concurrent
+    // bookings that share a participant cannot deadlock.
+    const lockKeys = [...new Set([Number(tutorId), Number(studentId)])].sort((a, b) => a - b);
+    for (const key of lockKeys) {
+      await database.prepare('SELECT pg_advisory_xact_lock(?)').get(key);
+    }
   }
   const conflict = await database.prepare(`
     SELECT id FROM sessions
-    WHERE (tutor_id = ? OR student_id = ?) AND scheduled_date = ? AND status = 'scheduled'
-      AND start_time < ? AND end_time > ? AND id <> COALESCE(?, -1)
+    WHERE (tutor_id = ? OR student_id = ?) AND status = 'scheduled'
+      AND starts_at < ? AND ends_at > ? AND id <> COALESCE(?, -1)
     LIMIT 1
-  `).get(tutorId, studentId, scheduledDate, endTime, startTime, excludeSessionId);
+  `).get(tutorId, studentId, toInstantParam(endsAt), toInstantParam(startsAt), excludeSessionId);
   if (conflict) {
     throw Object.assign(new Error('Time conflict: Another session is scheduled at this time'), { statusCode: 409 });
   }
@@ -174,10 +189,10 @@ router.get('/upcoming', async (req, res) => {
       WHERE (s.tutor_id = ? OR s.student_id = ?)
         AND s.status = 'scheduled'
         AND s.confirmation_status = 'confirmed'
-        AND (s.scheduled_date > date('now') OR (s.scheduled_date = date('now') AND s.start_time > time('now')))
-      ORDER BY s.scheduled_date ASC, s.start_time ASC
+        AND s.ends_at > ?
+      ORDER BY s.starts_at ASC, s.id ASC
       LIMIT ?
-    `).all(userId, userId, limit);
+    `).all(userId, userId, toInstantParam(Date.now()), limit);
     
     res.json(sessions.map((session) => redactSessionForUser(session, req.user)));
   } catch (error) {
@@ -442,7 +457,7 @@ router.post('/', requireFeature('bookings'), async (req, res) => {
         const occurrence = schedule[index];
         await assertNoScheduleConflict(transaction, {
           tutorId: connection.tutor_id, studentId: connection.student_id,
-          scheduledDate: occurrence.scheduledDate, startTime, endTime
+          startsAt: occurrence.startsAt, endsAt: occurrence.endsAt
         });
         const insertResult = await transaction.prepare(`
           INSERT INTO sessions (
@@ -563,14 +578,28 @@ router.patch('/:id/reschedule', async (req, res) => {
       return res.status(409).json({ error: 'Once checkout has started, a session can move to a new time but its duration cannot change. Cancel it for a refund or payment cancellation, then create a new session.' });
     }
     const confirmationStatus = Number(userId) === Number(session.tutor_id) ? 'confirmed' : 'pending';
+    // When a student moves a confirmed session, remember the confirmed slot so the tutor can
+    // decline the new time without losing the session. A tutor-made change is confirmed
+    // immediately, so nothing needs restoring. Moving an already-pending session keeps
+    // whatever confirmed slot (if any) was saved earlier.
+    const previousScheduleSql = {
+      save: `previous_scheduled_date = scheduled_date, previous_start_time = start_time, previous_end_time = end_time,
+          previous_session_timezone = session_timezone, previous_duration_minutes = duration_minutes,
+          previous_starts_at = starts_at, previous_ends_at = ends_at, previous_requested_by = requested_by,`,
+      clear: CLEAR_PREVIOUS_SCHEDULE_SQL,
+      keep: '',
+    }[confirmationStatus === 'confirmed' ? 'clear' : session.confirmation_status === 'confirmed' ? 'save' : 'keep'];
 
     await db.withTransaction(async (transaction) => {
       await assertNoScheduleConflict(transaction, {
         tutorId: session.tutor_id, studentId: session.student_id,
-        scheduledDate, startTime, endTime, excludeSessionId: sessionId
+        startsAt, endsAt, excludeSessionId: sessionId
       });
+      // SET expressions read the pre-update row in both SQLite and PostgreSQL, so the
+      // previous_* copies capture the schedule being replaced.
       await transaction.prepare(`
-        UPDATE sessions SET scheduled_date = ?, start_time = ?, end_time = ?, session_timezone = ?, duration_minutes = ?,
+        UPDATE sessions SET ${previousScheduleSql}
+          scheduled_date = ?, start_time = ?, end_time = ?, session_timezone = ?, duration_minutes = ?,
           requested_by = ?, confirmation_status = ?, reschedule_count = COALESCE(reschedule_count, 0) + 1,
           last_rescheduled_at = CURRENT_TIMESTAMP, starts_at = ?, ends_at = ?,
           updated_at = CURRENT_TIMESTAMP
@@ -623,6 +652,28 @@ router.patch('/:id/reschedule', async (req, res) => {
   }
 });
 
+// Creates the Zoom room, reminders and calendar events for a session that is (again) confirmed.
+const provisionConfirmedSessionServices = async (session) => {
+  let updatedSession = session;
+  if (!updatedSession.meeting_link) {
+    try {
+      updatedSession = await provisionZoomMeeting(updatedSession);
+    } catch (error) {
+      console.error('Zoom meeting provisioning warning:', error.message || error);
+      updatedSession = { ...updatedSession, meeting_provider: 'zoom', meeting_status: 'error' };
+    }
+  }
+  await scheduleSessionReminders(updatedSession).catch((error) => console.error('Unable to schedule session reminders:', error));
+  await syncSessionToGoogle(updatedSession, 'upsert');
+  return updatedSession;
+};
+
+const scheduleSummary = (date, startTime, endTime) => ({
+  scheduledDate: dateOnly(date),
+  startTime: String(startTime || '').slice(0, 5),
+  endTime: String(endTime || '').slice(0, 5)
+});
+
 router.patch('/:id/confirmation', async (req, res) => {
   try {
     const sessionId = req.params.id;
@@ -644,62 +695,127 @@ router.patch('/:id/confirmation', async (req, res) => {
         endTime: String(session.end_time).slice(0, 5)
       });
     }
+
+    // A pending session with a saved previous schedule is a student's proposed move of a
+    // confirmed session. Declining it keeps the session at its confirmed time; declining a
+    // brand-new request cancels it.
+    const hasPreviousSchedule = decision === 'declined' && session.previous_starts_at && session.previous_ends_at;
+    let outcome = decision === 'confirmed' ? 'confirmed' : 'cancelled';
+    let restoreSkippedReason = null;
+
     await db.withTransaction(async (transaction) => {
       if (decision === 'confirmed') {
         await assertNoScheduleConflict(transaction, {
           tutorId: session.tutor_id,
           studentId: session.student_id,
-          scheduledDate: dateOnly(session.scheduled_date),
-          startTime: String(session.start_time).slice(0, 5),
-          endTime: String(session.end_time).slice(0, 5),
+          startsAt: session.starts_at,
+          endsAt: session.ends_at,
           excludeSessionId: sessionId
         });
+        await transaction.prepare(`
+          UPDATE sessions SET ${CLEAR_PREVIOUS_SCHEDULE_SQL}
+            confirmation_status = 'confirmed', status = 'scheduled',
+            cancelled_by = NULL, cancellation_reason = NULL, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(sessionId);
+        await recordSessionEvent(transaction, sessionId, req.user.userId, 'confirmed', 'pending_confirmation', 'scheduled');
+        return;
       }
-      await transaction.prepare(`
-        UPDATE sessions SET confirmation_status = ?, status = ?,
-          cancelled_by = ?, cancellation_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).run(
-        decision,
-        decision === 'declined' ? 'cancelled' : 'scheduled',
-        decision === 'declined' ? req.user.userId : null,
-        decision === 'declined' ? 'Tutor declined the requested time' : null,
-        sessionId
-      );
-      await recordSessionEvent(
-        transaction, sessionId, req.user.userId,
-        decision === 'declined' ? 'declined' : 'confirmed',
-        'pending_confirmation', decision === 'declined' ? 'cancelled' : 'scheduled'
-      );
-    });
-    let updatedSession = { ...session, confirmation_status: decision, status: decision === 'declined' ? 'cancelled' : 'scheduled' };
-    if (decision === 'declined') {
-      await db.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
-    } else {
-      if (!updatedSession.meeting_link) {
-        try {
-          updatedSession = await provisionZoomMeeting(updatedSession);
-        } catch (error) {
-          console.error('Zoom meeting provisioning warning:', error.message || error);
-          updatedSession = { ...updatedSession, meeting_provider: 'zoom', meeting_status: 'error' };
+
+      if (hasPreviousSchedule) {
+        if (new Date(session.previous_starts_at).getTime() <= Date.now()) {
+          restoreSkippedReason = 'original_time_passed';
+        } else {
+          try {
+            await assertNoScheduleConflict(transaction, {
+              tutorId: session.tutor_id,
+              studentId: session.student_id,
+              startsAt: session.previous_starts_at,
+              endsAt: session.previous_ends_at,
+              excludeSessionId: sessionId
+            });
+          } catch (error) {
+            if (error.statusCode !== 409) throw error;
+            restoreSkippedReason = 'original_time_unavailable';
+          }
         }
       }
-      await scheduleSessionReminders(updatedSession).catch((error) => console.error('Unable to schedule session reminders:', error));
-      await syncSessionToGoogle(updatedSession, 'upsert');
+
+      if (hasPreviousSchedule && !restoreSkippedReason) {
+        outcome = 'restored';
+        // SET expressions read the pre-update row, so the previous_* values are copied
+        // back before the same statement clears them.
+        await transaction.prepare(`
+          UPDATE sessions SET
+            scheduled_date = previous_scheduled_date, start_time = previous_start_time, end_time = previous_end_time,
+            session_timezone = COALESCE(previous_session_timezone, session_timezone),
+            duration_minutes = COALESCE(previous_duration_minutes, duration_minutes),
+            starts_at = previous_starts_at, ends_at = previous_ends_at,
+            requested_by = COALESCE(previous_requested_by, requested_by),
+            ${CLEAR_PREVIOUS_SCHEDULE_SQL}
+            confirmation_status = 'confirmed', status = 'scheduled', updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND confirmation_status = 'pending'
+        `).run(sessionId);
+        await recordSessionEvent(
+          transaction, sessionId, req.user.userId, 'reschedule_declined', 'pending_confirmation', 'scheduled',
+          {
+            declined: scheduleSummary(session.scheduled_date, session.start_time, session.end_time),
+            restored: scheduleSummary(session.previous_scheduled_date, session.previous_start_time, session.previous_end_time)
+          }
+        );
+        return;
+      }
+
+      const cancellationReason = restoreSkippedReason
+        ? 'Tutor declined the new time and the original time is no longer available'
+        : 'Tutor declined the requested time';
+      await transaction.prepare(`
+        UPDATE sessions SET ${CLEAR_PREVIOUS_SCHEDULE_SQL}
+          confirmation_status = 'declined', status = 'cancelled',
+          cancelled_by = ?, cancellation_reason = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(req.user.userId, cancellationReason, sessionId);
+      await recordSessionEvent(
+        transaction, sessionId, req.user.userId, 'declined', 'pending_confirmation', 'cancelled',
+        restoreSkippedReason ? { restoreSkippedReason } : {}
+      );
+    });
+
+    let updatedSession = await getSessionWithOutcome(sessionId);
+    let paymentResolution = null;
+    if (outcome === 'cancelled') {
+      await db.prepare("UPDATE session_reminders SET status = 'cancelled' WHERE session_id = ? AND status = 'pending'").run(sessionId);
+      paymentResolution = await settleCancelledSessionPayment(sessionId).catch((error) => {
+        console.error('Session payment cancellation warning:', error);
+        return { status: 'refund_failed' };
+      });
+      await syncSessionToGoogle(updatedSession, 'delete');
+      await deleteZoomMeeting(updatedSession).catch((error) => console.error('Zoom meeting deletion warning:', error.message || error));
+      updatedSession = { ...updatedSession, meeting_link: null, meeting_provider: null, meeting_status: null };
+    } else {
+      updatedSession = await provisionConfirmedSessionServices(updatedSession);
     }
+
+    const restoredTime = outcome === 'restored'
+      ? scheduleSummary(updatedSession.scheduled_date, updatedSession.start_time, updatedSession.end_time)
+      : null;
     await createNotification(
       session.student_id,
       'session_confirmation',
-      decision === 'confirmed' ? 'Session confirmed' : 'Session declined',
-      `${session.tutor_name} ${decision} your session request for "${session.title}".`,
+      { confirmed: 'Session confirmed', restored: 'New time declined', cancelled: 'Session declined' }[outcome],
+      outcome === 'restored'
+        ? `${session.tutor_name} can't make the new time for "${session.title}". Your session stays on ${restoredTime.scheduledDate} at ${restoredTime.startTime}.`
+        : `${session.tutor_name} ${decision} your session request for "${session.title}".`,
       '/sessions', sessionId
     );
-    await queueSessionEmails(updatedSession, decision)
+    await queueSessionEmails(updatedSession, { confirmed: 'confirmed', restored: 'reschedule_declined', cancelled: 'declined' }[outcome])
       .catch((error) => console.error('Session email warning:', error.message || error));
-    res.json(await db.prepare(`
+    const result = await db.prepare(`
       SELECT s.*, meeting.provider AS meeting_provider, meeting.status AS meeting_status
       FROM sessions s LEFT JOIN session_meetings meeting ON meeting.session_id = s.id
       WHERE s.id = ?
-    `).get(sessionId));
+    `).get(sessionId);
+    res.json(paymentResolution ? { ...result, payment_status: paymentResolution.status } : result);
   } catch (error) {
     console.error('Session confirmation error:', error);
     res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Unable to update session request' });

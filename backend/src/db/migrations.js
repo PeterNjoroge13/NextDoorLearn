@@ -1,3 +1,5 @@
+const { zonedTimeToUtc } = require('../utils/timezone');
+
 const migrations = [
   {
     version: '001_platform_safety_foundation',
@@ -517,6 +519,44 @@ const migrations = [
       await db.exec(`
         CREATE INDEX IF NOT EXISTS idx_messages_connection_history
           ON messages(connection_id, id DESC);
+      `);
+    }
+  },
+  {
+    version: '020_session_reschedule_restore',
+    async up(db) {
+      const userId = db.dialect === 'postgres' ? 'BIGINT' : 'INTEGER';
+      const timestamp = db.dialect === 'postgres' ? 'TIMESTAMPTZ' : 'DATETIME';
+
+      // The confirmed schedule a student moved away from, kept until the tutor answers
+      // so a declined reschedule can put the session back where it was.
+      await addColumn(db, 'sessions', 'previous_scheduled_date', 'DATE');
+      await addColumn(db, 'sessions', 'previous_start_time', 'TIME');
+      await addColumn(db, 'sessions', 'previous_end_time', 'TIME');
+      await addColumn(db, 'sessions', 'previous_session_timezone', 'TEXT');
+      await addColumn(db, 'sessions', 'previous_duration_minutes', 'INTEGER');
+      await addColumn(db, 'sessions', 'previous_starts_at', timestamp);
+      await addColumn(db, 'sessions', 'previous_ends_at', timestamp);
+      await addColumn(db, 'sessions', 'previous_requested_by', `${userId} REFERENCES users(id) ON DELETE SET NULL`);
+
+      // Upcoming lists and conflict checks now compare UTC instants, so make sure
+      // legacy rows written before starts_at/ends_at existed have them.
+      const legacySessions = await db.prepare(`
+        SELECT id, CAST(scheduled_date AS TEXT) AS scheduled_date, CAST(start_time AS TEXT) AS start_time,
+          CAST(end_time AS TEXT) AS end_time, session_timezone
+        FROM sessions WHERE starts_at IS NULL OR ends_at IS NULL
+      `).all();
+      for (const session of legacySessions) {
+        const timezone = session.session_timezone || 'UTC';
+        const startsAt = zonedTimeToUtc(session.scheduled_date, session.start_time, timezone);
+        const endsAt = zonedTimeToUtc(session.scheduled_date, session.end_time, timezone);
+        await db.prepare('UPDATE sessions SET starts_at = ?, ends_at = ? WHERE id = ?')
+          .run(startsAt.toISOString(), endsAt.toISOString(), session.id);
+      }
+
+      await db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_sessions_tutor_window ON sessions(tutor_id, starts_at, ends_at);
+        CREATE INDEX IF NOT EXISTS idx_sessions_student_window ON sessions(student_id, starts_at, ends_at);
       `);
     }
   }

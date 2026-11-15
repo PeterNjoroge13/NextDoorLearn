@@ -10,6 +10,7 @@ import { Alert, Platform, Pressable, StyleSheet, Switch, Text, View } from 'reac
 import { Button, Card, ErrorNotice, Field, Header, LoadingState, Screen } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { api, request } from '@/lib/api';
+import { pushTokenStorage } from '@/lib/pushToken';
 import { useData } from '@/lib/hooks';
 import { colors, spacing, typography } from '@/theme';
 
@@ -89,6 +90,8 @@ export default function SettingsScreen() {
       if (!projectId) throw new Error('Push notifications will activate after the first EAS project build.');
       const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
       await api.registerPushToken({ token, platform: Platform.OS, deviceName: Constants.deviceName || 'Mobile device' });
+      // Remembered so sign-out can unregister this device; failure here must not undo the registration.
+      await pushTokenStorage.set(token).catch(() => undefined);
       const updated = await request<Record<PreferenceKey, boolean>>('/notifications/preferences', {
         method: 'PUT',
         body: JSON.stringify({ pushEnabled: true }),
