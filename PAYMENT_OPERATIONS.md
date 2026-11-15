@@ -5,7 +5,10 @@ The application code supports Stripe Connect destination charges. Students pay i
 ## Production configuration
 
 1. Complete the Stripe Connect platform profile, business verification, support details, branding, and public terms/privacy URLs.
-2. In Render, set `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, and `STRIPE_WEBHOOK_SECRET`. Never put secret or webhook keys in Vercel, Expo public variables, screenshots, mobile builds, or git.
+   Tutors are created as Accounts v2 recipients (Express dashboard, platform-owned fees and losses), so first acknowledge
+   refunds and chargebacks liability under Settings > Connect > Platform profile and enable Radar for Platforms.
+   Set any platform fee in the Platform Pricing Tool and keep `STRIPE_PLATFORM_FEE_PERCENT=0` so the code does not override it.
+2. In Render, set `STRIPE_SECRET_KEY` (use a restricted `rk_` key with Connect, PaymentIntents, Refunds, and Account Sessions write access), `STRIPE_PUBLISHABLE_KEY`, and `STRIPE_WEBHOOK_SECRET`. The backend pins Stripe API version `2026-10-28.endive`. Never put secret or webhook keys in Vercel, Expo public variables, screenshots, mobile builds, or git.
 3. Create a Stripe webhook for `https://nextdoorlearn-backend.onrender.com/api/webhooks/stripe`.
 4. Subscribe to `account.updated`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, and `charge.refunded`.
 5. Leave `STRIPE_PLATFORM_FEE_PERCENT=0` until pricing, taxes, refunds, and tutor economics have been reviewed. The supported range is 0-20.

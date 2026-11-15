@@ -63,7 +63,7 @@ services:
       - key: GITHUB_ACTIONS_JOB_WORKFLOW
         value: .github/workflows/reminders.yml
       - key: REQUIRE_EMAIL_VERIFICATION
-        value: false
+        value: true
       - key: DISABLE_NEW_BOOKINGS
         value: false
       - key: DISABLE_PAYMENTS
