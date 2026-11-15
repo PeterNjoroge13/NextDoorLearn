@@ -4,6 +4,7 @@ const { authenticateToken, requireVerifiedEmail } = require('../middleware/auth'
 const { createNotification } = require('./notifications');
 const { isPositiveInteger } = require('../utils/validation');
 const { usersAreBlocked } = require('../services/safety');
+const { respondToConnectionRequest } = require('../services/connectionRequests');
 
 const router = express.Router();
 router.use(authenticateToken, requireVerifiedEmail);
@@ -115,38 +116,15 @@ router.put('/:connectionId/respond', async (req, res) => {
       return res.status(400).json({ error: 'Status must be either accepted or rejected' });
     }
 
-    // Check if connection exists and belongs to this tutor
-    const connection = await db.prepare(`
-      SELECT c.id, c.student_id, u.name as tutor_name
-      FROM connections c
-      JOIN users u ON c.tutor_id = u.id
-      WHERE c.id = ? AND c.tutor_id = ? AND c.status = 'pending'
-    `).get(connectionId, req.user.userId);
-
-    if (!connection) {
-      return res.status(404).json({ error: 'Connection request not found or already processed' });
-    }
-
-    // Update connection status
-    const updateConnection = await db.prepare(`
-      UPDATE connections SET status = ? WHERE id = ?
-    `);
-    await updateConnection.run(status, connectionId);
-
-    // Notify student of response
-    await createNotification(
-      connection.student_id,
-      'connection_response',
-      status === 'accepted' ? 'Connection accepted!' : 'Connection declined',
-      status === 'accepted' 
-        ? `${connection.tutor_name} accepted your connection request. You can now message them!`
-        : `${connection.tutor_name} declined your connection request.`,
-      status === 'accepted' ? '/messages' : '/tutors',
-      connectionId
-    );
+    await respondToConnectionRequest({
+      connectionId,
+      tutorId: req.user.userId,
+      accept: status === 'accepted'
+    });
 
     res.json({ message: `Connection request ${status} successfully` });
   } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     console.error('Respond to request error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }

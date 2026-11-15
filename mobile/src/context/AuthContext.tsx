@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { api, configureApiSession } from '@/lib/api';
+import { pushTokenStorage, unregisterStoredPushToken } from '@/lib/pushToken';
 import type { AuthResponse, User } from '@/types';
 
 const SESSION_KEY = 'nextdoorlearn.session.v1';
@@ -93,6 +94,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signUp: async (data) => acceptAuth(await api.register(data)),
     signOut: async () => {
       const token = session?.refreshToken || null;
+      // Unregister this device's push token while the session is still valid, then revoke it.
+      await unregisterStoredPushToken(api.unregisterPushToken);
       try { await api.logout(token); } catch {}
       await persist(null);
       router.replace('/(auth)/welcome');
@@ -101,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session) await persist({ ...session, user: { ...session.user, ...changes } });
     },
     clearSession: async () => {
+      await pushTokenStorage.remove().catch(() => undefined);
       await persist(null);
       router.replace('/(auth)/welcome');
     },

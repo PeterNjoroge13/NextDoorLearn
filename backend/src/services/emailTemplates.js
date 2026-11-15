@@ -119,6 +119,13 @@ module.exports = {
         actionLabel: 'Review new time',
         footer: 'Calendar and meeting details will be recreated after the tutor confirms the new time.'
       },
+      reschedule_declined: {
+        heading: 'The proposed new time was declined',
+        subject: `Time unchanged: ${title}`,
+        intro: `Hi ${name}, the proposed new time for "${title}" with ${otherName} was declined, so the session stays at its original time: ${when}.${meetingReady ? ' The secure meeting room is ready on the session page.' : ''}`,
+        actionLabel: 'View session',
+        footer: 'Your connected calendar and reminders have been restored to the original time.'
+      },
       rescheduled: {
         heading: 'Your tutoring session was rescheduled',
         subject: `Rescheduled: ${title}`,

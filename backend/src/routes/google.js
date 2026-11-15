@@ -22,15 +22,19 @@ const buildCallbackUrl = (status = 'success', client = 'web') => {
   return `${frontendUrl}/sessions?googleSync=${status}`;
 };
 
+// scheduled_date/start_time are in the tutor's local time zone, so compare the UTC
+// ends_at instant (ISO text in SQLite, TIMESTAMPTZ in PostgreSQL) with the current time.
+const listSessionsToSync = (userId, now = new Date()) => db.prepare(`
+  SELECT * FROM sessions
+  WHERE (student_id = ? OR tutor_id = ?)
+    AND status = 'scheduled' AND confirmation_status = 'confirmed'
+    AND ends_at > ?
+  ORDER BY starts_at ASC, id ASC
+  LIMIT 100
+`).all(userId, userId, new Date(now).toISOString());
+
 const syncUpcomingSessions = async (userId) => {
-  const sessions = await db.prepare(`
-    SELECT * FROM sessions
-    WHERE (student_id = ? OR tutor_id = ?)
-      AND status = 'scheduled' AND confirmation_status = 'confirmed'
-      AND (scheduled_date > date('now') OR scheduled_date = date('now'))
-    ORDER BY scheduled_date ASC, start_time ASC
-    LIMIT 100
-  `).all(userId, userId);
+  const sessions = await listSessionsToSync(userId);
   for (const session of sessions) await syncSessionToGoogle(session, 'upsert');
 };
 
@@ -147,3 +151,4 @@ router.get('/status', authenticateToken, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.listSessionsToSync = listSessionsToSync;
