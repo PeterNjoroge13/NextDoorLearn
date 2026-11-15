@@ -5,6 +5,7 @@ import { Banknote, CheckCircle2, CreditCard, ExternalLink, RefreshCw, ShieldChec
 import AppShell, { EmptyState, ErrorState, LoadingState } from '../components/AppShell';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import TutorPayoutSetup from '../components/TutorPayoutSetup';
 
 const money = (cents = 0) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(cents) / 100);
 const paymentLabel = {
@@ -91,6 +92,9 @@ const Payments = () => {
   const [busy, setBusy] = useState(false);
   const [payingId, setPayingId] = useState(null);
   const [checkout, setCheckout] = useState(null);
+  const [publishableKey, setPublishableKey] = useState(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const handleSetupError = useCallback((message) => setError(message), []);
   const tutor = user?.role === 'tutor';
 
   const load = useCallback(async () => {
@@ -100,6 +104,10 @@ const Payments = () => {
       const [historyResponse, roleResponse] = await Promise.all([
         api.getPaymentHistory(token), tutor ? api.getPaymentAccount(token) : Promise.resolve(null)
       ]);
+      if (tutor) {
+        const config = await api.getPaymentConfig(token).catch(() => null);
+        setPublishableKey(config?.configured ? config.publishableKey : null);
+      }
       if (historyResponse.error) throw new Error(historyResponse.error);
       if (roleResponse?.error) throw new Error(roleResponse.error);
       setHistory(historyResponse);
@@ -116,7 +124,10 @@ const Payments = () => {
   useEffect(() => { load(); }, [load]);
 
   const beginOnboarding = async () => {
-    setBusy(true); setError('');
+    setError('');
+    // Prefer onboarding embedded in NextDoorLearn; fall back to Stripe's hosted page.
+    if (publishableKey) { setShowOnboarding(true); return; }
+    setBusy(true);
     const response = await api.startPaymentOnboarding(localStorage.getItem('token'));
     if (response.url) window.location.assign(response.url);
     else { setError(response.error || 'Payout setup could not be started.'); setBusy(false); }
@@ -136,6 +147,9 @@ const Payments = () => {
     load();
   };
 
+  const showPayoutSetup = Boolean(publishableKey && account?.configured)
+    && (showOnboarding || account?.onboardingStatus !== 'not_started');
+
   if (loading) return <AppShell><LoadingState label="Loading secure payments..." /></AppShell>;
   if (error && !history.length && !account) return <AppShell><ErrorState message={error} action={<button className="btn btn-primary" onClick={load}>Try again</button>} /></AppShell>;
 
@@ -154,6 +168,12 @@ const Payments = () => {
           <div className="card card-pad"><span className="stat-icon"><CheckCircle2 size={21} /></span><strong className="payment-total">{earnings?.totals?.paid_sessions || 0}</strong><p className="muted">Paid tutoring sessions</p></div>
           <div className="card card-pad payout-card"><div><span className="eyebrow">Payout status</span><h2>{account?.onboardingStatus === 'active' ? 'Ready to receive payments' : account?.onboardingStatus === 'restricted' ? 'More information needed' : 'Connect your payout account'}</h2><p>{account?.maintenance ? 'Payment setup is temporarily paused for maintenance. Your existing payment history is still available.' : account?.configured ? 'Stripe verifies identity and sends earnings to your connected bank account.' : 'The payment code is ready. Stripe keys still need to be added to the production backend.'}</p></div><button className="btn btn-primary" type="button" onClick={beginOnboarding} disabled={busy || !account?.configured}>{account?.onboardingStatus === 'active' ? 'Review payout details' : 'Set up payouts'}<ExternalLink size={16} /></button></div>
         </section>
+        {showPayoutSetup ? <TutorPayoutSetup
+          publishableKey={publishableKey}
+          showOnboarding={showOnboarding}
+          onExit={() => { setShowOnboarding(false); load(); }}
+          onError={handleSetupError}
+        /> : null}
       </> : <div className="payment-trust-band"><ShieldCheck size={22} /><div><strong>Protected payment details</strong><p>NextDoorLearn calculates totals from the booked rate. Stripe securely handles payment details and sends funds to the tutor&apos;s verified payout account.</p></div></div>}
 
       <section className="card card-pad payment-history">

@@ -8,11 +8,13 @@ const {
   createOnboardingLink,
   createSessionPaymentIntent,
   createTutorAccount,
+  createTutorAccountSession,
   paymentsConfigured,
   platformFeeFor,
   publicPaymentConfig,
   retrievePaymentIntent,
-  retrieveTutorAccount
+  retrieveTutorAccount,
+  tutorAccountState
 } = require('../services/payments');
 const { isPositiveInteger } = require('../utils/validation');
 const {
@@ -33,17 +35,7 @@ const paymentWriteLimiter = rateLimit({
   message: { error: 'Too many payment attempts. Please wait before trying again.' }
 });
 
-const accountStatus = (account) => {
-  const requirements = account.requirements || {};
-  const due = [...(requirements.currently_due || []), ...(requirements.past_due || [])];
-  return {
-    onboardingStatus: account.payouts_enabled && account.details_submitted ? 'active' : account.details_submitted ? 'restricted' : 'pending',
-    chargesEnabled: Boolean(account.charges_enabled),
-    payoutsEnabled: Boolean(account.payouts_enabled),
-    detailsSubmitted: Boolean(account.details_submitted),
-    requirementsDue: [...new Set(due)]
-  };
-};
+const accountStatus = tutorAccountState;
 
 const saveAccountStatus = async (userId, account) => {
   const state = accountStatus(account);
@@ -95,32 +87,53 @@ router.get('/account', async (req, res) => {
   }
 });
 
+const ensureTutorAccount = async (userId) => {
+  let row = await db.prepare('SELECT * FROM tutor_payment_accounts WHERE user_id = ?').get(userId);
+  if (row) return row;
+  const user = await db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(userId);
+  const account = await createTutorAccount({ email: user.email, name: user.name, userId: user.id });
+  const state = accountStatus(account);
+  await db.prepare(`
+    INSERT INTO tutor_payment_accounts (
+      user_id, provider_account_id, onboarding_status, charges_enabled, payouts_enabled, details_submitted, requirements_due
+    ) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO NOTHING
+  `).run(
+    user.id, account.id, state.onboardingStatus, Number(state.chargesEnabled),
+    Number(state.payoutsEnabled), Number(state.detailsSubmitted), JSON.stringify(state.requirementsDue)
+  );
+  row = await db.prepare('SELECT * FROM tutor_payment_accounts WHERE user_id = ?').get(userId);
+  return row;
+};
+
+const sendPayoutSetupError = (res, error, fallback) => {
+  console.error('Payment onboarding error:', error);
+  res.status(error.statusCode || 502).json({
+    error: error.statusCode ? error.message : fallback,
+    code: error.code
+  });
+};
+
+// Hosted onboarding link (used by the mobile app and as a web fallback).
 router.post('/account/onboarding-link', requireFeature('payments'), paymentWriteLimiter, async (req, res) => {
   if (req.user.role !== 'tutor') return res.status(403).json({ error: 'Tutor access is required' });
   try {
-    const user = await db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(req.user.userId);
-    let row = await db.prepare('SELECT * FROM tutor_payment_accounts WHERE user_id = ?').get(req.user.userId);
-    if (!row) {
-      const account = await createTutorAccount({ email: user.email, name: user.name, userId: user.id });
-      await db.prepare(`
-        INSERT INTO tutor_payment_accounts (
-          user_id, provider_account_id, onboarding_status, charges_enabled, payouts_enabled, details_submitted, requirements_due
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        user.id, account.id, accountStatus(account).onboardingStatus, Number(account.charges_enabled),
-        Number(account.payouts_enabled), Number(account.details_submitted),
-        JSON.stringify(accountStatus(account).requirementsDue)
-      );
-      row = await db.prepare('SELECT * FROM tutor_payment_accounts WHERE user_id = ?').get(req.user.userId);
-    }
+    const row = await ensureTutorAccount(req.user.userId);
     const link = await createOnboardingLink(row.provider_account_id);
     res.json({ url: link.url, expiresAt: link.expires_at });
   } catch (error) {
-    console.error('Payment onboarding error:', error);
-    res.status(error.statusCode || 502).json({
-      error: error.statusCode ? error.message : 'Unable to start secure payout setup',
-      code: error.code
-    });
+    sendPayoutSetupError(res, error, 'Unable to start secure payout setup');
+  }
+});
+
+// Short-lived client secret for embedded onboarding and the notification banner on the web.
+router.post('/account/session', requireFeature('payments'), paymentWriteLimiter, async (req, res) => {
+  if (req.user.role !== 'tutor') return res.status(403).json({ error: 'Tutor access is required' });
+  try {
+    const row = await ensureTutorAccount(req.user.userId);
+    const session = await createTutorAccountSession(row.provider_account_id);
+    res.json({ clientSecret: session.client_secret, expiresAt: session.expires_at });
+  } catch (error) {
+    sendPayoutSetupError(res, error, 'Unable to load secure payout setup');
   }
 });
 
@@ -225,6 +238,11 @@ router.post('/sessions/:sessionId/intent', requireFeature('payments'), paymentWr
     if (!session.provider_account_id || !session.payouts_enabled) {
       return res.status(409).json({ error: 'This tutor has not finished secure payout setup yet' });
     }
+    // Re-check the tutor's transfer capability with Stripe right before charging.
+    const liveState = await saveAccountStatus(session.tutor_id, await retrieveTutorAccount(session.provider_account_id));
+    if (!liveState.payoutsEnabled) {
+      return res.status(409).json({ error: 'This tutor has not finished secure payout setup yet' });
+    }
 
     let payment = await db.prepare('SELECT * FROM session_payments WHERE session_id = ?').get(session.id);
     if (payment?.status === 'succeeded') return res.status(409).json({ error: 'This session is already paid' });
@@ -289,6 +307,10 @@ const handleWebhook = async (req, res) => {
 
   try {
     const object = event.data.object;
+    // account.updated payloads are v1 snapshots; read the v2 account for transfer capability status.
+    const freshAccount = event.type === 'account.updated'
+      ? await retrieveTutorAccount(object.id).catch(() => object)
+      : null;
     const outcome = await db.withTransaction(async (transaction) => {
       const claimed = await transaction.prepare(`
         INSERT INTO payment_events (provider_event_id, event_type, object_id)
@@ -299,7 +321,7 @@ const handleWebhook = async (req, res) => {
       if (event.type === 'account.updated') {
         const row = await transaction.prepare('SELECT user_id FROM tutor_payment_accounts WHERE provider_account_id = ?').get(object.id);
         if (row) {
-          const state = accountStatus(object);
+          const state = accountStatus(freshAccount || object);
           await transaction.prepare(`
             UPDATE tutor_payment_accounts
             SET onboarding_status = ?, charges_enabled = ?, payouts_enabled = ?, details_submitted = ?,

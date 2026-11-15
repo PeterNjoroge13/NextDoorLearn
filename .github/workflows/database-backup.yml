@@ -1,0 +1,68 @@
+name: Nightly database backup
+
+# Off-platform backup of the production Neon database.
+# The dump is encrypted before upload because this repository is public and
+# workflow artifacts are downloadable by any signed-in GitHub user.
+#
+# Required repository secrets (Settings > Secrets and variables > Actions):
+#   DATABASE_BACKUP_URL  - Neon connection string (a read-only role is recommended)
+#   BACKUP_PASSPHRASE    - long random passphrase; store a copy somewhere safe offline
+#
+# Restore: download the artifact, then
+#   gpg --batch --pinentry-mode loopback --decrypt --passphrase "$BACKUP_PASSPHRASE" nextdoorlearn-*.dump.gpg > backup.dump
+#   pg_restore --no-owner --dbname "$TARGET_DATABASE_URL" backup.dump
+
+on:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nextdoorlearn-database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: postgres:18
+    env:
+      DATABASE_BACKUP_URL: ${{ secrets.DATABASE_BACKUP_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Check backup secrets
+        id: secrets
+        run: |
+          if [ -z "$DATABASE_BACKUP_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "Backup secrets are not configured; skipping."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dump and encrypt database
+        if: steps.secrets.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          apt-get update -qq && apt-get install -y -qq gnupg > /dev/null
+          stamp=$(date -u +%Y-%m-%dT%H%MZ)
+          mkdir -p backup
+          pg_dump --format=custom --no-owner --no-privileges "$DATABASE_BACKUP_URL" \
+            | gpg --batch --yes --symmetric --cipher-algo AES256 --pinentry-mode loopback \
+                --passphrase-fd 3 3<<<"$BACKUP_PASSPHRASE" \
+                --output "backup/nextdoorlearn-$stamp.dump.gpg"
+          test -s "backup/nextdoorlearn-$stamp.dump.gpg"
+          ls -lh backup
+        shell: bash
+
+      - name: Upload encrypted backup
+        if: steps.secrets.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextdoorlearn-db-backup-${{ github.run_id }}
+          path: backup/*.dump.gpg
+          retention-days: 30
+          if-no-files-found: error

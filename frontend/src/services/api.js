@@ -606,6 +606,20 @@ const api = {
     return response.json();
   },
 
+  createPayoutAccountSession: async (token) => {
+    const response = await apiFetch(`${API_BASE_URL}/payments/account/session`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
+  getPaymentConfig: async (token) => {
+    const response = await apiFetch(`${API_BASE_URL}/payments/config`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    return response.json();
+  },
+
   getTutorEarnings: async (token) => {
     const response = await apiFetch(`${API_BASE_URL}/payments/earnings`, {
       headers: { 'Authorization': `Bearer ${token}` },
