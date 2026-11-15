@@ -3,8 +3,9 @@ const bcrypt = require('bcryptjs');
 const { randomBytes } = require('crypto');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
-const { getAvailabilitySlots } = require('../utils/availability');
+const { getAvailabilitySlots, getAvailabilitySlotsForTutors } = require('../utils/availability');
 const {
+  boundedInteger,
   isPositiveInteger,
   isValidHttpUrl,
   isValidTimeZone,
@@ -504,8 +505,26 @@ router.delete('/account', authenticateToken, async (req, res) => {
 });
 
 // Get all tutors
+// Without ?limit/?offset this keeps returning the full array that shipped clients expect.
+// With either, it returns one page: { tutors, total, limit, offset, nextOffset }.
 router.get('/tutors', authenticateToken, async (req, res) => {
   try {
+    const paged = req.query.limit !== undefined || req.query.offset !== undefined;
+    const limit = boundedInteger(req.query.limit, { min: 1, max: 100, fallback: 24 });
+    const offset = boundedInteger(req.query.offset, { min: 0, max: 1000000, fallback: 0 });
+    const visibleTutors = `
+      FROM users u
+      JOIN tutor_profiles tp ON u.id = tp.user_id
+      WHERE u.role = 'tutor' AND u.status = 'active' AND u.verified_at IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM user_blocks b
+          WHERE (b.blocker_id = ? AND b.blocked_user_id = u.id)
+             OR (b.blocker_id = u.id AND b.blocked_user_id = ?)
+        )
+    `;
+    const total = paged
+      ? Number((await db.prepare(`SELECT COUNT(*) AS count ${visibleTutors}`).get(req.user.userId, req.user.userId)).count)
+      : null;
     const tutors = await db.prepare(`
       SELECT 
         u.id, 
@@ -540,10 +559,13 @@ router.get('/tutors', authenticateToken, async (req, res) => {
                tp.subjects, tp.availability, tp.hourly_rate, tp.experience_years, 
                tp.education, tp.teaching_style, tp.headline, tp.tutoring_mode,
                tp.service_area, tp.age_groups, tp.public_profile_enabled
-    `).all(req.user.userId, req.user.userId);
+      ORDER BY u.id ASC
+      ${paged ? 'LIMIT ? OFFSET ?' : ''}
+    `).all(req.user.userId, req.user.userId, ...(paged ? [limit, offset] : []));
+    const slotsByTutor = await getAvailabilitySlotsForTutors(tutors);
 
     // Parse JSON fields and format ratings
-    const formattedTutors = await Promise.all(tutors.map(async (tutor) => {
+    const formattedTutors = tutors.map((tutor) => {
       let subjects = [];
       let availability = {};
       let languages = [];
@@ -552,7 +574,7 @@ router.get('/tutors', authenticateToken, async (req, res) => {
       try { availability = JSON.parse(tutor.availability); } catch (e) {}
       try { languages = tutor.languages ? JSON.parse(tutor.languages) : []; } catch (e) {}
       
-      const slotAvailability = await getAvailabilitySlots(tutor.id);
+      const slotAvailability = slotsByTutor.get(Number(tutor.id)) || [];
 
       return {
         ...tutor,
@@ -564,9 +586,11 @@ router.get('/tutors', authenticateToken, async (req, res) => {
         averageRating: Math.round(tutor.averageRating * 10) / 10,
         totalReviews: tutor.totalReviews
       };
-    }));
+    });
 
-    res.json(formattedTutors);
+    if (!paged) return res.json(formattedTutors);
+    const nextOffset = offset + formattedTutors.length < total ? offset + formattedTutors.length : null;
+    res.json({ tutors: formattedTutors, total, limit, offset, nextOffset });
   } catch (error) {
     console.error('Get tutors error:', error);
     res.status(500).json({ error: 'Internal server error' });

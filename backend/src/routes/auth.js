@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
-const { ACCESS_TOKEN_TTL, JWT_SECRET } = require('../middleware/auth');
+const { ACCESS_TOKEN_TTL, ACCESS_TOKEN_TYPE, JWT_SECRET } = require('../middleware/auth');
 const { isValidEmail, passwordValidationError, sanitizeText } = require('../utils/validation');
 const { sendEmail } = require('../services/email');
 const emailTemplates = require('../services/emailTemplates');
@@ -16,6 +16,7 @@ const emailVerificationRequired = () => process.env.REQUIRE_EMAIL_VERIFICATION =
 
 const accessTokenFor = (user) => jwt.sign(
   {
+    type: ACCESS_TOKEN_TYPE,
     userId: user.id,
     email: user.email,
     role: user.role,
@@ -146,7 +147,8 @@ router.post('/register', async (req, res) => {
         emailVerified: !emailVerificationRequired(),
         ageGroup: consent.ageGroup,
         policyVersion: POLICY_VERSION,
-        isAdmin: (process.env.ADMIN_EMAILS || '').split(',').map((item) => item.trim().toLowerCase()).includes(normalizedEmail)
+        // New accounts have not verified their email yet, so ADMIN_EMAILS does not apply.
+        isAdmin: false
       },
       ...(process.env.NODE_ENV === 'production' ? {} : { verificationToken })
     });
@@ -204,7 +206,7 @@ router.post('/login', async (req, res) => {
         name: user.name,
         bio: user.bio,
         emailVerified: !emailVerificationRequired() || Boolean(user.email_verified_at),
-        isAdmin: Boolean(adminMembership) || adminEmails.includes(user.email)
+        isAdmin: Boolean(adminMembership) || (Boolean(user.email_verified_at) && adminEmails.includes(String(user.email).toLowerCase()))
       }
     });
   } catch (error) {

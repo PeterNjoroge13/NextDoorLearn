@@ -91,21 +91,28 @@ const getAvailabilitySlots = async (tutorId) => {
   `).all(tutorId);
 
   if (tableSlots.length > 0) {
-    return tableSlots.map((slot) => ({
-      dayOfWeek: slot.day_of_week,
-      startTime: String(slot.start_time).slice(0, 5),
-      endTime: String(slot.end_time).slice(0, 5),
-      timezone: slot.timezone || null
-    }));
+    return tableSlots.map(formatSlotRow);
   }
 
   const legacy = await db.prepare('SELECT availability FROM tutor_profiles WHERE user_id = ?').get(tutorId);
-  if (!legacy || !legacy.availability) {
+  return parseLegacyAvailability(legacy?.availability);
+};
+
+const formatSlotRow = (slot) => ({
+  dayOfWeek: slot.day_of_week,
+  startTime: String(slot.start_time).slice(0, 5),
+  endTime: String(slot.end_time).slice(0, 5),
+  timezone: slot.timezone || null
+});
+
+// Converts the older tutor_profiles.availability JSON (several historical shapes) into slots.
+const parseLegacyAvailability = (rawAvailability) => {
+  if (!rawAvailability) {
     return [];
   }
 
   try {
-    const parsed = typeof legacy.availability === 'string' ? JSON.parse(legacy.availability) : legacy.availability;
+    const parsed = typeof rawAvailability === 'string' ? JSON.parse(rawAvailability) : rawAvailability;
     if (Array.isArray(parsed?.slots)) {
       return parsed.slots;
     }
@@ -141,6 +148,32 @@ const getAvailabilitySlots = async (tutorId) => {
   }
 };
 
+// Availability for many tutors in one query (plus the legacy JSON already loaded with each
+// profile), so tutor lists do not issue a query per tutor.
+const getAvailabilitySlotsForTutors = async (tutors) => {
+  const byTutor = new Map();
+  const ids = [...new Set(tutors.map((tutor) => Number(tutor.id)))];
+  for (let index = 0; index < ids.length; index += 500) {
+    const chunk = ids.slice(index, index + 500);
+    const rows = await db.prepare(`
+      SELECT tutor_id, day_of_week, start_time, end_time, timezone
+      FROM tutor_availability_slots
+      WHERE is_active = 1 AND tutor_id IN (${chunk.map(() => '?').join(', ')})
+      ORDER BY tutor_id ASC, day_of_week ASC, start_time ASC
+    `).all(...chunk);
+    for (const row of rows) {
+      const key = Number(row.tutor_id);
+      if (!byTutor.has(key)) byTutor.set(key, []);
+      byTutor.get(key).push(formatSlotRow(row));
+    }
+  }
+  for (const tutor of tutors) {
+    const key = Number(tutor.id);
+    if (!byTutor.has(key)) byTutor.set(key, parseLegacyAvailability(tutor.availability));
+  }
+  return byTutor;
+};
+
 const isTimeRangeWithinAvailability = async (tutorId, scheduledDate, startTime, endTime) => {
   const dayOfWeek = getDayOfWeekFromDate(scheduledDate);
   const slots = await getAvailabilitySlots(tutorId);
@@ -163,5 +196,7 @@ module.exports = {
   getDayOfWeekFromDate,
   normalizeSlots,
   getAvailabilitySlots,
+  getAvailabilitySlotsForTutors,
+  parseLegacyAvailability,
   isTimeRangeWithinAvailability
 };
