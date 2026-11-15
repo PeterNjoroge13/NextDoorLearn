@@ -89,8 +89,8 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
-      - name: Block critical production dependency vulnerabilities
-        run: npm audit --omit=dev --audit-level=critical
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run export:web
